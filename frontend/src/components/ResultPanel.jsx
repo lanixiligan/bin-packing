@@ -1,8 +1,12 @@
+import { lazy, Suspense } from "react";
 import Truck from "./Truck.jsx";
+
+// three.js is large, so the 3D view is only downloaded when it's first shown.
+const TruckScene3D = lazy(() => import("./TruckScene3D.jsx"));
 
 export default function ResultPanel({
   title, explanation, data, capacity, step, badge, truckHeight,
-  activeId, onHover, onFocusBlock, optimumTrucks,
+  activeId, onHover, onFocusBlock, optimumTrucks, view = "2d",
 }) {
   // position of each shipment id in the drop sequence -> used for animation
   const dropIndex = {};
@@ -27,23 +31,39 @@ export default function ResultPanel({
           </span>
         )}
       </p>
-      <div className="trucks">
-        {data.trucks.map((t) => (
-          <Truck
-            key={t.truck}
-            truck={t}
-            numTrucks={data.num_trucks}
+      {view === "3d" ? (
+        <Suspense fallback={<div className="scene3d scene3d-loading muted" style={{ height: truckHeight + 120 }}>Loading 3D view…</div>}>
+          <TruckScene3D
+            data={data}
             capacity={capacity}
-            height={truckHeight}
             step={step}
             dropIndex={dropIndex}
             activeId={activeId}
             onHover={onHover}
             onFocusBlock={onFocusBlock}
-            extra={extraCount > 0 && t.truck > optimumTrucks}
+            extraFrom={extraCount > 0 ? optimumTrucks : null}
+            height={truckHeight + 120}
           />
-        ))}
-      </div>
+        </Suspense>
+      ) : (
+        <div className="trucks">
+          {data.trucks.map((t) => (
+            <Truck
+              key={t.truck}
+              truck={t}
+              numTrucks={data.num_trucks}
+              capacity={capacity}
+              height={truckHeight}
+              step={step}
+              dropIndex={dropIndex}
+              activeId={activeId}
+              onHover={onHover}
+              onFocusBlock={onFocusBlock}
+              extra={extraCount > 0 && t.truck > optimumTrucks}
+            />
+          ))}
+        </div>
+      )}
     </section>
   );
 }

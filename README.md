@@ -37,7 +37,8 @@ bin-packing/
         └── components/
             ├── ShipmentForm.jsx
             ├── ResultPanel.jsx
-            └── Truck.jsx    one truck drawn as a bar of stacked shipments
+            ├── Truck.jsx    one truck drawn as a bar of stacked shipments
+            └── TruckScene3D.jsx  3D view (three.js), loaded only when chosen
 ```
 
 ---
@@ -125,6 +126,8 @@ To stop either part, press `Ctrl+C` in its terminal.
    * **FFD** loads them in the order the algorithm actually uses (heaviest first).
    * **OR-Tools** loads them truck by truck.
 5. Compare the **summary** to see how many trucks each method used and the lower bound.
+
+Switch between **2D bars** and **3D trucks** above the panels. In 3D, each shipment is a crate whose *length* matches its weight, so a crate row that reaches the back door is a full truck. Drag to rotate the view.
 
 Each shipment keeps **the same color in both panels**, so you can see where each method put it. Hover over a block to see its full name and weight. Click **↻ Replay animation** to watch it again.
 

@@ -29,6 +29,7 @@ export default function App() {
   const [undoList, setUndoList] = useState(null); // shipments removed by "Clear all"
   const [hoverId, setHoverId] = useState(null);
   const [focusId, setFocusId] = useState(null);
+  const [view, setView] = useState("2d"); // "2d" bars or "3d" trucks
   const timer = useRef(null);
   const resultsRef = useRef(null);
   const errorRef = useRef(null);
@@ -302,6 +303,19 @@ export default function App() {
                 </span>
               )}
             </div>
+            <div className="view-toggle" role="group" aria-label="Truck view">
+              {[["2d", "2D bars"], ["3d", "3D trucks"]].map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  className={view === v ? "on" : ""}
+                  aria-pressed={view === v}
+                  onClick={() => setView(v)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="panels">
               <ResultPanel
                 title="FFD (quick rule)"
@@ -314,6 +328,7 @@ export default function App() {
                 badge={result.ffd.hits_lower_bound
                   ? { text: "Optimal (hits lower bound)", kind: "good" }
                   : { text: "Heuristic – not guaranteed best", kind: "neutral" }}
+                view={view}
                 {...linkProps}
               />
               <ResultPanel
@@ -326,6 +341,7 @@ export default function App() {
                 badge={result.ortools.optimal
                   ? { text: "Proven optimal", kind: "good" }
                   : { text: `Best found in ${result.ortools.time_limit_s} s (not proven)`, kind: "warn" }}
+                view={view}
                 {...linkProps}
               />
             </div>
