@@ -244,7 +244,7 @@ export default function App() {
         <ShipmentForm shipments={shipments} capacity={capacity} onChange={changeShipments} />
 
         <div className="actions">
-          <button type="button" onClick={() => changeShipments(randomShipments())}>
+          <button type="button" onClick={() => changeShipments(randomShipments(capacity ?? undefined))}>
             🎲 Load random shipments
           </button>
           <button type="button" onClick={loadExample}>

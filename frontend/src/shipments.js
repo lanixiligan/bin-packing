@@ -22,7 +22,16 @@ export function shipmentsFromWeights(weights, startIndex = 0) {
   }));
 }
 
-export function randomShipments(count = 20, min = 50, max = 600) {
+/**
+ * Random shipments sized relative to the truck capacity: each weight is
+ * between 5% and 60% of `capacity` (50–600 kg for a 1000 kg truck), so every
+ * shipment fits and trucks hold a mix of two to several shipments.
+ * Falls back to 1000 kg when no valid capacity is given.
+ */
+export function randomShipments(capacity = 1000, count = 20) {
+  const cap = capacity > 0 ? capacity : 1000;
+  const min = Math.max(1, Math.round(cap * 0.05));
+  const max = Math.max(min, Math.round(cap * 0.6));
   return shipmentsFromWeights(
     Array.from({ length: count }, () => Math.floor(min + Math.random() * (max - min + 1)))
   );

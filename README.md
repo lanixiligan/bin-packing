@@ -119,7 +119,7 @@ To stop either part, press `Ctrl+C` in its terminal.
 ## 3. Using the app
 
 1. Set the **truck capacity** (default 1000 kg).
-2. Add or remove shipments, or click **🎲 Load random shipments** (20 shipments, 50–600 kg each).
+2. Add or remove shipments, or click **🎲 Load random shipments** (20 shipments, each 5–60% of the truck capacity, e.g. 50–600 kg for 1000 kg).
 3. Click **▶ Solve**.
 4. Watch the shipments drop into the trucks:
    * **FFD** loads them in the order the algorithm actually uses (heaviest first).
