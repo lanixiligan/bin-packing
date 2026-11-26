@@ -59,29 +59,103 @@ See [`docs/api.md`](docs/api.md) for the full API, and `/docs` on a running back
 
 ## Setup (once)
 
-You need Python 3.12, Node 20.19+ or 22.12+ (use [nvm](https://github.com/nvm-sh/nvm) if `apt`'s is
-older), and either Docker or nothing else: without Docker, `scripts/services.sh` downloads Postgres and
-Redis binaries from pip packages into `.tools/`.
+### 1. System packages (Linux Mint / Ubuntu)
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip curl git make
+```
+
+Docker is optional. With it, Postgres and Redis run from `docker-compose.yml`. Without it,
+`scripts/services.sh` downloads Postgres and Redis binaries from pip packages into `.tools/` the first
+time (no `sudo` needed).
+
+### 2. Node.js 20.19+ or 22.12+
+
+Check with `node --version`. If it's missing or older (the `apt` version often is), install it with nvm:
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+source ~/.bashrc
+nvm install --lts
+nvm use --lts
+```
+
+### 3. The project
 
 ```bash
 cd ~/Projects/bin-packing
-cp .env.example .env        # local defaults; change JWT_SECRET outside development
-make install                # backend venv + frontend packages
-make seed                   # starts Postgres + Redis, migrates, loads the demo data
+cp .env.example .env        # local defaults (APP_ENV=dev); change JWT_SECRET outside development
+make install                # backend/.venv with the Python packages + frontend/node_modules
+make seed                   # starts Postgres + Redis, applies migrations, loads the demo data
 ```
+
+<details>
+<summary>The same steps without <code>make</code></summary>
+
+```bash
+cd ~/Projects/bin-packing
+cp .env.example .env
+
+# Backend: virtual environment and packages (OR-Tools is ~25 MB)
+python3 -m venv backend/.venv
+backend/.venv/bin/pip install -r backend/requirements-dev.txt
+
+# Frontend packages
+cd frontend && npm install && cd ..
+
+# Postgres + Redis, database tables, demo data
+scripts/services.sh start
+cd backend
+.venv/bin/alembic upgrade head
+.venv/bin/python -m scripts.seed
+cd ..
+```
+
+</details>
 
 ## Run
 
 ```bash
+cd ~/Projects/bin-packing
 make dev
 ```
 
-This runs the API on <http://localhost:8000> (Swagger at `/docs`), the solver worker, and the web app on
-<http://localhost:5173>. Ctrl+C stops all three. Other ports: `API_PORT=8010 WEB_PORT=5180 scripts/dev.sh`.
-`make services-stop` stops Postgres and Redis.
+This starts three processes together, and Ctrl+C stops all three:
 
-To work on the UI without the backend: `cd frontend && npm run dev:mock` (an in-browser mock API; any
-password works, an e-mail containing "dispatch" or "driver" picks that role).
+| Process | Address |
+|---|---|
+| API | <http://localhost:8000> (Swagger at `/docs`) |
+| Solver worker | runs the optimiser jobs in the background |
+| Web app | **<http://localhost:5173>**, open this one |
+
+Other ports: `API_PORT=8010 WEB_PORT=5180 scripts/dev.sh`.
+
+> `npm run dev` on its own only starts the web app. Without the API you can't log in, and without the
+> worker a plan stays "queued". Use `make dev`, or start all three yourself.
+
+To start them in separate terminals instead (Postgres and Redis must be running: `make services`):
+
+```bash
+# Terminal 1: API
+cd ~/Projects/bin-packing/backend && .venv/bin/uvicorn app.main:app --reload --port 8000
+
+# Terminal 2: solver worker
+cd ~/Projects/bin-packing/backend && .venv/bin/arq app.workers.WorkerSettings
+
+# Terminal 3: web app
+cd ~/Projects/bin-packing/frontend && npm run dev
+```
+
+Run only one worker at a time: a worker that starts up fails any job another worker is still running.
+
+Other commands:
+
+| Command | What it does |
+|---|---|
+| `make seed` | Reset the database to the demo data (also fixes a failed login after testing) |
+| `make services-status` / `make services-stop` | Check or stop Postgres and Redis |
+| `cd frontend && npm run dev:mock` | The UI with an in-browser mock API, no backend needed. Any password works; an e-mail containing "dispatch" or "driver" picks that role |
 
 ## Seed logins
 
