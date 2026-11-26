@@ -1,28 +1,17 @@
 """
-FastAPI backend for the truck-loading (1D bin packing) demo.
-
-Run with:  uvicorn main:app --reload --port 8000
+The original stateless 1D bin packing demo: POST /api/solve (public).
+Owner: Agent B. Keep its request and response unchanged.
 """
 
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from solver import ffd, lower_bound, solve_cpsat
+from app.solver.packing import ffd, lower_bound, solve_cpsat
 
 TIME_LIMIT_SECONDS = 10.0
 MAX_SHIPMENTS = 200
 
-app = FastAPI(title="Truck Loading - Bin Packing Demo")
-
-# Allow the Vite dev server to call us directly (it also proxies, but this
-# makes it work either way).
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+router = APIRouter()
 
 
 class Shipment(BaseModel):
@@ -50,12 +39,7 @@ def build_result(trucks, shipments, capacity):
     return out
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-
-@app.post("/solve")
+@router.post("/solve", tags=["demo"])
 def solve(req: SolveRequest):
     # ---- Validation -------------------------------------------------------
     if not req.shipments:
