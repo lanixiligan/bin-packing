@@ -3,8 +3,9 @@ The original stateless 1D bin packing demo: POST /api/solve (public).
 Owner: Agent B. Keep its request and response backward compatible (new fields
 are optional in the request and only added to the response).
 
-Dangerous goods: a shipment may carry a `dg_class` (or "food" / "fire_risk");
-incompatible shipments (ADG Table 9.1, app/dg.py) never share a truck. With
+Dangerous goods: a shipment may carry a `dg_class` (or "food" / "fire_risk")
+and, with a class, up to 4 `subsidiary` hazards; incompatible shipments (ADG
+Table 9.1, app/dg.py, which also pairs subsidiary hazards) never share a truck. With
 `rule_set: "northline"`, classes Northline never accepts are rejected (400).
 
 It runs on the multi-dimension solver (app/solver/multi.py) with weight as
@@ -15,7 +16,7 @@ import threading
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app import dg as dgrules
 from app.schemas import Capacity, PackUnit
@@ -42,6 +43,23 @@ class Shipment(BaseModel):
     weight: int = Field(gt=0, le=1_000_000, description="Weight in kg (whole number)")
     dg_class: DemoDg | None = Field(default=None, description="DG class, 'food', 'fire_risk', or "
                                                               "null for general freight")
+    subsidiary: list[dgrules.Subsidiary] = Field(
+        default_factory=list, max_length=4,
+        description="Subsidiary hazards (only with a DG class, never the class itself)")
+
+    @field_validator("subsidiary")
+    @classmethod
+    def _sorted_unique(cls, v: list[str]) -> list[str]:
+        return sorted(set(v))
+
+    @model_validator(mode="after")
+    def _subsidiary_needs_class(self) -> "Shipment":
+        if self.subsidiary:
+            if self.dg_class in (None, "food", "fire_risk"):
+                raise ValueError("Subsidiary hazards need a DG class.")
+            if self.dg_class in self.subsidiary:
+                raise ValueError(f"A subsidiary hazard can't be the same as the class ({self.dg_class}).")
+        return self
 
 
 class SolveRequest(BaseModel):
@@ -50,15 +68,15 @@ class SolveRequest(BaseModel):
     rule_set: dgrules.RuleSet = "adg"
 
 
-def demo_dg(value: str | None) -> dgrules.DgInfo | None:
-    """DgInfo for a demo shipment's class (Table 9.2 answered 'none of these')."""
+def demo_dg(value: str | None, subsidiary: list[str] | tuple[str, ...] = ()) -> dgrules.DgInfo | None:
+    """DgInfo for a demo shipment's class and subsidiary hazards (Table 9.2 answered 'none of these')."""
     if value is None:
         return None
     if value == "food":
         return dgrules.DgInfo(food=True)
     if value == "fire_risk":
         return dgrules.DgInfo(fire_risk=True)
-    return dgrules.DgInfo(dg_class=value, t92=[],
+    return dgrules.DgInfo(dg_class=value, subsidiary=list(subsidiary), t92=[],
                           explosive_code=DEMO_EXPLOSIVE if value == "1" else None)
 
 
@@ -94,16 +112,16 @@ def solve(req: SolveRequest):
             f"({req.capacity} kg) and can never fit: {names}",
         )
 
-    dgs = [demo_dg(s.dg_class) for s in req.shipments]
+    dgs = [demo_dg(s.dg_class, s.subsidiary) for s in req.shipments]
     if req.rule_set == "northline":
-        refused = [f"'{s.name}' (Class {s.dg_class})" for s, d in zip(req.shipments, dgs, strict=True)
+        refused = [f"'{s.name}' ({dgrules.label(d)})" for s, d in zip(req.shipments, dgs, strict=True)
                    if dgrules.northline_prohibited(d)]
         if refused:
             raise HTTPException(400, "Northline does not accept these shipments: " + ", ".join(refused))
 
     # Give each shipment an id so the frontend can track it across panels.
     shipments = [
-        {"id": i, "name": s.name, "weight": s.weight, "dg_class": s.dg_class}
+        {"id": i, "name": s.name, "weight": s.weight, "dg_class": s.dg_class, "subsidiary": s.subsidiary}
         for i, s in enumerate(req.shipments)
     ]
     weights = [s["weight"] for s in shipments]

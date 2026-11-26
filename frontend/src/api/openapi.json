@@ -6943,6 +6943,26 @@
             ],
             "title": "Dg Class",
             "description": "DG class, 'food', 'fire_risk', or null for general freight"
+          },
+          "subsidiary": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "2.1",
+                "2.3",
+                "3",
+                "4.1",
+                "4.2",
+                "4.3",
+                "5.1",
+                "6.1",
+                "8"
+              ]
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Subsidiary",
+            "description": "Subsidiary hazards (only with a DG class, never the class itself)"
           }
         },
         "type": "object",

@@ -49,9 +49,6 @@
 /* ---------- Dangerous goods (demo shipment list and truck blocks) ---------- */
 .shipment-form .shipment-list { grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr)); }
 .shipment-form .shipment-row .name { min-width: 7rem; } /* on phones the DG select wraps to its own line */
-.dg-select { display: inline-flex; align-items: center; gap: 4px; }
-.dg-select select { width: 7.5rem; padding: 5px 4px; font-size: 0.85rem; }
-.shipment-row.dg-refused .dg-select select { border-color: var(--bad); background: var(--invalid-bg); }
 .rule-set { display: inline-flex; flex-direction: column; gap: 4px; border: 0; padding: 0; margin: 0; }
 .rule-set legend { font-weight: 600; padding: 0; margin-bottom: 4px; }
 .rule-set-options { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
@@ -60,8 +57,6 @@
 .rule-set-options label.on { background: var(--primary); color: var(--on-primary); font-weight: 600; }
 .rule-set-options input { margin: 0; accent-color: var(--on-primary); }
 .rule-set-options label:has(input:focus-visible) { outline: 2px solid var(--primary); outline-offset: -4px; }
-.random-dg { display: inline-flex; align-items: center; gap: 6px; }
-.random-dg input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--primary); }
 .dg-quick { color: var(--muted); }
 .dg-bound-note { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-size: 0.9rem; }
 
