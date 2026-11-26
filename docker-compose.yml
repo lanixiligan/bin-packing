@@ -1,0 +1,32 @@
+# Postgres + Redis for local development. The app itself runs on the host
+# (see `make dev`). Without Docker, scripts/services.sh starts the same
+# services from pip-packaged binaries on the same ports.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: freight
+      POSTGRES_PASSWORD: freight
+      POSTGRES_DB: freight
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U freight -d freight"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:
