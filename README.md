@@ -159,7 +159,12 @@ Other commands:
 
 ## Seed logins
 
-All passwords are `demo-pass-123`.
+**In development you don't need to type these.** The login page shows a **Log in as…** panel with one
+button per seed account: click a name and you're in. Log out to switch roles. The panel only exists in
+the Vite dev server (`make dev`, `npm run dev`, `npm run dev:mock`), never in a production build
+(`npm run build`), so the known password isn't shipped.
+
+To type them instead, all passwords are `demo-pass-123`:
 
 | Role | E-mail |
 |---|---|

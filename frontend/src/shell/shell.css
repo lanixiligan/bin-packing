@@ -118,4 +118,27 @@ table.table { width: 100%; border-collapse: collapse; }
 .login-card h1 { margin: 0; font-size: 1.4rem; }
 .login-card p { margin: 0; }
 
+/* Dev-only one-click seed logins (devLogins.tsx; the Vite dev server only). */
+.quick-logins { display: flex; flex-direction: column; gap: 8px; }
+.quick-logins h2 { margin: 0; font-size: 1rem; }
+.quick-login-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(160px, 100%), 1fr)); gap: 8px; }
+.quick-login {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+  min-height: 44px; padding: 8px 10px; text-align: left;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: inherit; cursor: pointer;
+}
+.quick-login:hover:not(:disabled) { background: var(--surface-2); border-color: var(--primary); }
+.quick-login:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.quick-login:disabled { opacity: 0.6; cursor: default; }
+.quick-login-role {
+  padding: 1px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600;
+  background: var(--neutral-bg); color: var(--muted);
+}
+.quick-login-role.role-customer { background: var(--info-bg); color: var(--info); }
+.quick-login-role.role-dispatcher { background: var(--warn-bg); color: var(--warn); }
+.quick-login-role.role-driver { background: var(--good-bg); color: var(--good); }
+.quick-login-name { font-weight: 600; }
+.quick-login-divider { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.quick-login-divider::before, .quick-login-divider::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
+
 .placeholder { border: 2px dashed var(--border); border-radius: 12px; padding: 24px; color: var(--muted); }
