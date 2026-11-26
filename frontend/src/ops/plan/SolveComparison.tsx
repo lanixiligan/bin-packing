@@ -8,7 +8,9 @@ import ResultPanel from "../../components/ResultPanel.jsx";
 import Summary from "../../components/Summary.jsx";
 import { describeSize } from "../../components/capacity";
 import { NARROW_SCREEN, useMediaQuery } from "../../useMediaQuery.js";
-import { methodName, methodPanelData, placements, summaryData } from "./solveView";
+import { DgBadge } from "../../dg/DgBadge";
+import { isGeneral } from "../../dg/rules";
+import { methodName, methodPanelData, placements, segregationNote, summaryData } from "./solveView";
 import { useDropAnimation } from "./useDropAnimation";
 import ViewToggle, { type TruckView } from "./ViewToggle";
 
@@ -32,6 +34,7 @@ export default function SolveComparison({ plan, result, replacing = false, onSav
   const ffdData = useMemo(() => methodPanelData(result, result.ffd), [result]);
   const ortoolsData = useMemo(() => (result.ortools ? methodPanelData(result, result.ortools) : null), [result]);
   const where = useMemo(() => placements(result), [result]);
+  const dgNote = useMemo(() => segregationNote(result), [result]);
   const activeId = hoverId ?? focusId;
   const active = activeId != null ? where.get(activeId) : undefined;
   const linkProps = { activeId, onHover: setHoverId, onFocusBlock: setFocusId };
@@ -51,6 +54,7 @@ export default function SolveComparison({ plan, result, replacing = false, onSav
   return (
     <div className="results">
       <Summary result={summaryData(result)} noun="load" />
+      {dgNote ? <p className="warn-box small">⚠️ {dgNote}</p> : null}
 
       <section className="card save-draft" aria-labelledby="save-h">
         <h2 id="save-h">Save a draft</h2>
@@ -88,6 +92,7 @@ export default function SolveComparison({ plan, result, replacing = false, onSav
           <>
             <span className="inspector-name">{active.unit.item_name}</span>
             <span>{active.unit.order_reference}</span>
+            {!isGeneral(active.unit.dg) ? <DgBadge dg={active.unit.dg} showUn /> : null}
             <span>{describeSize({ weight_kg: active.unit.weight_kg, volume_m3: active.unit.volume_m3, pallets: active.unit.pallets })}</span>
             <span>FFD: <b>load {active.ffd}</b></span>
             {active.ortools != null && <span>OR-Tools: <b>load {active.ortools}</b></span>}

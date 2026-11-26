@@ -7,6 +7,10 @@
 // can load this module with `node --test`.
 import type { Schemas } from "../api/client";
 import { addUsage, emptyUsage, fillPercent, lowerBounds, overDims, type CapacityLimits, type UsageTotals } from "../components/capacity.ts";
+import {
+  approvalRequired, checkAll, dgLabel, isGeneral, normalise, northlineIssues, northlineLimit, pairVerdict,
+  type DgInfo, type DgLike, type RuleSet,
+} from "../dg/rules.ts";
 import { exact, ffd, misfits, totalsOf, type Unit } from "./packing.ts";
 
 type S = Schemas;
@@ -62,8 +66,9 @@ export const validationError = (msg: string, loc: (string | number)[] = ["body"]
 // ---------------------------------------------------------------------------
 
 export interface Company { id: number; name: string }
-export interface ItemRec { id: number; company_id: number; sku: string; name: string; weight_kg: number; volume_m3: number; pallet_spaces: number }
-export interface LineRec { id: number; item_id: number; quantity: number }
+export interface ItemRec { id: number; company_id: number; sku: string; name: string; weight_kg: number; volume_m3: number; pallet_spaces: number; dg?: DgInfo | null }
+/** An order line; like the backend, the item's DG data travels with it (via the item here). */
+export interface LineRec { id: number; item_id: number; quantity: number; dg_approval_ref?: string | null }
 export interface EventRec { id: number; from_status: OrderStatus | null; to_status: OrderStatus; actor: Actor | null; note: string | null; created_at: string }
 export interface PodRec { id: number; order_id: number; signed_by: string; note: string | null; created_at: string; driver_id: number; photo: Blob }
 export interface QuoteRec { id: number; zone_code: string | null; rate: number; provisional: boolean; created_at: string }
@@ -97,6 +102,7 @@ export interface PlanRec {
   zone: string;
   status: "draft" | "locked";
   vehicle_id: number;
+  rule_set: RuleSet;
   job_id: string;
   method: "ffd" | "ortools" | null;
   order_ids: number[];
@@ -145,6 +151,11 @@ function addr(id: number, company_id: number, label: string, line1: string, subu
   };
 }
 
+/** Full DG data (backend defaults filled in). */
+function dg(d: Partial<DgInfo>): DgInfo {
+  return normalise(d)!;
+}
+
 function placeholderPhoto(text: string): Blob {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320" viewBox="0 0 480 320">` +
     `<rect width="480" height="320" fill="#c9cfdb"/><rect x="150" y="90" width="180" height="140" fill="#b08a5a" stroke="#6b4f2a" stroke-width="6"/>` +
@@ -179,6 +190,7 @@ function makeDb() {
     addr(12, 3, "Dee Why cafe", "30 Pittwater Rd", "Dee Why", "2099", "NORTH", "Sam", "0400 111 333"),
     addr(13, 3, "Blacktown cafe", "2 Main St", "Blacktown", "2148", "WEST", "Lee", "0400 111 444"),
     addr(14, 3, "Bondi cafe", "180 Campbell Pde", "Bondi Beach", "2026", null, "Kim", "0400 111 555"),
+    addr(15, 1, "Blacktown store", "5 Flushcombe Rd", "Blacktown", "2148", "WEST", "Nina Park", "0412 555 205"),
   ];
   const items: ItemRec[] = [
     { id: 101, company_id: 1, sku: "TIL-PAL", name: "Pallet of tiles", weight_kg: 560, volume_m3: 1.2, pallet_spaces: 1 },
@@ -186,6 +198,12 @@ function makeDb() {
     { id: 103, company_id: 1, sku: "TIM-B", name: "Timber bundle", weight_kg: 440, volume_m3: 1.8, pallet_spaces: 0 },
     { id: 104, company_id: 1, sku: "STL-R", name: "Steel beam rack", weight_kg: 1200, volume_m3: 2.5, pallet_spaces: 2 },
     { id: 105, company_id: 1, sku: "PNT-BX", name: "Box of paint tins", weight_kg: 25, volume_m3: 0.05, pallet_spaces: 0 },
+    // Dangerous goods (only in the day-2/3 WEST orders, so the other batches stay as they were).
+    { id: 106, company_id: 1, sku: "THN-20", name: "Paint thinners (20 L)", weight_kg: 22, volume_m3: 0.03, pallet_spaces: 0, dg: dg({ dg_class: "3", un_number: "1263", packing_group: "II" }) },
+    { id: 107, company_id: 1, sku: "CHL-10", name: "Pool chlorine tub", weight_kg: 12, volume_m3: 0.02, pallet_spaces: 0, dg: dg({ dg_class: "5.1", un_number: "2880", packing_group: "II", t92: ["calcium_hypochlorite"] }) },
+    { id: 108, company_id: 1, sku: "HRB-200", name: "Weed killer drum (200 L)", weight_kg: 210, volume_m3: 0.25, pallet_spaces: 0.5, dg: dg({ dg_class: "6.1", un_number: "2902", packing_group: "III", container: "drum", t92: [] }) },
+    { id: 109, company_id: 1, sku: "FUEL-20", name: "Race fuel can (20 L)", weight_kg: 18, volume_m3: 0.03, pallet_spaces: 0, dg: dg({ dg_class: "3", un_number: "1203", packing_group: "II", carrier_tags: ["fuel"], t92: [] }) },
+    { id: 110, company_id: 1, sku: "LPG-9", name: "LPG cylinder (9 kg)", weight_kg: 17, volume_m3: 0.04, pallet_spaces: 0, dg: dg({ dg_class: "2.1", un_number: "1075", container: "cylinder" }) },
     { id: 201, company_id: 2, sku: "FLW-CR", name: "Flower bucket crate", weight_kg: 30, volume_m3: 0.4, pallet_spaces: 0 },
     { id: 202, company_id: 2, sku: "POT-PAL", name: "Pot plant pallet", weight_kg: 370, volume_m3: 2.0, pallet_spaces: 1 },
     { id: 203, company_id: 2, sku: "SOIL-PAL", name: "Potting mix pallet", weight_kg: 360, volume_m3: 0.9, pallet_spaces: 1 },
@@ -367,6 +385,12 @@ export function resetDb() {
     { id: 995, company: 1, from: 1, to: 3, day: -3, status: "delivered", lines: [[103, 2]] },
     { id: 996, company: 3, from: 10, to: 14, day: -38, status: "delivered", lines: [[302, 1]] },
     { id: 997, company: 1, from: 1, to: 2, day: -45, status: "delivered", lines: [[105, 20]], ref: "PO-7600" },
+    // Dangerous goods, day 2 WEST: thinners (Class 3) and pool chlorine (5.1) in one order can't share
+    // a vehicle; the weed killer drum (6.1) needs a Northline approval, the LPG cylinders a steel cage.
+    { id: 1022, company: 1, from: 1, to: 15, day: 2, status: "accepted", lines: [[106, 4], [107, 6]], ref: "PO-7820" },
+    { id: 1023, company: 1, from: 1, to: 15, day: 2, status: "accepted", lines: [[108, 1], [110, 2]], ref: "PO-7821" },
+    // Day 3 WEST: race fuel, which Northline won't carry (an ADG plan is fine).
+    { id: 1024, company: 1, from: 1, to: 15, day: 3, status: "accepted", lines: [[109, 2], [105, 2]], ref: "PO-7830" },
   ];
   db.orders = seeds.map(seedOrder);
   for (const o of db.orders) {
@@ -412,6 +436,8 @@ export function address(id: number): S["AddressRead"] {
   return a;
 }
 export const item = (id: number) => db.items.find((x) => x.id === id)!;
+/** DG data of an order line (copied from its item), null = general freight. */
+export const lineDg = (l: LineRec): DgInfo | null => item(l.item_id).dg ?? null;
 export const company = (id: number) => db.companies.find((x) => x.id === id)!;
 export const vehicle = (id: number) => db.vehicles.find((x) => x.id === id);
 export const driver = (id: number) => db.drivers.find((x) => x.id === id);
@@ -506,13 +532,8 @@ export function orderRead(o: OrderRec): S["OrderRead"] {
     pickup_address: address(o.pickup_address_id),
     delivery_address: address(o.delivery_address_id),
     notes: o.notes,
-    lines: o.lines.map((l) => {
-      const it = item(l.item_id);
-      return {
-        id: l.id, item_id: it.id, item_name: it.name, item_sku: it.sku, quantity: l.quantity,
-        unit_weight_kg: it.weight_kg, unit_volume_m3: it.volume_m3, unit_pallet_spaces: it.pallet_spaces,
-      };
-    }),
+    lines: o.lines.map(orderLineRead),
+    dg_conflicts: dgConflictsOf(o.lines),
     events: o.events.map((e) => ({
       id: e.id, from_status: e.from_status, to_status: e.to_status, actor_id: e.actor?.id ?? null,
       actor_name: e.actor?.name ?? null, actor_role: e.actor?.role ?? null, note: e.note, created_at: e.created_at,
@@ -522,6 +543,101 @@ export function orderRead(o: OrderRec): S["OrderRead"] {
     submitted_at: o.submitted_at,
     delivered_at: o.delivered_at,
   };
+}
+
+/** "Pool chlorine tub (Class 5.1)"; general freight keeps its bare name. */
+export const dgItemLabel = (name: string, d: DgLike) => (isGeneral(d) ? name : `${name} (${dgLabel(d)})`);
+
+export function orderLineRead(l: LineRec): S["OrderLineRead"] {
+  const it = item(l.item_id);
+  return {
+    id: l.id, item_id: it.id, item_name: it.name, item_sku: it.sku, quantity: l.quantity,
+    unit_weight_kg: it.weight_kg, unit_volume_m3: it.volume_m3, unit_pallet_spaces: it.pallet_spaces,
+    dg: it.dg ?? null, dg_approval_ref: l.dg_approval_ref ?? null,
+  };
+}
+
+/** Pairs of lines that are incompatible, or need a Table 9.2 check (like serializers.dg_conflicts). */
+export function dgConflictsOf(lines: LineRec[]): S["DgConflict"][] {
+  return checkAll(lines, lineDg).map((c) => {
+    const items = [dgItemLabel(item(c.a.item_id).name, lineDg(c.a)), dgItemLabel(item(c.b.item_id).name, lineDg(c.b))];
+    const message = c.status === "incompatible"
+      ? `${items[0]} and ${items[1]} can't travel on the same vehicle. ${c.reasons.join(" ")}`
+      : `Check ${items[0]} with ${items[1]}: ${c.reasons.join(" ")}`;
+    return { status: c.status, order_line_ids: [c.a.id, c.b.id], items, message };
+  });
+}
+
+/** Northline plans: "needs approval" goods need an HSEQ approval reference. */
+const approvalNeeded = (p: PlanRec, l: LineRec) => p.rule_set === "northline" && approvalRequired(lineDg(l));
+
+/** (incompatible pairs, warnings, lines missing an approval) of a load (like ops._load_dg). */
+function loadDg(p: PlanRec, l: LoadRec) {
+  const lines = l.assignments.map((a) => lineById(a.order_line_id).line);
+  const found = dgConflictsOf(lines);
+  const conflicts = found.filter((c) => c.status === "incompatible");
+  const warnings = found.filter((c) => c.status === "check").map((c) => c.message);
+  let missing = 0;
+  if (p.rule_set === "northline") {
+    for (const line of lines) {
+      const d = lineDg(line);
+      for (const issue of northlineIssues(d)) {
+        if (issue.kind === "note") warnings.push(`${dgItemLabel(item(line.item_id).name, d)}: ${issue.message}`);
+      }
+      if (approvalNeeded(p, line) && !line.dg_approval_ref) missing += 1;
+    }
+  }
+  return { conflicts, warnings, missing };
+}
+
+/** Why `line` can't join a load carrying `others` (ADG), or null (like ops._dg_clash). */
+function dgClash(line: LineRec, others: LineRec[]): string | null {
+  const d = lineDg(line);
+  if (isGeneral(d)) return null;
+  for (const other of others) {
+    if (other.id === line.id) continue;
+    const od = lineDg(other);
+    const v = pairVerdict(d, od);
+    if (v.status === "incompatible") {
+      return `it carries ${dgItemLabel(item(other.item_id).name, od)}, and ${dgItemLabel(item(line.item_id).name, d)} can't travel with it. ${v.reasons.join(" ")}`;
+    }
+  }
+  return null;
+}
+
+/** Northline acceptance problems of these orders: prohibited goods and over-limit quantities. */
+function northlineDgIssues(orders: OrderRec[]): S["DgIssue"][] {
+  const out: S["DgIssue"][] = [];
+  const kg = (n: number) => Number(n.toPrecision(3)).toLocaleString("en-US");
+  for (const o of orders) {
+    const totals = new Map<string, { kg: number; max: number }>();
+    for (const l of o.lines) {
+      const it = item(l.item_id);
+      const d = lineDg(l);
+      for (const issue of northlineIssues(d)) {
+        if (issue.kind !== "prohibited") continue;
+        out.push({
+          order_id: o.id, order_reference: o.reference, order_line_id: l.id, item_name: it.name,
+          kind: "prohibited", message: `${o.reference}: ${it.name}: ${issue.message}`,
+        });
+      }
+      const lim = northlineLimit(d);
+      if (lim) {
+        const t = totals.get(lim[0]) ?? { kg: 0, max: lim[1] };
+        t.kg += it.weight_kg * l.quantity;
+        totals.set(lim[0], t);
+      }
+    }
+    for (const [cat, t] of totals) {
+      if (t.kg > t.max + 1e-9) {
+        out.push({
+          order_id: o.id, order_reference: o.reference, order_line_id: null, item_name: null, kind: "limit",
+          message: `${o.reference}: ${cat}: ${kg(t.kg)} kg in this order; Northline accepts at most ${t.max} kg.`,
+        });
+      }
+    }
+  }
+  return out;
 }
 
 export function opsAddress(a: S["AddressRead"]): S["OpsAddressRead"] {
@@ -544,6 +660,7 @@ function roundUsage(u: UsageTotals): UsageTotals {
 export function loadRead(p: PlanRec, l: LoadRec): S["LoadRead"] {
   const cap = loadCapacity(p, l);
   const usage = loadUsage(l);
+  const dgs = loadDg(p, l);
   return {
     id: l.id,
     number: l.number,
@@ -561,8 +678,12 @@ export function loadRead(p: PlanRec, l: LoadRec): S["LoadRead"] {
         company_name: company(o.company_id).name, item_name: it.name, item_sku: it.sku,
         quantity: a.quantity, line_quantity: line.quantity,
         unit_weight_kg: it.weight_kg, unit_volume_m3: it.volume_m3, unit_pallet_spaces: it.pallet_spaces,
+        dg: it.dg ?? null, dg_approval_required: approvalNeeded(p, line), dg_approval_ref: line.dg_approval_ref ?? null,
       };
     }),
+    dg_conflicts: dgs.conflicts,
+    dg_warnings: dgs.warnings,
+    approvals_missing: dgs.missing,
   };
 }
 
@@ -596,7 +717,7 @@ export function jobRead(j: JobRec): S["JobRead"] {
 export function planSummary(p: PlanRec): S["PlanSummary"] {
   return {
     id: p.id, delivery_date: p.delivery_date, zone: p.zone, status: p.status, job_id: p.job_id,
-    job_status: jobStatus(job(p.job_id)), method: p.method, order_count: p.order_ids.length,
+    job_status: jobStatus(job(p.job_id)), method: p.method, rule_set: p.rule_set, order_count: p.order_ids.length,
     load_count: p.loads.length, created_at: p.created_at, locked_at: p.locked_at,
   };
 }
@@ -661,6 +782,7 @@ function packUnits(orderIds: number[]): S["PackUnit"][] {
         units.push({
           id: units.length, order_id: o.id, order_reference: o.reference, order_line_id: l.id,
           item_name: it.name, item_sku: it.sku, weight_kg: it.weight_kg, volume_m3: it.volume_m3, pallets: it.pallet_spaces,
+          dg: it.dg ?? null,
         });
       }
     }
@@ -678,7 +800,7 @@ function packedLoads(loads: number[][], units: S["PackUnit"][], cap: CapacityLim
 /** FFD plus an exact search for fewer loads (standing in for CP-SAT). */
 export function solve(orderIds: number[], cap: CapacityLimits, timeLimit = TIME_LIMIT_S): S["SolveResult"] {
   const units = packUnits(orderIds);
-  const asUnits: Unit[] = units.map((u) => ({ id: u.id, weight_kg: u.weight_kg, volume_m3: u.volume_m3, pallets: u.pallets }));
+  const asUnits: Unit[] = units.map((u) => ({ id: u.id, weight_kg: u.weight_kg, volume_m3: u.volume_m3, pallets: u.pallets, dg: u.dg }));
   const totals = totalsOf(asUnits);
   const lb = lowerBounds(totals, cap);
 
@@ -736,7 +858,7 @@ export function batchOrders(date: string, zone: string | null): OrderRec[] {
 }
 
 /** Create the plan + job records (no validation). `agoDays` < 0 for seed data that finished long ago. */
-function createPlanRecord(date: string, zone: string, vehicleId: number, orderIds: number[], agoDays = 0): PlanRec {
+function createPlanRecord(date: string, zone: string, vehicleId: number, orderIds: number[], agoDays = 0, ruleSet: RuleSet = "adg"): PlanRec {
   const cap = capacityOf(vehicle(vehicleId)!);
   const id = ++planSeq;
   const created = Date.now() + agoDays * 86_400_000;
@@ -753,7 +875,7 @@ function createPlanRecord(date: string, zone: string, vehicleId: number, orderId
   j.result = solve(orderIds, cap);
   db.jobs.push(j);
   const p: PlanRec = {
-    id, delivery_date: date, zone, status: "draft", vehicle_id: vehicleId, job_id: j.id, method: null,
+    id, delivery_date: date, zone, status: "draft", vehicle_id: vehicleId, rule_set: ruleSet, job_id: j.id, method: null,
     order_ids: orderIds, loads: [], created_at: new Date(created).toISOString(), locked_at: null,
   };
   db.plans.push(p);
@@ -762,10 +884,12 @@ function createPlanRecord(date: string, zone: string, vehicleId: number, orderId
 }
 
 /** POST /api/ops/plans: validate, reserve the batch, start the (mock) job. */
-export function createPlan(body: { delivery_date?: string; zone?: string; vehicle_id?: number }): PlanRec {
+export function createPlan(body: { delivery_date?: string; zone?: string; vehicle_id?: number; rule_set?: string }): PlanRec {
   if (!body.delivery_date || !body.zone || body.vehicle_id == null) {
     throw validationError("delivery_date, zone and vehicle_id are required.");
   }
+  const ruleSet = (body.rule_set ?? "adg") as RuleSet;
+  if (ruleSet !== "adg" && ruleSet !== "northline") throw validationError("Input should be 'adg' or 'northline'", ["body", "rule_set"]);
   const v = vehicle(body.vehicle_id);
   if (!v) throw httpError(404, "Vehicle not found.");
   if (!v.active) throw httpError(422, `${v.name} is inactive.`);
@@ -793,13 +917,17 @@ export function createPlan(body: { delivery_date?: string; zone?: string; vehicl
       });
     }
   }
-  if (bad.length) {
-    throw httpError(422, {
-      message: `${bad.length} item${bad.length === 1 ? "" : "s"} can never fit ${v.name}. Choose a bigger vehicle profile or split the order.`,
-      misfits: bad,
-    } satisfies S["InfeasibleDetail"]);
+  const dgIssues = ruleSet === "northline" ? northlineDgIssues(orders) : [];
+  if (bad.length || dgIssues.length) {
+    const parts: string[] = [];
+    if (bad.length) parts.push(`${bad.length} item${bad.length === 1 ? "" : "s"} can never fit ${v.name}. Choose a bigger vehicle profile or split the order.`);
+    if (dgIssues.length) {
+      const n = dgIssues.length;
+      parts.push(`Northline won't accept ${n} order line${n === 1 ? "" : "s"} or quantit${n === 1 ? "y" : "ies"}. Reject those orders or plan with the ADG rule set.`);
+    }
+    throw httpError(422, { message: parts.join(" "), misfits: bad, dg_issues: dgIssues } satisfies S["InfeasibleDetail"]);
   }
-  return createPlanRecord(body.delivery_date, body.zone, v.id, orders.map((o) => o.id));
+  return createPlanRecord(body.delivery_date, body.zone, v.id, orders.map((o) => o.id), 0, ruleSet);
 }
 
 /** Write the loads of one method's solution (replaces existing loads). */
@@ -850,6 +978,8 @@ export function moveLine(p: PlanRec, body: { order_line_id?: number; from_load_i
     if (overDims(after, cap).length) {
       throw httpError(422, `Load ${to.number} would be over capacity: ${usageText(after, cap)}.`);
     }
+    const clash = dgClash(lineById(a.order_line_id).line, to.assignments.map((x) => lineById(x.order_line_id).line));
+    if (clash) throw httpError(422, `Load ${to.number} can't take these units: ${clash}`);
   } else {
     const cap = loadCapacity(p, { id: 0, number: 0, vehicle_id: null, driver_id: null, assignments: [] });
     const after = addUsage(emptyUsage(), unit, qty);
@@ -872,12 +1002,36 @@ export function lockPlan(p: PlanRec) {
   if (!p.loads.length) throw httpError(409, "Save a draft before locking the plan.");
   const over = p.loads.find((l) => overDims(loadUsage(l), loadCapacity(p, l)).length);
   if (over) throw httpError(409, `Load ${over.number} is over capacity. Move some lines first.`);
+  for (const l of [...p.loads].sort((x, y) => x.number - y.number)) {
+    const { conflicts, missing } = loadDg(p, l);
+    if (conflicts.length) {
+      throw httpError(409, `Load ${l.number} carries dangerous goods that can't travel together: ${conflicts[0].message} Move them to another load.`);
+    }
+    if (missing) {
+      throw httpError(409, `Load ${l.number} has ${missing} line${missing === 1 ? "" : "s"} that need a Northline HSEQ approval. Record the approval reference before you lock the plan.`);
+    }
+  }
   for (const oid of p.order_ids) {
     const o = order(oid);
     if (o.status === "accepted") transition(o, "planned", DISPATCHER);
   }
   p.status = "locked";
   p.locked_at = now();
+}
+
+/** PATCH /api/ops/order-lines/{line_id}: record (or clear) the Northline HSEQ approval reference. */
+export function setLineApproval(lineId: number, body: { dg_approval_ref?: unknown }): S["OrderLineRead"] {
+  const { order: o, line } = lineById(lineId);
+  if (!("dg_approval_ref" in body)) throw validationError("Field required", ["body", "dg_approval_ref"]);
+  const raw = body.dg_approval_ref;
+  if (raw != null && typeof raw !== "string") throw validationError("Input should be a valid string", ["body", "dg_approval_ref"]);
+  if (typeof raw === "string" && raw.length > 100) throw validationError("String should have at most 100 characters", ["body", "dg_approval_ref"]);
+  if (o.status !== "accepted" && o.status !== "planned") {
+    throw httpError(409, `${o.reference} is ${o.status}; approvals can only be recorded for accepted or planned orders.`);
+  }
+  line.dg_approval_ref = (raw ?? "").trim() || null;
+  o.updated_at = now();
+  return orderLineRead(line);
 }
 
 export function discardPlan(p: PlanRec) {
@@ -977,7 +1131,7 @@ export function driverOrder(l: LoadRec, o: OrderRec): S["DriverOrder"] {
     notes: o.notes,
     lines: lines.map(({ a, line }) => {
       const it = item(line.item_id);
-      return { item_name: it.name, item_sku: it.sku, quantity: a.quantity };
+      return { item_name: it.name, item_sku: it.sku, dg_class: it.dg?.dg_class ?? null, un_number: it.dg?.un_number ?? null, quantity: a.quantity };
     }),
     total_weight_kg: round2(lines.reduce((s, { a, line }) => s + item(line.item_id).weight_kg * a.quantity, 0)),
     next_statuses: nextStatusesOf(o.status),

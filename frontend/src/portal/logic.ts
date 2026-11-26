@@ -1,6 +1,10 @@
 // Pure helpers of the portal area: status groups, totals, form validation and
 // mapping API errors onto form fields. No React here, so it can be unit-tested
 // with `node --test` (see logic.test.ts).
+import {
+  CLASS_NAMES, NO_PACKING_GROUP, checkAll, dgLabel, isGeneral, validateDg,
+  type CarrierTag, type Container, type DgClass, type DgInfo, type DgLike, type Subsidiary, type T92Tag,
+} from "../dg/rules.ts";
 import type { Item, Order, OrderEvent, OrderStatus, OrderSummary } from "./types.ts";
 
 // ---- Status groups (orders list filter) ------------------------------------
@@ -30,11 +34,17 @@ export function matchesSearch(order: Pick<OrderSummary, "reference" | "customer_
   return order.reference.toLowerCase().includes(q) || (order.customer_reference ?? "").toLowerCase().includes(q);
 }
 
-/** Client-side search on SKU, name and description. */
-export function matchesItemSearch(item: Pick<Item, "sku" | "name" | "description">, search: string): boolean {
+/** Client-side search on SKU, name, description and the DG label, class name or UN number. */
+export function matchesItemSearch(item: Pick<Item, "sku" | "name" | "description"> & { dg?: DgLike }, search: string): boolean {
   const q = search.trim().toLowerCase();
   if (!q) return true;
-  return [item.sku, item.name, item.description ?? ""].some((s) => s.toLowerCase().includes(q));
+  const fields = [item.sku, item.name, item.description ?? ""];
+  if (!isGeneral(item.dg)) {
+    fields.push(dgLabel(item.dg));
+    if (item.dg?.dg_class) fields.push(CLASS_NAMES[item.dg.dg_class]);
+    if (item.dg?.un_number) fields.push(`UN ${item.dg.un_number}`, `UN${item.dg.un_number}`);
+  }
+  return fields.some((s) => s.toLowerCase().includes(q));
 }
 
 // ---- Order actions -----------------------------------------------------------
@@ -130,6 +140,7 @@ export interface ItemFormValues {
   weight_kg: string;
   volume_m3: string;
   pallet_spaces: string;
+  dg: DgFormValues;
 }
 
 export function validateItem(v: ItemFormValues): FieldErrors {
@@ -145,7 +156,163 @@ export function validateItem(v: ItemFormValues): FieldErrors {
   if (vol) e.volume_m3 = vol;
   const p = numberError(v.pallet_spaces, { ge: 0, le: 100 });
   if (p) e.pallet_spaces = p;
+  return { ...e, ...validateDgForm(v.dg) };
+}
+
+// ---- Dangerous goods on the item form ------------------------------------------
+
+/**
+ * The item form's DG section. Fields the chosen class doesn't use (packing
+ * group for Class 2, explosive code outside Class 1, ...) may keep stale
+ * values while hidden; `dgFromForm` drops them.
+ */
+export interface DgFormValues {
+  kind: "general" | "dg";
+  /** General freight: food or food packaging. */
+  food: boolean;
+  /** General freight: a combustible liquid that isn't DG. */
+  combustible: boolean;
+  dg_class: DgClass | "";
+  subsidiary: Subsidiary[];
+  packing_group: "" | "I" | "II" | "III";
+  un_number: string;
+  explosive_code: string;
+  container: Container;
+  /** Class 6 / 9 goods that are fire-risk substances (exception 5). */
+  fire_risk: boolean;
+  /** false = Table 9.2 not checked yet (t92 null). */
+  t92_checked: boolean;
+  t92: T92Tag[];
+  carrier_tags: CarrierTag[];
+}
+
+/** Field keys of the DG section (server 422 locs `dg.<field>` map onto these; `dg` = the section). */
+export const DG_FIELDS = [
+  "dg", "dg.dg_class", "dg.subsidiary", "dg.packing_group", "dg.un_number", "dg.explosive_code",
+  "dg.container", "dg.fire_risk", "dg.t92", "dg.carrier_tags", "dg.food",
+];
+
+export const hasPackingGroup = (cls: string) => !!cls && !NO_PACKING_GROUP.has(cls);
+/** Exception 5: only Class 6 and 9 goods can be marked as fire-risk substances. */
+export const canBeFireRisk = (cls: string) => cls.startsWith("6") || cls === "9";
+
+export function dgToForm(dg: DgLike): DgFormValues {
+  const cls = dg?.dg_class ?? "";
+  return {
+    kind: cls ? "dg" : "general",
+    food: !cls && !!dg?.food,
+    combustible: !cls && !dg?.food && !!dg?.fire_risk,
+    dg_class: cls,
+    subsidiary: [...(dg?.subsidiary ?? [])],
+    packing_group: dg?.packing_group ?? "",
+    un_number: dg?.un_number ?? "",
+    explosive_code: dg?.explosive_code ?? "",
+    container: (cls && dg?.container) || "package",
+    fire_risk: !!cls && !!dg?.fire_risk,
+    t92_checked: !!cls && dg?.t92 != null,
+    t92: [...(dg?.t92 ?? [])],
+    carrier_tags: [...(dg?.carrier_tags ?? [])],
+  };
+}
+
+/** What to send as the item's `dg`: null for general freight, else a full DgInfo. */
+export function dgFromForm(f: DgFormValues): DgInfo | null {
+  const base: DgInfo = {
+    dg_class: null, subsidiary: [], packing_group: null, un_number: null, explosive_code: null,
+    container: "package", t92: null, carrier_tags: [], food: false, fire_risk: false,
+  };
+  if (f.kind === "general") {
+    if (!f.food && !f.combustible) return null;
+    return { ...base, food: f.food, fire_risk: !f.food && f.combustible };
+  }
+  const c = f.dg_class;
+  if (!c) return base; // validation stops this before it's sent
+  const sorted = <T extends string>(xs: T[]) => [...new Set(xs)].sort();
+  return {
+    ...base,
+    dg_class: c,
+    subsidiary: sorted(f.subsidiary.filter((s) => s !== c)),
+    packing_group: hasPackingGroup(c) ? f.packing_group || null : null,
+    un_number: f.un_number.trim() || null,
+    explosive_code: c === "1" ? f.explosive_code.trim().toUpperCase() || null : null,
+    container: f.container,
+    t92: f.t92_checked ? sorted(f.t92) : null,
+    carrier_tags: sorted(f.carrier_tags),
+    fire_risk: canBeFireRisk(c) && f.fire_risk,
+  };
+}
+
+/** Which form field a `validateDg` message belongs to (unmatched ones go on the section). */
+const DG_MESSAGE_FIELDS: [RegExp, string][] = [
+  [/UN number/, "dg.un_number"],
+  [/^Class 1 needs/, "dg.explosive_code"],
+  [/no packing groups/, "dg.packing_group"],
+  [/^Cylinders and aerosols/, "dg.container"],
+  [/subsidiary hazard/, "dg.subsidiary"],
+  [/^'Fire-risk'/, "dg.fire_risk"],
+  [/Table 9\.2 tags|^Nitromethane/, "dg.t92"],
+];
+
+/** The DG section's errors, keyed like DG_FIELDS. Uses validateDg (the backend's rules). */
+export function validateDgForm(f: DgFormValues): FieldErrors {
+  const e: FieldErrors = {};
+  if (f.kind === "general") {
+    if (f.food && f.combustible) e["dg.food"] = "An item can't be both food and fire-risk goods.";
+    return e;
+  }
+  if (!f.dg_class) e["dg.dg_class"] = "Choose the DG class (from the SDS, section 14).";
+  if (f.un_number.trim() && !/^\d{4}$/.test(f.un_number.trim())) e["dg.un_number"] = "The UN number has 4 digits, e.g. 1263.";
+  if (!f.dg_class) return e;
+  if (f.subsidiary.filter((x) => x !== f.dg_class).length > 4) e["dg.subsidiary"] = "At most 4 subsidiary hazards.";
+  for (const msg of validateDg(dgFromForm(f))) {
+    const key = DG_MESSAGE_FIELDS.find(([re]) => re.test(msg))?.[1] ?? "dg";
+    if (!e[key]) e[key] = msg;
+  }
   return e;
+}
+
+/** "Pool chlorine (Class 5.1)"; general freight keeps its bare name (as the backend's DgConflict items). */
+export function dgItemLabel(name: string, dg: DgLike): string {
+  return isGeneral(dg) ? name : `${name} (${dgLabel(dg)})`;
+}
+
+export interface DgPairWarning {
+  key: string;
+  a: string;
+  b: string;
+  /** The first (most specific) reason; `reasons` has them all. */
+  reason: string;
+  reasons: string[];
+}
+
+/**
+ * DG pairs among the order builder's chosen items: `incompatible` ones travel
+ * on separate vehicles, `check` ones need the Table 9.2 details (a warning only).
+ */
+export function orderDgWarnings(
+  lines: { itemId: string }[],
+  itemsById: Map<number, { id: number; name: string; dg?: DgLike }>,
+): { incompatible: DgPairWarning[]; check: DgPairWarning[] } {
+  const seen = new Set<number>();
+  const chosen: { id: number; name: string; dg?: DgLike }[] = [];
+  for (const l of lines) {
+    const item = l.itemId ? itemsById.get(Number(l.itemId)) : undefined;
+    if (item && !seen.has(item.id)) {
+      seen.add(item.id);
+      chosen.push(item);
+    }
+  }
+  const out = { incompatible: [] as DgPairWarning[], check: [] as DgPairWarning[] };
+  for (const p of checkAll(chosen, (i) => i.dg)) {
+    out[p.status].push({
+      key: `${p.a.id}-${p.b.id}`,
+      a: dgItemLabel(p.a.name, p.a.dg),
+      b: dgItemLabel(p.b.name, p.b.dg),
+      reason: p.reasons[0] ?? "",
+      reasons: p.reasons,
+    });
+  }
+  return out;
 }
 
 export interface AddressFormValues {
@@ -257,7 +424,9 @@ interface ValidationIssue {
 
 /**
  * Split an API error detail into per-field messages (FastAPI 422 lists with
- * loc ["body", field, ...]) and one general message for the rest.
+ * loc ["body", field, ...]) and one general message for the rest. A known
+ * field may be a dotted path ("dg.un_number"): the longest known prefix of
+ * the loc wins, so ["body", "dg", "t92", 0] lands on "dg.t92" (or "dg").
  */
 export function splitApiErrors(detail: unknown, knownFields: string[]): { fields: FieldErrors; general: string[] } {
   const fields: FieldErrors = {};
@@ -266,8 +435,12 @@ export function splitApiErrors(detail: unknown, knownFields: string[]): { fields
   for (const issue of detail as ValidationIssue[]) {
     const loc = (issue.loc ?? []).filter((p) => p !== "body");
     const msg = String(issue.msg ?? "Invalid value.").replace(/^Value error, /, "");
-    const field = typeof loc[0] === "string" ? loc[0] : undefined;
-    if (field && knownFields.includes(field) && !fields[field]) fields[field] = msg;
+    let field: string | undefined;
+    for (let n = loc.length; n > 0 && !field; n--) {
+      const path = loc.slice(0, n).join(".");
+      if (typeof loc[0] === "string" && knownFields.includes(path)) field = path;
+    }
+    if (field && !fields[field]) fields[field] = msg;
     else general.push(loc.length ? `${loc.join(".")}: ${msg}` : msg);
   }
   return { fields, general };

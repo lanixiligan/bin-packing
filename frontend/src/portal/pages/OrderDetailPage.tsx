@@ -9,7 +9,9 @@ import { ErrorBox, QueryState } from "../../shell/QueryState";
 import { StatusChip } from "../../shell/StatusChip";
 import { formatDate, formatDateTime, formatKg, formatMoney, formatPallets, formatWindow } from "../../shell/format";
 import { ConfirmButton } from "../components/ConfirmButton";
-import { AddressBlock, Notice, OrderTimeline, PodCard, QuoteDetails, TotalsRow } from "../components/OrderParts";
+import { DgBadge } from "../../dg/DgBadge";
+import { isGeneral } from "../../dg/rules";
+import { AddressBlock, DgNotices, Notice, OrderTimeline, PodCard, QuoteDetails, TotalsRow } from "../components/OrderParts";
 import { formatVolume, canCancel, canEdit, canSubmit, lastEventTo, orderLineTotals } from "../logic";
 import { useOrder, useOrderSaved, useQuotePreview } from "../queries";
 import type { Order } from "../types";
@@ -57,6 +59,10 @@ function OrderDetail({ order, flash }: { order: Order; flash: string | null }) {
   const cancellation = order.status === "cancelled" ? lastEventTo(order.events, "cancelled") : undefined;
   const totals = orderLineTotals(order);
   const busy = submit.isPending || cancel.isPending;
+  const dgConflicts = order.dg_conflicts ?? [];
+  const dgEntries = (status: "incompatible" | "check") => dgConflicts
+    .filter((c) => c.status === status)
+    .map((c) => ({ key: c.order_line_ids.join("-"), content: c.message }));
 
   const actions = (
     <>
@@ -138,6 +144,11 @@ function OrderDetail({ order, flash }: { order: Order; flash: string | null }) {
 
           <section className="card" aria-labelledby="lines-h">
             <h2 id="lines-h" className="card-title">Items</h2>
+            <DgNotices
+              incompatible={dgEntries("incompatible")}
+              check={dgEntries("check")}
+              checkAdvice={<>Record the items’ Table 9.2 details in the <Link to="/portal/items">item catalogue</Link>, or check section 14 of the safety data sheet (SDS).</>}
+            />
             <div className="table-wrap">
               <table className="table stack">
                 <thead>
@@ -152,7 +163,12 @@ function OrderDetail({ order, flash }: { order: Order; flash: string | null }) {
                 <tbody>
                   {order.lines.map((l) => (
                     <tr key={l.id}>
-                      <td data-label="Item"><span><code>{l.item_sku}</code> {l.item_name}</span></td>
+                      <td data-label="Item">
+                        <span>
+                          <code>{l.item_sku}</code> {l.item_name}
+                          {!isGeneral(l.dg) ? <span className="cell-sub"><DgBadge dg={l.dg} showUn /></span> : null}
+                        </span>
+                      </td>
                       <td data-label="Qty" className="num">{l.quantity.toLocaleString()}</td>
                       <td data-label="Weight" className="num">{formatKg(l.unit_weight_kg * l.quantity)}</td>
                       <td data-label="Volume" className="num">{formatVolume(l.unit_volume_m3 * l.quantity)}</td>

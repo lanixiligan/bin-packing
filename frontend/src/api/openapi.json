@@ -2476,6 +2476,64 @@
         }
       }
     },
+    "/api/ops/order-lines/{line_id}": {
+      "patch": {
+        "tags": [
+          "ops"
+        ],
+        "summary": "Set Line Approval",
+        "description": "Record (or clear) the Northline HSEQ approval reference of an order line.\nThe order must be accepted or planned (409 otherwise).",
+        "operationId": "set_line_approval_api_ops_order_lines__line_id__patch",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "line_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Line Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderLineApproval"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderLineRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/ops/loads/{load_id}": {
       "patch": {
         "tags": [
@@ -3717,6 +3775,210 @@
         "title": "Capacity",
         "description": "Per-load limits. None = not limited. At least one is set."
       },
+      "DgConflict": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "incompatible",
+              "check"
+            ],
+            "title": "Status"
+          },
+          "order_line_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Order Line Ids"
+          },
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "order_line_ids",
+          "items",
+          "message"
+        ],
+        "title": "DgConflict",
+        "description": "Two order lines whose goods must not share a vehicle (incompatible), or that\nneed a Table 9.2 check against the products' SDS (check, a warning only)."
+      },
+      "DgInfo": {
+        "properties": {
+          "dg_class": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "1",
+                  "2.1",
+                  "2.2",
+                  "2.3",
+                  "3",
+                  "4.1",
+                  "4.2",
+                  "4.3",
+                  "5.1",
+                  "5.2",
+                  "6.1",
+                  "6.2",
+                  "7",
+                  "8",
+                  "9"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dg Class"
+          },
+          "subsidiary": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "2.1",
+                "2.3",
+                "3",
+                "4.1",
+                "4.2",
+                "4.3",
+                "5.1",
+                "6.1",
+                "8"
+              ]
+            },
+            "type": "array",
+            "maxItems": 4,
+            "title": "Subsidiary"
+          },
+          "packing_group": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "I",
+                  "II",
+                  "III"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Packing Group"
+          },
+          "un_number": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d{4}$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Un Number",
+            "description": "4 digits, e.g. '1263'"
+          },
+          "explosive_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explosive Code",
+            "description": "Class 1 only: division and compatibility group, e.g. '1.4S'"
+          },
+          "container": {
+            "type": "string",
+            "enum": [
+              "package",
+              "drum",
+              "ibc",
+              "cylinder",
+              "aerosol",
+              "tank_over_500l"
+            ],
+            "title": "Container",
+            "default": "package"
+          },
+          "t92": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "ammonium_nitrate",
+                    "tetranitromethane",
+                    "chloroisocyanuric_acid",
+                    "chloroisocyanurate",
+                    "bromate_chlorate_chlorite",
+                    "hypochlorite",
+                    "inorganic_nitrite",
+                    "calcium_hypochlorite",
+                    "nitromethane",
+                    "acid_strong",
+                    "acid_other",
+                    "alkali_strong",
+                    "cyanide"
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "T92",
+            "description": "Table 9.2 specific goods. null = not answered (gives a 'check' warning against classes Table 9.2 covers); [] = none apply."
+          },
+          "carrier_tags": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "fuel",
+                "unodourised_lpg",
+                "peroxide_over_60",
+                "env_hazardous",
+                "lithium_battery"
+              ]
+            },
+            "type": "array",
+            "title": "Carrier Tags"
+          },
+          "food": {
+            "type": "boolean",
+            "title": "Food",
+            "description": "Food or food packaging (not DG).",
+            "default": false
+          },
+          "fire_risk": {
+            "type": "boolean",
+            "title": "Fire Risk",
+            "description": "Fire-risk substance: a non-DG combustible liquid, or Class 6/9 goods (exception 5).",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "DgInfo",
+        "description": "Dangerous goods data of an item (copied onto each order line). `dg_class`\nnull = not dangerous goods; then only `food` / `fire_risk` matter."
+      },
       "DriverCreate": {
         "properties": {
           "email": {
@@ -3779,6 +4041,28 @@
           "item_sku": {
             "type": "string",
             "title": "Item Sku"
+          },
+          "dg_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dg Class"
+          },
+          "un_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Un Number"
           },
           "quantity": {
             "type": "integer",
@@ -4425,6 +4709,17 @@
             "minimum": 0.0,
             "title": "Pallet Spaces",
             "default": 0
+          },
+          "dg": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DgInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Dangerous goods data; null = general freight."
           }
         },
         "type": "object",
@@ -4475,6 +4770,16 @@
           "pallet_spaces": {
             "type": "number",
             "title": "Pallet Spaces"
+          },
+          "dg": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DgInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "archived": {
             "type": "boolean",
@@ -4579,6 +4884,17 @@
               }
             ],
             "title": "Pallet Spaces"
+          },
+          "dg": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DgInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "null clears it (general freight)."
           }
         },
         "type": "object",
@@ -4780,6 +5096,32 @@
           "unit_pallet_spaces": {
             "type": "number",
             "title": "Unit Pallet Spaces"
+          },
+          "dg": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DgInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dg_approval_required": {
+            "type": "boolean",
+            "title": "Dg Approval Required",
+            "default": false
+          },
+          "dg_approval_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dg Approval Ref"
           }
         },
         "type": "object",
@@ -4848,6 +5190,27 @@
             },
             "type": "array",
             "title": "Lines"
+          },
+          "dg_conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/DgConflict"
+            },
+            "type": "array",
+            "title": "Dg Conflicts",
+            "default": []
+          },
+          "dg_warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Dg Warnings",
+            "default": []
+          },
+          "approvals_missing": {
+            "type": "integer",
+            "title": "Approvals Missing",
+            "default": 0
           }
         },
         "type": "object",
@@ -5355,6 +5718,28 @@
         ],
         "title": "OrderEventRead"
       },
+      "OrderLineApproval": {
+        "properties": {
+          "dg_approval_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dg Approval Ref"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dg_approval_ref"
+        ],
+        "title": "OrderLineApproval",
+        "description": "Record (or clear with null) the Northline HSEQ approval for an order line."
+      },
       "OrderLineIn": {
         "properties": {
           "item_id": {
@@ -5408,6 +5793,27 @@
           "unit_pallet_spaces": {
             "type": "number",
             "title": "Unit Pallet Spaces"
+          },
+          "dg": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DgInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dg_approval_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dg Approval Ref"
           }
         },
         "type": "object",
@@ -5586,6 +5992,14 @@
             },
             "type": "array",
             "title": "Lines"
+          },
+          "dg_conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/DgConflict"
+            },
+            "type": "array",
+            "title": "Dg Conflicts",
+            "default": []
           },
           "events": {
             "items": {
@@ -6001,6 +6415,16 @@
           "pallets": {
             "type": "number",
             "title": "Pallets"
+          },
+          "dg": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DgInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -6062,6 +6486,11 @@
             "type": "integer",
             "title": "Vehicle Id",
             "description": "Capacity profile to pack against."
+          },
+          "rule_set": {
+            "$ref": "#/components/schemas/RuleSet",
+            "description": "Dangerous goods rules: 'adg' (ADG segregation) or 'northline' (ADG + Northline acceptance).",
+            "default": "adg"
           }
         },
         "type": "object",
@@ -6108,6 +6537,9 @@
               }
             ],
             "title": "Method"
+          },
+          "rule_set": {
+            "$ref": "#/components/schemas/RuleSet"
           },
           "order_count": {
             "type": "integer",
@@ -6161,6 +6593,7 @@
           "job_id",
           "job_status",
           "method",
+          "rule_set",
           "order_count",
           "load_count",
           "created_at",
@@ -6232,6 +6665,9 @@
             ],
             "title": "Method"
           },
+          "rule_set": {
+            "$ref": "#/components/schemas/RuleSet"
+          },
           "order_count": {
             "type": "integer",
             "title": "Order Count"
@@ -6267,6 +6703,7 @@
           "job_id",
           "job_status",
           "method",
+          "rule_set",
           "order_count",
           "load_count",
           "created_at",
@@ -6452,6 +6889,15 @@
         ],
         "title": "RejectBody"
       },
+      "RuleSet": {
+        "type": "string",
+        "enum": [
+          "adg",
+          "northline"
+        ],
+        "title": "RuleSet",
+        "description": "Dangerous goods rules a plan is checked against (see app/dg.py)."
+      },
       "Shipment": {
         "properties": {
           "name": {
@@ -6466,6 +6912,37 @@
             "exclusiveMinimum": 0.0,
             "title": "Weight",
             "description": "Weight in kg (whole number)"
+          },
+          "dg_class": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "1",
+                  "2.1",
+                  "2.2",
+                  "2.3",
+                  "3",
+                  "4.1",
+                  "4.2",
+                  "4.3",
+                  "5.1",
+                  "5.2",
+                  "6.1",
+                  "6.2",
+                  "7",
+                  "8",
+                  "9",
+                  "food",
+                  "fire_risk"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dg Class",
+            "description": "DG class, 'food', 'fire_risk', or null for general freight"
           }
         },
         "type": "object",
@@ -6490,6 +6967,15 @@
             },
             "type": "array",
             "title": "Shipments"
+          },
+          "rule_set": {
+            "type": "string",
+            "enum": [
+              "adg",
+              "northline"
+            ],
+            "title": "Rule Set",
+            "default": "adg"
           }
         },
         "type": "object",
@@ -7115,6 +7601,65 @@
         "type": "object",
         "title": "ZoneUpdate"
       },
+      "DgIssue": {
+        "description": "A Northline acceptance problem with an order line (or a whole order for limits).",
+        "properties": {
+          "order_id": {
+            "title": "Order Id",
+            "type": "integer"
+          },
+          "order_reference": {
+            "title": "Order Reference",
+            "type": "string"
+          },
+          "order_line_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Line Id"
+          },
+          "item_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Name"
+          },
+          "kind": {
+            "enum": [
+              "prohibited",
+              "limit",
+              "approval",
+              "note"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "order_id",
+          "order_reference",
+          "order_line_id",
+          "item_name",
+          "kind",
+          "message"
+        ],
+        "title": "DgIssue",
+        "type": "object"
+      },
       "InfeasibleDetail": {
         "description": "`detail` of a 422 from POST /api/ops/plans when some units can never fit.",
         "properties": {
@@ -7127,6 +7672,14 @@
               "$ref": "#/components/schemas/UnitMisfit"
             },
             "title": "Misfits",
+            "type": "array"
+          },
+          "dg_issues": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DgIssue"
+            },
+            "title": "Dg Issues",
             "type": "array"
           }
         },

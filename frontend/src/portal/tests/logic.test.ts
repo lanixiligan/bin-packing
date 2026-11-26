@@ -2,9 +2,11 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  formatVolume, lastEventTo, lineTotals, matchesItemSearch, matchesSearch, pricedLines, sortEvents, splitApiErrors,
-  statusesForGroup, validateAddress, validateItem, validateOrder, volumeFromCm, type OrderFormValues,
+  DG_FIELDS, dgFromForm, dgToForm, formatVolume, lastEventTo, lineTotals, matchesItemSearch, matchesSearch, orderDgWarnings,
+  pricedLines, sortEvents, splitApiErrors, statusesForGroup, validateAddress, validateDgForm, validateItem, validateOrder,
+  volumeFromCm, type DgFormValues, type OrderFormValues,
 } from "../logic.ts";
+import { normalise, type DgLike } from "../../dg/rules.ts";
 import type { OrderEvent } from "../types.ts";
 
 describe("status groups", () => {
@@ -34,6 +36,14 @@ describe("search", () => {
     assert.ok(matchesItemSearch(it, "grey"));
     assert.ok(!matchesItemSearch(it, "tile"));
   });
+  test("items match on the DG class, class name and UN number", () => {
+    const it = { sku: "POOL", name: "Pool chlorine", description: null, dg: { dg_class: "5.1", un_number: "2880" } as DgLike };
+    assert.ok(matchesItemSearch(it, "class 5.1"));
+    assert.ok(matchesItemSearch(it, "oxidising"));
+    assert.ok(matchesItemSearch(it, "UN 2880"));
+    assert.ok(matchesItemSearch(it, "un2880"));
+    assert.ok(!matchesItemSearch({ ...it, dg: null }, "2880"));
+  });
 });
 
 describe("totals and volume", () => {
@@ -60,9 +70,12 @@ describe("totals and volume", () => {
 
 describe("validation", () => {
   test("items need SKU, name and a positive weight", () => {
-    const e = validateItem({ sku: " ", name: "", description: "", weight_kg: "0", volume_m3: "-1", pallet_spaces: "abc" });
+    const dg = dgToForm(null);
+    const e = validateItem({ sku: " ", name: "", description: "", weight_kg: "0", volume_m3: "-1", pallet_spaces: "abc", dg });
     assert.deepEqual(Object.keys(e).sort(), ["name", "pallet_spaces", "sku", "volume_m3", "weight_kg"]);
-    assert.deepEqual(validateItem({ sku: "A", name: "B", description: "", weight_kg: "1.5", volume_m3: "", pallet_spaces: "" }), {});
+    assert.deepEqual(validateItem({ sku: "A", name: "B", description: "", weight_kg: "1.5", volume_m3: "", pallet_spaces: "", dg }), {});
+    const dgErrors = validateItem({ sku: "A", name: "B", description: "", weight_kg: "1.5", volume_m3: "", pallet_spaces: "", dg: { ...dg, kind: "dg" } });
+    assert.deepEqual(Object.keys(dgErrors), ["dg.dg_class"]);
   });
   test("addresses need label, street, suburb, state, postcode and a 2-letter country", () => {
     const blank = { label: "", contact_name: "", phone: "", line1: "", line2: "", suburb: "", state: "", postcode: "12", country: "AUS", notes: "" };
@@ -102,6 +115,85 @@ describe("validation", () => {
   });
 });
 
+describe("dangerous goods on the item form", () => {
+  const dgForm = (patch: Partial<DgFormValues>): DgFormValues => ({ ...dgToForm(null), kind: "dg", ...patch });
+
+  test("general freight is sent as null; food and fire-risk goods as flags", () => {
+    assert.equal(dgFromForm(dgToForm(null)), null);
+    assert.equal(dgFromForm(dgToForm({ food: false, fire_risk: false })), null);
+    assert.equal(dgFromForm({ ...dgToForm(null), food: true })?.food, true);
+    const fire = dgFromForm({ ...dgToForm(null), combustible: true });
+    assert.equal(fire?.fire_risk, true);
+    assert.equal(fire?.dg_class, null);
+    // Leftover DG fields don't leak into general freight.
+    assert.equal(dgFromForm({ ...dgForm({ dg_class: "3", un_number: "1263" }), kind: "general" }), null);
+  });
+
+  test("an item's DG data survives the form unchanged", () => {
+    const cases: DgLike[] = [
+      { dg_class: "5.1", packing_group: "II", un_number: "2880", t92: ["hypochlorite", "calcium_hypochlorite"] },
+      { dg_class: "3", packing_group: "II", un_number: "1263", container: "drum", t92: [] },
+      { dg_class: "1", explosive_code: "1.4S", subsidiary: [], carrier_tags: ["lithium_battery"] },
+      { dg_class: "9", fire_risk: true, subsidiary: ["8"], t92: null },
+      { food: true },
+      { fire_risk: true },
+    ];
+    for (const dg of cases) assert.deepEqual(dgFromForm(dgToForm(dg)), normalise(dg));
+  });
+
+  test("fields the class doesn't use are dropped", () => {
+    const out = dgFromForm(dgForm({
+      dg_class: "2.1", packing_group: "II", explosive_code: "1.4S", fire_risk: true, subsidiary: ["2.1", "8", "8"], un_number: " 1075 ",
+    }));
+    assert.deepEqual(
+      { pg: out?.packing_group, exp: out?.explosive_code, fire: out?.fire_risk, sub: out?.subsidiary, un: out?.un_number, t92: out?.t92 },
+      { pg: null, exp: null, fire: false, sub: ["8"], un: "1075", t92: null },
+    );
+    assert.deepEqual(dgFromForm(dgForm({ dg_class: "8", t92_checked: true, t92: [] }))?.t92, []);
+    assert.equal(dgFromForm(dgForm({ dg_class: "6.1", fire_risk: true }))?.fire_risk, true);
+  });
+
+  test("validation puts each problem on its field", () => {
+    assert.deepEqual(validateDgForm(dgToForm(null)), {});
+    assert.deepEqual(validateDgForm(dgForm({ dg_class: "3", packing_group: "II", un_number: "1263" })), {});
+    assert.deepEqual(Object.keys(validateDgForm({ ...dgToForm(null), food: true, combustible: true })), ["dg.food"]);
+    assert.deepEqual(Object.keys(validateDgForm(dgForm({}))), ["dg.dg_class"]);
+    assert.match(validateDgForm(dgForm({ dg_class: "3", un_number: "12a" }))["dg.un_number"], /4 digits/);
+    assert.match(validateDgForm(dgForm({ dg_class: "1", explosive_code: "1.4" }))["dg.explosive_code"], /1\.4S/);
+    assert.match(validateDgForm(dgForm({ dg_class: "3", container: "cylinder" }))["dg.container"], /Class 2/);
+    assert.match(validateDgForm(dgForm({ dg_class: "5.1", t92_checked: true, t92: ["calcium_hypochlorite", "ammonium_nitrate"] }))["dg.t92"], /conflict/);
+    assert.match(validateDgForm(dgForm({ dg_class: "3", subsidiary: ["2.1", "4.1", "5.1", "6.1", "8"] }))["dg.subsidiary"], /At most 4/);
+  });
+});
+
+describe("dangerous goods on an order", () => {
+  const items = new Map([
+    { id: 1, name: "Cement", dg: null },
+    { id: 2, name: "Pool chlorine", dg: { dg_class: "5.1", t92: ["calcium_hypochlorite", "hypochlorite"] } },
+    { id: 3, name: "Thinners", dg: { dg_class: "3", t92: [] } },
+    { id: 4, name: "Hydrochloric acid", dg: { dg_class: "8", t92: ["acid_strong"] } },
+    { id: 5, name: "Drain cleaner", dg: { dg_class: "8", t92: null } },
+    { id: 6, name: "Diesel additive", dg: { dg_class: "3", t92: [] } },
+  ].map((i) => [i.id, i as { id: number; name: string; dg: DgLike }] as const));
+  const lines = (...ids: string[]) => ids.map((itemId) => ({ itemId }));
+
+  test("incompatible pairs and Table 9.2 checks among the chosen items", () => {
+    const w = orderDgWarnings(lines("1", "2", "3", "4", "5", "", "2"), items);
+    assert.deepEqual(w.incompatible.map((p) => [p.a, p.b]), [
+      ["Pool chlorine (Class 5.1)", "Thinners (Class 3)"],
+      ["Pool chlorine (Class 5.1)", "Hydrochloric acid (Class 8)"],
+      ["Pool chlorine (Class 5.1)", "Drain cleaner (Class 8)"],
+    ]);
+    assert.ok(w.incompatible.every((p) => p.reason && p.reasons[0] === p.reason));
+    assert.deepEqual(w.check.map((p) => [p.a, p.b]), [["Hydrochloric acid (Class 8)", "Drain cleaner (Class 8)"]]);
+    assert.match(w.check[0].reason, /Table 9\.2/);
+  });
+  test("compatible or general goods give no warnings", () => {
+    assert.deepEqual(orderDgWarnings(lines("1", "3", "6", "4"), items), { incompatible: [], check: [] });
+    assert.deepEqual(orderDgWarnings(lines(), items), { incompatible: [], check: [] });
+  });
+});
+
 describe("API errors", () => {
   test("422 lists split into known fields and general messages", () => {
     const { fields, general } = splitApiErrors([
@@ -111,6 +203,20 @@ describe("API errors", () => {
     ], ["sku"]);
     assert.deepEqual(fields, { sku: "String should have at least 1 character" });
     assert.deepEqual(general, ["Pickup and delivery addresses must be different.", "lines.0.quantity: Input should be greater than or equal to 1"]);
+  });
+  test("nested DG locs land on the longest known field", () => {
+    const { fields, general } = splitApiErrors([
+      { loc: ["body", "dg", "un_number"], msg: "String should match pattern '^\\d{4}$'" },
+      { loc: ["body", "dg"], msg: "Value error, Class 3 has no packing groups." },
+      { loc: ["body", "dg", "t92", 0], msg: "Input should be 'ammonium_nitrate', ..." },
+      { loc: ["body", "lines", 0, "quantity"], msg: "Too many" },
+    ], ["sku", ...DG_FIELDS]);
+    assert.deepEqual(fields, {
+      "dg.un_number": "String should match pattern '^\\d{4}$'",
+      dg: "Class 3 has no packing groups.",
+      "dg.t92": "Input should be 'ammonium_nitrate', ...",
+    });
+    assert.deepEqual(general, ["lines.0.quantity: Too many"]);
   });
   test("string details are left to the general error", () => {
     assert.deepEqual(splitApiErrors("SKU taken", ["sku"]), { fields: {}, general: [] });

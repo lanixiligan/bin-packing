@@ -21,6 +21,35 @@ export function Notice({ tone, title, children, role }: {
   );
 }
 
+export interface DgNoticeEntry { key: string; content: ReactNode }
+
+/**
+ * Dangerous goods pairs on an order: incompatible ones (planned onto separate
+ * vehicles) as a warning, ADG Table 9.2 checks as a softer note.
+ */
+export function DgNotices({ incompatible, check, checkAdvice }: {
+  incompatible: DgNoticeEntry[];
+  check: DgNoticeEntry[];
+  checkAdvice: ReactNode;
+}) {
+  return (
+    <>
+      {incompatible.length ? (
+        <Notice tone="warn" title="Some goods can’t travel together" role="note">
+          <ul>{incompatible.map((x) => <li key={x.key}>{x.content}</li>)}</ul>
+          <p className="small">We’ll carry them on separate vehicles, which can affect timing and price.</p>
+        </Notice>
+      ) : null}
+      {check.length ? (
+        <Notice tone="info" title="Check these goods against ADG Table 9.2" role="note">
+          <ul>{check.map((x) => <li key={x.key}>{x.content}</li>)}</ul>
+          <p className="small">{checkAdvice}</p>
+        </Notice>
+      ) : null}
+    </>
+  );
+}
+
 /** How the address's zone affects pricing, in words. */
 export function ZoneNote({ zone }: { zone: string | null }) {
   return zone ? (

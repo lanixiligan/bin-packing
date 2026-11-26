@@ -1,5 +1,6 @@
-import { colorFor, describeSize, describeUsage, shipmentFractions, sizeOf, truckFill } from "./capacity.ts";
+import { colorFor, describeSize, describeUsage, dgTextOf, shipmentFractions, sizeOf, truckFill } from "./capacity.ts";
 import DimBars from "./DimBars.jsx";
+import { DgDiamond } from "../dg/DgBadge.tsx";
 import "./truck.css";
 
 // One truck as a column of stacked blocks.
@@ -14,6 +15,36 @@ import "./truck.css";
 // fraction of the capacity. Optional extras: `truck.capacity` (per-truck limits),
 // `truck.label` (e.g. "Load 2"), `shipment.colorKey` (color by order instead
 // of by unit) and `shipment.detail` (extra text for the label and inspector).
+// Both branches show dangerous goods: the demo's `shipment.dg_class` or a
+// ready-made `shipment.dgLabel` ("Class 3") is written on tall blocks and in
+// the screen-reader label, with the class diamond at the block's left edge.
+// Blocks without DG look exactly as before.
+
+/** Diamond code for a block (the demo's dg_class, or `dgCode` if given), or null. */
+function diamondOf(s) {
+  const c = s.dgCode ?? s.dg_class;
+  if (!c) return null;
+  return c === "food" ? "F" : c === "fire_risk" ? "R" : c;
+}
+
+/** The block's label lines: name, weight, then the DG class when there is room. */
+function BlockLabel({ s, h, weight, dg }) {
+  if (h < 14) return null;
+  return (
+    <span className="block-label" aria-hidden="true">
+      {s.name}
+      {h >= 28 ? <br /> : " · "}
+      {weight}
+      {dg && h >= 40 ? <><br /><span className="block-dg">{dg}</span></> : null}
+    </span>
+  );
+}
+
+function BlockDiamond({ s, h }) {
+  const code = diamondOf(s);
+  if (!code || h < 18) return null;
+  return <span className="block-dia" aria-hidden="true"><DgDiamond code={code} size="sm" /></span>;
+}
 
 export default function Truck({
   truck, numTrucks, capacity, height, step, dropIndex, activeId, onHover, onFocusBlock, extra,
@@ -56,27 +87,23 @@ export default function Truck({
       >
         {visible.map((s) => {
           const h = (s.weight / capacity) * height;
-          const label = `${s.name}, ${s.weight} kg, truck ${truck.truck} of ${numTrucks}`;
+          const dg = dgTextOf(s);
+          const label = `${s.name}${dg ? `, ${dg}` : ""}${s.detail ? `, ${s.detail}` : ""}, ${s.weight} kg, truck ${truck.truck} of ${numTrucks}`;
           return (
             <div
               key={s.id}
               role="listitem"
               tabIndex={0}
               aria-label={label}
-              className={`block${s.id === activeId ? " active" : ""}`}
-              style={{ height: h, background: colorFor(s.id) }}
+              className={`block${diamondOf(s) && h >= 18 ? " dg" : ""}${s.id === activeId ? " active" : ""}`}
+              style={{ height: h, background: colorFor(s.colorKey ?? s.id) }}
               onPointerEnter={() => onHover(s.id)}
               onPointerLeave={() => onHover(null)}
               onFocus={() => onFocusBlock(s.id)}
               onBlur={() => onFocusBlock(null)}
             >
-              {h >= 14 && (
-                <span className="block-label" aria-hidden="true">
-                  {s.name}
-                  {h >= 28 ? <br /> : " · "}
-                  {s.weight} kg
-                </span>
-              )}
+              <BlockDiamond s={s} h={h} />
+              <BlockLabel s={s} h={h} weight={`${s.weight} kg`} dg={dg} />
             </div>
           );
         })}
@@ -107,27 +134,23 @@ function MultiTruck({ truck, numTrucks, cap, height, step, dropIndex, activeId, 
         {visible.map((s) => {
           const h = Math.max(2, (sizes.get(s.id) ?? 0) * height);
           const size = describeSize(sizeOf(s));
-          const label = `${s.name}${s.detail ? `, ${s.detail}` : ""}, ${size}, ${name.toLowerCase()} of ${numTrucks}`;
+          const dg = dgTextOf(s);
+          const label = `${s.name}${dg ? `, ${dg}` : ""}${s.detail ? `, ${s.detail}` : ""}, ${size}, ${name.toLowerCase()} of ${numTrucks}`;
           return (
             <div
               key={s.id}
               role="listitem"
               tabIndex={0}
               aria-label={label}
-              className={`block${s.id === activeId ? " active" : ""}`}
+              className={`block${diamondOf(s) && h >= 18 ? " dg" : ""}${s.id === activeId ? " active" : ""}`}
               style={{ height: h, background: colorFor(s.colorKey ?? s.id) }}
               onPointerEnter={() => onHover(s.id)}
               onPointerLeave={() => onHover(null)}
               onFocus={() => onFocusBlock(s.id)}
               onBlur={() => onFocusBlock(null)}
             >
-              {h >= 14 && (
-                <span className="block-label" aria-hidden="true">
-                  {s.name}
-                  {h >= 28 ? <br /> : " · "}
-                  {s.weight.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg
-                </span>
-              )}
+              <BlockDiamond s={s} h={h} />
+              <BlockLabel s={s} h={h} weight={`${s.weight.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg`} dg={dg} />
             </div>
           );
         })}

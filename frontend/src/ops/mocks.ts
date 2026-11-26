@@ -9,7 +9,7 @@ import type { paths } from "../api/schema";
 import {
   MockHttpError, createPlan, db, discardPlan, httpError, invoice, invoiceCsv, job,
   jobRead, jobStatus, lockPlan, moveLine, nextId, opsAddress, order, orderRead, orderSummary, plan, planRead,
-  planSummary, saveDraft, transition, updateLoad, validationError, actors, driverRead, address,
+  planSummary, saveDraft, setLineApproval, transition, updateLoad, validationError, actors, driverRead, address,
 } from "./mockDb.ts";
 
 type Handler = (req: MockRequest) => MockResponse | Promise<MockResponse>;
@@ -304,6 +304,9 @@ ops("post", "/api/ops/plans/{plan_id}/lock", ({ params }) => {
   lockPlan(p);
   return ok(planRead(p));
 });
+
+ops("patch", "/api/ops/order-lines/{line_id}", (req) =>
+  ok(setLineApproval(intParam(req.params.line_id), json<{ dg_approval_ref?: unknown }>(req))));
 
 ops("patch", "/api/ops/loads/{load_id}", (req) => ok(updateLoad(intParam(req.params.load_id), json(req))));
 

@@ -23,3 +23,8 @@ export function useDriverOrder(orderId: number) {
   });
 }
 
+/** "Class 3, 5.1" for the dangerous goods classes on an order's lines, or null. */
+export function dgClassesText(lines: Pick<Schemas["DriverLine"], "dg_class">[]): string | null {
+  const classes = [...new Set(lines.map((l) => l.dg_class).filter((c): c is string => !!c))].sort();
+  return classes.length ? `Class ${classes.join(", ")}` : null;
+}

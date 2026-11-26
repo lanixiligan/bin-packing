@@ -18,3 +18,4 @@ export type OrderLine = Schemas["OrderLineRead"];
 export type OrderEvent = Schemas["OrderEventRead"];
 export type Pod = Schemas["PodRead"];
 export type OrderStatus = Schemas["OrderStatus"];
+export type DgConflict = Schemas["DgConflict"];

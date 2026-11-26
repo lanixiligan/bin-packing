@@ -8,7 +8,7 @@ import { Empty, QueryState } from "../../shell/QueryState";
 import { StatusChip } from "../../shell/StatusChip";
 import { formatAddress, formatDate, formatWindow, todayIso } from "../../shell/format";
 import { shiftDate } from "../../ops/format";
-import { itemCount, mapsUrl, plural, type DriverOrder } from "../util";
+import { dgClassesText, itemCount, mapsUrl, plural, type DriverOrder } from "../util";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -119,6 +119,7 @@ function StopGroup({ title, empty, orders, leg, date }: {
 function Stop({ order, leg, date }: { order: DriverOrder; leg: "pickup" | "delivery"; date: string }) {
   const address = leg === "pickup" ? order.pickup_address : order.delivery_address;
   const n = itemCount(order);
+  const dg = dgClassesText(order.lines);
   return (
     <li className={`stop stop-${order.status}`}>
       <Link className="stop-main" to={`/driver/orders/${order.order_id}`} state={{ date }}>
@@ -129,6 +130,12 @@ function Stop({ order, leg, date }: { order: DriverOrder; leg: "pickup" | "deliv
         <span className="stop-meta">
           <span>🕑 {formatWindow(order.window_start, order.window_end)}</span>
           <span>📦 {plural(n, "item")}</span>
+          {dg ? (
+            <span className="dg-badge driver-dg">
+              <span aria-hidden="true">⚠️</span>
+              <span className="dg-text">Dangerous goods: {dg}</span>
+            </span>
+          ) : null}
           <StatusChip status={order.status} />
         </span>
         <span className="stop-chevron" aria-hidden="true">›</span>

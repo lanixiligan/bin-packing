@@ -109,6 +109,19 @@ export function ZoneTag({ zone }: { zone: string | null }) {
   return zone ? <span className="zone-tag">{zone}</span> : <span className="zone-tag none">No zone</span>;
 }
 
+/** The plan's dangerous goods rule set: "ADG" or "Northline" (ADG + Northline acceptance). */
+export function RuleSetChip({ ruleSet }: { ruleSet: Schemas["RuleSet"] }) {
+  return ruleSet === "northline" ? (
+    <span className="chip rule-chip northline" title="Dangerous goods: ADG Code + Northline acceptance">
+      <span className="sr-only">Dangerous goods rules: </span>Northline
+    </span>
+  ) : (
+    <span className="chip rule-chip" title="Dangerous goods: ADG Code">
+      <span className="sr-only">Dangerous goods rules: </span>ADG
+    </span>
+  );
+}
+
 /** A POD photo fetched with the bearer token. */
 export function PodPhoto({ url, alt }: { url: string; alt: string }) {
   const [src, setSrc] = useState<string | null>(null);

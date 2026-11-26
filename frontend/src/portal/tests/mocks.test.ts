@@ -76,6 +76,69 @@ describe("items", () => {
   });
 });
 
+describe("dangerous goods", () => {
+  const base = { sku: "DG-1", name: "Thinners", weight_kg: 17 };
+
+  test("items store DG data with its defaults; general freight and dg: null are stored as null", async () => {
+    const created = await call("POST", "/api/portal/items", { ...base, dg: { dg_class: "3", packing_group: "II", un_number: "1263", t92: [] } });
+    assert.equal(created.status, 201);
+    const dg = created.data.dg as Json;
+    assert.deepEqual(
+      [dg.dg_class, dg.container, dg.t92, dg.subsidiary, dg.food, dg.fire_risk],
+      ["3", "package", [], [], false, false],
+    );
+    const id = created.data.id as number;
+    const renamed = await call("PATCH", `/api/portal/items/${id}`, { name: "Thinners 20 L" });
+    assert.equal((renamed.data.dg as Json).dg_class, "3"); // untouched when dg isn't sent
+    const cleared = await call("PATCH", `/api/portal/items/${id}`, { dg: null });
+    assert.equal(cleared.data.dg, null);
+    const food = await call("PATCH", `/api/portal/items/${id}`, { dg: { food: true } });
+    assert.equal((food.data.dg as Json).food, true);
+    const general = await call("POST", "/api/portal/items", { ...base, sku: "GEN-1", dg: { food: false, fire_risk: false } });
+    assert.equal(general.data.dg, null);
+    assert.equal((await call("POST", "/api/portal/items", { ...base, sku: "GEN-2" })).data.dg, null);
+  });
+
+  test("invalid DG data is a 422 on dg or dg.<field>", async () => {
+    const pattern = await call("POST", "/api/portal/items", { ...base, dg: { dg_class: "3", un_number: "12" } });
+    assert.equal(pattern.status, 422);
+    assert.deepEqual((pattern.data.detail as { loc: unknown[] }[]).map((d) => d.loc), [["body", "dg", "un_number"]]);
+    const model = await call("POST", "/api/portal/items", { ...base, dg: { dg_class: "2.1", packing_group: "II" } });
+    assert.equal(model.status, 422);
+    const issue = (model.data.detail as { loc: unknown[]; msg: string }[])[0];
+    assert.deepEqual(issue.loc, ["body", "dg"]);
+    assert.match(issue.msg, /no packing groups/);
+    const noClass = await call("PATCH", "/api/portal/items/2", { dg: { un_number: "1263" } });
+    assert.match(JSON.stringify(noClass.data.detail), /Choose a DG class/);
+    const extra = await call("POST", "/api/portal/items", { ...base, dg: { dg_class: "3", colour: "red" } });
+    assert.deepEqual((extra.data.detail as { loc: unknown[] }[]).map((d) => d.loc), [["body", "dg", "colour"]]);
+  });
+
+  test("order lines copy the item's DG data and the order lists its conflicts", async () => {
+    const seeded = await call("GET", "/api/portal/orders/11");
+    const lines = seeded.data.lines as Json[];
+    assert.equal((lines[0].dg as Json).un_number, "2880");
+    const conflicts = seeded.data.dg_conflicts as Json[];
+    assert.deepEqual(conflicts.map((c) => c.status), ["incompatible", "incompatible", "incompatible", "check"]);
+    assert.deepEqual(conflicts[0].items, ["Pool chlorine granules 10 kg (Class 5.1)", "Paint thinners 20 L (Class 3)"]);
+    assert.deepEqual(conflicts[0].order_line_ids, [lines[0].id, lines[1].id]);
+    assert.match(conflicts[0].message as string, /^Pool chlorine granules 10 kg \(Class 5\.1\) and Paint thinners 20 L \(Class 3\) can't travel on the same vehicle\. Class 5\.1 with Class 3: incompatible/);
+    assert.match(conflicts[3].message as string, /^Check Hydrochloric acid 20 L \(Class 8\) with Drain cleaner 5 L \(Class 8\): .*Table 9\.2/);
+
+    const plain = await call("GET", "/api/portal/orders/1");
+    assert.deepEqual(plain.data.dg_conflicts, []);
+    assert.equal((plain.data.lines as Json[])[0].dg, null);
+
+    const created = await call("POST", "/api/portal/orders", {
+      pickup_address_id: 1, delivery_address_id: 2, delivery_date: todayIso(2), lines: [{ item_id: 13, quantity: 1 }, { item_id: 14, quantity: 1 }],
+    });
+    assert.equal(created.status, 201);
+    assert.deepEqual(created.data.dg_conflicts, []); // Class 3 and Class 8 may travel together
+    const patched = await call("PATCH", `/api/portal/orders/${created.data.id}`, { lines: [{ item_id: 12, quantity: 1 }, { item_id: 13, quantity: 1 }] });
+    assert.deepEqual((patched.data.dg_conflicts as Json[]).map((c) => c.status), ["incompatible"]);
+  });
+});
+
 describe("addresses", () => {
   test("customers can't set the zone", async () => {
     const created = await call("POST", "/api/portal/addresses", {

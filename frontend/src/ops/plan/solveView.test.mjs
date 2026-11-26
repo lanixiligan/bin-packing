@@ -2,7 +2,7 @@
 // Run: node --test src/ops/plan/solveView.test.mjs
 import assert from "node:assert/strict";
 import test from "node:test";
-import { loadsPanelData, methodPanelData, placements, summaryData } from "./solveView.ts";
+import { loadsPanelData, methodPanelData, placements, segregationNote, summaryData } from "./solveView.ts";
 
 const unit = (id, order_id, order_line_id, kg, m3 = 0, pallets = 0) => ({
   id, order_id, order_reference: `ORD-${order_id}`, order_line_id, item_name: `Item ${order_line_id}`,
@@ -66,4 +66,20 @@ test("loadsPanelData makes one block per line on a load, sized by quantity", () 
   assert.deepEqual(d.trucks[0].shipments[0], {
     id: 70, name: "Crate ×3", weight: 900, volume: 1.5, pallets: 3, colorKey: 1, detail: "ORD-1",
   });
+});
+
+test("dangerous goods: the class goes into the label, and conflicting units get a lower-bound note", () => {
+  const dg3 = { dg_class: "3", un_number: "1263", container: "package", food: false, fire_risk: false };
+  const dg51 = { dg_class: "5.1", container: "package", food: false, fire_risk: false };
+  const units = [{ ...unit(0, 1, 11, 100), dg: dg3 }, { ...unit(1, 1, 12, 100), dg: dg51 }, unit(2, 2, 21, 100)];
+  const r = { ...result, units, ffd: { ...result.ffd, loads: [{ number: 1, unit_ids: [0, 2] }, { number: 2, unit_ids: [1] }] } };
+  const d = methodPanelData(r, r.ffd);
+  assert.equal(d.trucks[0].shipments[0].detail, "ORD-1 · Class 3 · UN 1263");
+  assert.equal(d.trucks[0].shipments[0].dgLabel, "Class 3");
+  assert.equal(d.trucks[0].shipments[0].dgCode, "3");
+  assert.equal(d.trucks[0].shipments[1].detail, "ORD-2");
+  assert.equal("dgLabel" in d.trucks[0].shipments[1], false);
+  assert.match(segregationNote(r), /Class 3 with Class 5\.1 can't share a load/);
+  assert.equal(segregationNote({ ...r, units: [units[0], units[2]] }), null);
+  assert.equal(segregationNote(result), null);
 });

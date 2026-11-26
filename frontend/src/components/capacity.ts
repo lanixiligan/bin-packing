@@ -149,13 +149,32 @@ export function colorFor(id: number): string {
   return `hsl(${hue}, 65%, 72%)`;
 }
 
-/** One block/crate in a truck: the demo's { id, name, weight } plus optional volume/pallets. */
+/**
+ * One block/crate in a truck: the demo's { id, name, weight } plus optional
+ * volume/pallets, and optional dangerous goods: the demo's `dg_class` ("3",
+ * "food", "fire_risk", …) or a ready-made `dgLabel` ("Class 5.1 (sub 8)").
+ */
 export interface ShipmentLike {
   id: number;
   name: string;
   weight: number;
   volume?: number;
   pallets?: number;
+  dg_class?: string | null;
+  dgLabel?: string | null;
+}
+
+/** Text for the demo's DG class: "Class 3", "Class 1.4S" (the demo's class 1), "Food", "Fire-risk"; "" for none. */
+export function dgClassText(dgClass: string | null | undefined): string {
+  if (!dgClass) return "";
+  if (dgClass === "food") return "Food";
+  if (dgClass === "fire_risk") return "Fire-risk";
+  return `Class ${dgClass === "1" ? "1.4S" : dgClass}`;
+}
+
+/** The DG text shown on a block: its `dgLabel`, else from `dg_class`; "" for general freight. */
+export function dgTextOf(s: Pick<ShipmentLike, "dg_class" | "dgLabel">): string {
+  return s.dgLabel || dgClassText(s.dg_class);
 }
 
 export const sizeOf = (s: ShipmentLike): UsageTotals => ({

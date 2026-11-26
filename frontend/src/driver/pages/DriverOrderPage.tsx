@@ -11,6 +11,7 @@ import { StatusChip } from "../../shell/StatusChip";
 import { STATUS_LABEL, formatDate, formatDateTime, formatKg, formatWindow } from "../../shell/format";
 import { PodPhoto } from "../../ops/ui";
 import AddressBlock from "../AddressBlock";
+import DgClass from "../DgClass";
 import { itemCount, plural, useDriverOrder, type DriverOrder } from "../util";
 
 type StatusAction = Schemas["DriverStatusUpdate"]["status"];
@@ -110,7 +111,10 @@ function Stop({ order, back }: { order: DriverOrder; back: string }) {
           {order.lines.map((l, i) => (
             <li key={`${l.item_sku}-${i}`}>
               <span className="item-qty">{l.quantity} ×</span>
-              <span>{l.item_name} <span className="small muted">{l.item_sku}</span></span>
+              <span>
+                {l.item_name} <span className="small muted">{l.item_sku}</span>
+                {l.dg_class ? <span className="item-dg"><DgClass line={l} /></span> : null}
+              </span>
             </li>
           ))}
         </ul>

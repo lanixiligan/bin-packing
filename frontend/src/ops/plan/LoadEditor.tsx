@@ -4,11 +4,18 @@
 // does the same from the keyboard. The server re-checks the capacity and its
 // 422 message is shown. A locked plan's loads are read-only, except for the
 // vehicle and driver.
+// Dangerous goods: each line shows its class; a load whose goods can't travel
+// together is flagged (it blocks locking), the Move form and drag-and-drop
+// mark loads the line would clash with (the server refuses those moves), and
+// on Northline plans lines that need an HSEQ approval take its reference
+// (also on a locked plan).
 import { useRef, useState, type DragEvent, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap, type Schemas } from "../../api/client";
 import { errorMessage } from "../../api/errors";
 import { overDims } from "../../components/capacity";
+import { DgBadge } from "../../dg/DgBadge";
+import { dgConflicts, dgLabel, isGeneral } from "../../dg/rules";
 import { sizeText } from "../format";
 import { useDrivers, useVehicles, vehicleLimits } from "../queries";
 import { FillBars, LiveStatus } from "../ui";
@@ -31,6 +38,15 @@ interface Move {
 
 const unitsText = (n: number) => `${n} unit${n === 1 ? "" : "s"}`;
 const lineName = (l: Line) => `${l.item_name} (${l.order_reference})`;
+
+/** A line already on `load` whose dangerous goods can't travel with `line` (ADG), if any. */
+function clashWith(line: Line, load: Load): Line | undefined {
+  if (isGeneral(line.dg)) return undefined;
+  return load.lines.find((o) => o.order_line_id !== line.order_line_id && dgConflicts(line.dg, o.dg));
+}
+
+const clashText = (line: Line, load: Load, other: Line) =>
+  `Load ${load.number} carries ${other.item_name} (${dgLabel(other.dg)}), and ${line.item_name} (${dgLabel(line.dg)}) can't travel with it.`;
 
 export default function LoadEditor({ plan }: { plan: Plan }) {
   const qc = useQueryClient();
@@ -117,6 +133,8 @@ export default function LoadEditor({ plan }: { plan: Plan }) {
   });
 
   const overCount = plan.loads.filter((l) => l.over_capacity).length;
+  const dgLoads = plan.loads.filter((l) => l.dg_conflicts.length);
+  const approvalsMissing = plan.loads.reduce((n, l) => n + l.approvals_missing, 0);
 
   return (
     <section className="load-editor" aria-labelledby="loads-h">
@@ -136,6 +154,19 @@ export default function LoadEditor({ plan }: { plan: Plan }) {
         <p className="warn-box">
           ⚠️ {overCount === 1 ? "One load is" : `${overCount} loads are`} over capacity.
           {editable ? " Move lines out of it, or assign a bigger vehicle, before locking the plan." : " Assign a bigger vehicle."}
+        </p>
+      ) : null}
+      {dgLoads.length > 0 ? (
+        <p className="warn-box dg-bad-box">
+          ⚠️ {dgLoads.length === 1 ? `Load ${dgLoads[0].number} carries` : `Loads ${dgLoads.map((l) => l.number).join(", ")} carry`} dangerous
+          goods that can't travel together.
+          {editable ? " Move one of them to another load before locking the plan." : " Check the loading with the dispatcher in charge."}
+        </p>
+      ) : null}
+      {approvalsMissing > 0 ? (
+        <p className="warn-box">
+          ⚠️ {approvalsMissing === 1 ? "One line needs" : `${approvalsMissing} lines need`} a Northline HSEQ approval
+          (Safety@northline.com.au). Record the approval reference on the line{editable ? " before locking the plan" : ""}.
         </p>
       ) : null}
       <LiveStatus message={message?.text} tone={message?.tone} />
@@ -209,17 +240,23 @@ function LoadCard({ plan, load, editable, busy, dragging, isDropTarget, dropProp
   const [moving, setMoving] = useState<number | null>(null); // assignment id with the Move form open
   const over = overDims(load.usage, load.capacity);
   const canDrop = dragging != null && dragging.from.id !== load.id;
+  const clash = canDrop ? clashWith(dragging.line, load) : undefined;
+  const dgBad = load.dg_conflicts.length > 0;
   const titleId = `load-${load.id}-h`;
 
   return (
     <article
-      className={`card load-card${load.over_capacity ? " over" : ""}${canDrop ? " can-drop" : ""}${isDropTarget ? " drop-over" : ""}`}
+      className={`card load-card${load.over_capacity ? " over" : ""}${dgBad ? " dg-bad" : ""}${canDrop ? " can-drop" : ""}${clash ? " drop-clash" : ""}${isDropTarget ? " drop-over" : ""}`}
       aria-labelledby={titleId}
       {...dropProps}
     >
       <header className="load-card-head">
         <h3 id={titleId}>Load {load.number}</h3>
-        {load.over_capacity ? <span className="chip bad-chip">Over capacity</span> : null}
+        <span className="load-card-chips">
+          {load.over_capacity ? <span className="chip bad-chip">Over capacity</span> : null}
+          {dgBad ? <span className="chip bad-chip">DG conflict</span> : null}
+          {load.approvals_missing ? <span className="chip warn-chip">Approval needed</span> : null}
+        </span>
       </header>
 
       <FillBars usage={load.usage} capacity={load.capacity} />
@@ -227,6 +264,19 @@ function LoadCard({ plan, load, editable, busy, dragging, isDropTarget, dropProp
         <p className="warn-box small">
           ⚠️ Over capacity in {over.map((d) => `${d.label.toLowerCase()} (${d.format(load.usage[d.field])} of ${d.format(load.capacity[d.field] as number)})`).join(" and ")}.
         </p>
+      ) : null}
+
+      {dgBad ? (
+        <div className="warn-box small dg-bad-box">
+          <p><b>⚠️ Dangerous goods that can't travel together</b></p>
+          <ul>{load.dg_conflicts.map((c) => <li key={c.order_line_ids.join("-")}>{c.message}</li>)}</ul>
+        </div>
+      ) : null}
+      {load.dg_warnings.length ? (
+        <div className="warn-box small">
+          <p><b>Dangerous goods checks</b></p>
+          <ul>{load.dg_warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+        </div>
       ) : null}
 
       <Assignment plan={plan} load={load} />
@@ -242,7 +292,7 @@ function LoadCard({ plan, load, editable, busy, dragging, isDropTarget, dropProp
             <div className="load-line-row">
               {editable ? <span className="drag-handle" aria-hidden="true" title="Drag to another load">⠿</span> : null}
               <div className="load-line-main">
-                <b>{line.quantity} × {line.item_name}</b>
+                <b>{line.quantity} × {line.item_name}</b> <DgBadge dg={line.dg} showUn />
                 {line.quantity < line.line_quantity ? (
                   <span className="small muted"> ({line.quantity} of {line.line_quantity}; the rest is on other loads)</span>
                 ) : null}
@@ -266,6 +316,7 @@ function LoadCard({ plan, load, editable, busy, dragging, isDropTarget, dropProp
                 </button>
               ) : null}
             </div>
+            {line.dg_approval_required ? <Approval plan={plan} line={line} /> : null}
             {editable && moving === line.assignment_id ? (
               <MoveForm
                 plan={plan}
@@ -283,7 +334,11 @@ function LoadCard({ plan, load, editable, busy, dragging, isDropTarget, dropProp
       </ul>
 
       {pendingDrop ? <DropQuantity move={pendingDrop} onConfirm={onConfirmDrop} onCancel={onCancelDrop} /> : null}
-      {canDrop ? <p className="drop-hint small" aria-hidden="true">Drop here to move it to load {load.number}</p> : null}
+      {canDrop ? (
+        clash ? (
+          <p className="drop-hint clash small" aria-hidden="true">⚠️ DG conflict: {clashText(dragging.line, load, clash)}</p>
+        ) : <p className="drop-hint small" aria-hidden="true">Drop here to move it to load {load.number}</p>
+      ) : null}
     </article>
   );
 }
@@ -297,7 +352,11 @@ function MoveForm({ plan, line, from, onMove, onCancel }: {
   onCancel: () => void;
 }) {
   const others = plan.loads.filter((l) => l.id !== from.id);
-  const [target, setTarget] = useState<string>(others[0] ? String(others[0].id) : "new");
+  // start on a load the line can travel on
+  const first = others.find((l) => !clashWith(line, l)) ?? others[0];
+  const [target, setTarget] = useState<string>(first ? String(first.id) : "new");
+  const targetLoad = others.find((l) => String(l.id) === target);
+  const clash = targetLoad ? clashWith(line, targetLoad) : undefined;
   const [quantity, setQuantity] = useState(String(line.quantity));
   const id = `move-${line.assignment_id}`;
   const q = Number(quantity);
@@ -319,10 +378,11 @@ function MoveForm({ plan, line, from, onMove, onCancel }: {
         // the form opens on demand, so the first field takes focus
         autoFocus
         onChange={(e) => setTarget(e.target.value)}
+        aria-describedby={clash ? `${id}-clash` : undefined}
       >
         {others.map((l) => (
           <option key={l.id} value={l.id}>
-            Load {l.number}{l.over_capacity ? " (over capacity)" : ""}
+            Load {l.number}{l.over_capacity ? " (over capacity)" : ""}{clashWith(line, l) ? " (DG conflict)" : ""}
           </option>
         ))}
           <option value="new">A new load</option>
@@ -350,6 +410,9 @@ function MoveForm({ plan, line, from, onMove, onCancel }: {
         <button type="button" className="secondary" onClick={onCancel}>Cancel</button>
       </div>
       {!validQ ? <span className="field-error">Enter a whole number from 1 to {line.quantity}.</span> : null}
+      {clash && targetLoad ? (
+        <span id={`${id}-clash`} className="field-error">⚠️ {clashText(line, targetLoad, clash)} Choose another load.</span>
+      ) : null}
     </form>
   );
 }
@@ -398,6 +461,72 @@ function DropQuantity({ move, onConfirm, onCancel }: {
         <button type="button" className="secondary" onClick={onCancel}>Cancel</button>
       </div>
     </form>
+  );
+}
+
+/** Northline HSEQ approval reference of a line that needs one (editable on locked plans too). */
+function Approval({ plan, line }: { plan: Plan; line: Line }) {
+  const qc = useQueryClient();
+  const [changing, setChanging] = useState(false);
+  const [value, setValue] = useState(line.dg_approval_ref ?? "");
+  const [saved, setSaved] = useState("");
+  const save = useMutation({
+    mutationFn: (ref: string | null) =>
+      unwrap(api.PATCH("/api/ops/order-lines/{line_id}", {
+        params: { path: { line_id: line.order_line_id } },
+        body: { dg_approval_ref: ref },
+      })),
+    onMutate: () => setSaved(""),
+    onSuccess: (r) => {
+      setChanging(false);
+      setValue(r.dg_approval_ref ?? "");
+      setSaved(r.dg_approval_ref ? `Approval ${r.dg_approval_ref} saved for ${lineName(line)}.` : `Approval cleared for ${lineName(line)}.`);
+      void qc.invalidateQueries({ queryKey: ["ops", "plan", plan.id] });
+      void qc.invalidateQueries({ queryKey: ["ops", "order", line.order_id] });
+    },
+  });
+  const id = `approval-${line.assignment_id}`;
+  const editing = changing || !line.dg_approval_ref;
+
+  return (
+    <div className="dg-approval">
+      {editing ? (
+        <form
+          className="dg-approval-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate(value.trim() || null);
+          }}
+        >
+          <label htmlFor={id} className="small">
+            Northline HSEQ approval reference<span className="sr-only"> for {lineName(line)}</span>
+          </label>
+          <div className="dg-approval-row">
+            <input
+              id={id}
+              value={value}
+              maxLength={100}
+              placeholder="e.g. HSEQ-2041"
+              disabled={save.isPending}
+              onChange={(e) => setValue(e.target.value)}
+            />
+            <button type="submit" className="primary" disabled={save.isPending || (!value.trim() && !line.dg_approval_ref)}>
+              {save.isPending ? "Saving…" : "Save"}<span className="sr-only"> approval for {lineName(line)}</span>
+            </button>
+            {changing ? <button type="button" className="secondary" onClick={() => { setChanging(false); setValue(line.dg_approval_ref ?? ""); }}>Cancel</button> : null}
+          </div>
+        </form>
+      ) : (
+        <p className="small dg-approved">
+          <span className="good-text">✓ Approved: <b>{line.dg_approval_ref}</b></span>{" "}
+          <button type="button" className="link-button" onClick={() => setChanging(true)}>
+            Change<span className="sr-only"> the approval for {lineName(line)}</span>
+          </button>
+        </p>
+      )}
+      <div role="status" aria-live="polite" className="small">{saved ? <span className="sr-only">{saved}</span> : null}</div>
+      {save.error ? <div className="error small" role="alert">⚠️ {errorMessage(save.error)}</div> : null}
+    </div>
   );
 }
 

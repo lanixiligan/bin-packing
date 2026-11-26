@@ -32,7 +32,7 @@ export default function LoadsTruckView({ plan }: { plan: Schemas["PlanRead"] }) 
             <span>Load <b>{active.load}</b></span>
           </>
         ) : (
-          <span className="muted">Hover over a line, or Tab to it, to see what it is. Lines of one order share a color.</span>
+          <span className="muted">Hover over a line, or Tab to it, to see what it is (and its dangerous goods class). Lines of one order share a color.</span>
         )}
       </div>
       <ViewToggle view={view} onChange={setView} />

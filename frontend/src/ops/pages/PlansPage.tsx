@@ -6,7 +6,7 @@ import { PageHeader } from "../../shell/AppShell";
 import { Empty, QueryState } from "../../shell/QueryState";
 import { formatDate, formatDateTime, todayIso } from "../../shell/format";
 import { sizeText } from "../format";
-import { ZoneTag } from "../ui";
+import { RuleSetChip, ZoneTag } from "../ui";
 
 const JOB_LABEL = { queued: "Queued", running: "Running", succeeded: "Solved", failed: "Failed" } as const;
 
@@ -102,6 +102,7 @@ export default function PlansPage() {
                       <th scope="col">Delivery date</th>
                       <th scope="col">Zone</th>
                       <th scope="col">Status</th>
+                      <th scope="col">DG rules</th>
                       <th scope="col">Optimiser</th>
                       <th scope="col" className="num">Orders</th>
                       <th scope="col" className="num">Loads</th>
@@ -117,6 +118,7 @@ export default function PlansPage() {
                         <td data-label="Status">
                           <span className={`chip plan-${p.status}`}>{p.status === "locked" ? "🔒 Locked" : "Draft"}</span>
                         </td>
+                        <td data-label="DG rules"><RuleSetChip ruleSet={p.rule_set} /></td>
                         <td data-label="Optimiser">
                           {JOB_LABEL[p.job_status]}
                           {p.method ? <span className="small muted"> · saved {p.method === "ortools" ? "OR-Tools" : "FFD"}</span> : null}

@@ -8,6 +8,7 @@ const NAV: NavItem[] = [
   { to: "/ops/fleet", label: "Fleet" },
   { to: "/ops/zones", label: "Zones" },
   { to: "/ops/invoices", label: "Invoices" },
+  { to: "/ops/dg", label: "Dangerous goods" },
 ];
 
 export default function OpsLayout() {

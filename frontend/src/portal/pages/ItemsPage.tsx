@@ -1,5 +1,5 @@
-// /portal/items: the item catalogue (weight, volume, pallet spaces) with
-// search, an archived toggle, create/edit and archive.
+// /portal/items: the item catalogue (weight, volume, pallet spaces, dangerous
+// goods) with search, an archived toggle, create/edit and archive.
 import { useId, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, unwrap } from "../../api/client";
@@ -7,14 +7,19 @@ import { ApiError } from "../../api/errors";
 import { PageHeader } from "../../shell/AppShell";
 import { Empty, ErrorBox, QueryState } from "../../shell/QueryState";
 import { formatKg, formatPallets } from "../../shell/format";
+import { DgBadge } from "../../dg/DgBadge";
 import { ConfirmButton } from "../components/ConfirmButton";
+import { DgFields } from "../components/DgFields";
 import { ErrorSummary, Field } from "../components/Field";
 import { Notice } from "../components/OrderParts";
-import { formatVolume, matchesItemSearch, orNull, splitApiErrors, validateItem, volumeFromCm, type FieldErrors, type ItemFormValues } from "../logic";
+import {
+  DG_FIELDS, dgFromForm, dgToForm, formatVolume, matchesItemSearch, orNull, splitApiErrors, validateItem, volumeFromCm,
+  type DgFormValues, type FieldErrors, type ItemFormValues,
+} from "../logic";
 import { useItems } from "../queries";
 import type { Item, ItemCreate } from "../types";
 
-const ITEM_FIELDS = ["sku", "name", "description", "weight_kg", "volume_m3", "pallet_spaces"];
+const ITEM_FIELDS = ["sku", "name", "description", "weight_kg", "volume_m3", "pallet_spaces", ...DG_FIELDS];
 
 export default function ItemsPage() {
   const [search, setSearch] = useState("");
@@ -60,7 +65,7 @@ export default function ItemsPage() {
         <div className="toolbar">
           <div className="field grow">
             <label htmlFor="item-search">Search</label>
-            <input id="item-search" type="search" placeholder="SKU, name or description" value={search}
+            <input id="item-search" type="search" placeholder="SKU, name, description, DG class or UN number" value={search}
                    onChange={(e) => setSearch(e.target.value)} />
           </div>
           <label className="check">
@@ -86,6 +91,7 @@ export default function ItemsPage() {
                         <th scope="col" className="num">Weight</th>
                         <th scope="col" className="num">Volume</th>
                         <th scope="col" className="num">Pallets</th>
+                        <th scope="col"><abbr title="Dangerous goods">DG</abbr></th>
                         <th scope="col"><span className="visually-hidden">Actions</span></th>
                       </tr>
                     </thead>
@@ -103,6 +109,7 @@ export default function ItemsPage() {
                           <td data-label="Weight" className="num">{formatKg(item.weight_kg)}</td>
                           <td data-label="Volume" className="num">{formatVolume(item.volume_m3)}</td>
                           <td data-label="Pallets" className="num">{formatPallets(item.pallet_spaces)}</td>
+                          <td data-label="Dangerous goods"><DgBadge dg={item.dg} showUn showGeneral /></td>
                           <td data-label="Actions" className="row-actions">
                             <span className="actions-inline">
                               <button type="button" className="secondary" aria-label={`Edit ${item.sku}`}
@@ -142,6 +149,7 @@ const toValues = (item: Item | null): ItemFormValues => ({
   weight_kg: item ? String(item.weight_kg) : "",
   volume_m3: item ? String(item.volume_m3) : "",
   pallet_spaces: item ? String(item.pallet_spaces) : "",
+  dg: dgToForm(item?.dg),
 });
 
 function ItemForm({ item, onDone }: { item: Item | null; onDone: (saved: Item | null, created: boolean) => void }) {
@@ -175,11 +183,20 @@ function ItemForm({ item, onDone }: { item: Item | null; onDone: (saved: Item | 
     },
   });
 
-  const set = (key: keyof ItemFormValues, value: string) => {
+  const set = (key: Exclude<keyof ItemFormValues, "dg">, value: string) => {
     const next = { ...v, [key]: value };
     setV(next);
     if (attempted) setClientErrors(validateItem(next));
     if (serverErrors.fields[key]) setServerErrors((s) => ({ ...s, fields: { ...s.fields, [key]: "" } }));
+  };
+
+  const setDg = (patch: Partial<DgFormValues>) => {
+    const next = { ...v, dg: { ...v.dg, ...patch } };
+    setV(next);
+    if (attempted) setClientErrors(validateItem(next));
+    if (DG_FIELDS.some((k) => serverErrors.fields[k])) {
+      setServerErrors((s) => ({ ...s, fields: Object.fromEntries(Object.entries(s.fields).filter(([k]) => !DG_FIELDS.includes(k))) }));
+    }
   };
 
   const setDim = (key: "l" | "w" | "h", value: string) => {
@@ -208,6 +225,7 @@ function ItemForm({ item, onDone }: { item: Item | null; onDone: (saved: Item | 
       weight_kg: Number(v.weight_kg),
       volume_m3: v.volume_m3.trim() === "" ? 0 : Number(v.volume_m3),
       pallet_spaces: v.pallet_spaces.trim() === "" ? 0 : Number(v.pallet_spaces),
+      dg: dgFromForm(v.dg),
     });
   }
 
@@ -256,6 +274,8 @@ function ItemForm({ item, onDone }: { item: Item | null; onDone: (saved: Item | 
           </div>
           <p className="small muted" role="status" aria-live="polite">{dimsNote || "Fill in all three sides to set the volume."}</p>
         </details>
+
+        <DgFields idPrefix={uid} value={v.dg} onChange={setDg} err={err} />
 
         <div className="form-actions">
           <button type="submit" className="primary" disabled={save.isPending}>

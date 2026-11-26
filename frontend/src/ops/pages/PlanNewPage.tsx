@@ -11,11 +11,47 @@ import { sizeText } from "../format";
 import { useVehicles, useZones, vehicleCapacity, vehicleLimits } from "../queries";
 
 type Infeasible = Schemas["InfeasibleDetail"];
+type RuleSet = Schemas["RuleSet"];
+type DgIssue = Schemas["DgIssue"];
 
 const isInfeasible = (d: unknown): d is Infeasible =>
   !!d && typeof d === "object" && "misfits" in d && Array.isArray((d as Infeasible).misfits);
 
 const DIM_LABEL = { weight: "weight", volume: "volume", pallets: "pallets" } as const;
+
+const RULE_SETS: { value: RuleSet; label: string; hint: string }[] = [
+  { value: "adg", label: "ADG Code", hint: "Keeps incompatible dangerous goods on separate loads (segregation, Table 9.1 and 9.2)." },
+  {
+    value: "northline", label: "ADG + Northline acceptance",
+    hint: "Also refuses goods Northline won't carry or quantities over its limits, and asks for HSEQ approval references.",
+  },
+];
+
+const ISSUE_KIND: Record<DgIssue["kind"], string> = {
+  prohibited: "Not accepted", limit: "Over the limit", approval: "Needs approval", note: "Note",
+};
+
+/** DG issues grouped by order, in the order they came. */
+function byOrder(issues: DgIssue[]): { orderId: number; reference: string; issues: DgIssue[] }[] {
+  const groups = new Map<number, { orderId: number; reference: string; issues: DgIssue[] }>();
+  for (const i of issues) {
+    let g = groups.get(i.order_id);
+    if (!g) {
+      g = { orderId: i.order_id, reference: i.order_reference, issues: [] };
+      groups.set(i.order_id, g);
+    }
+    g.issues.push(i);
+  }
+  return [...groups.values()];
+}
+
+/** The backend prefixes each message with "REF: item: "; the list already shows both. */
+const issueText = (i: DgIssue) => {
+  let m = i.message;
+  if (m.startsWith(`${i.order_reference}: `)) m = m.slice(i.order_reference.length + 2);
+  if (i.item_name && m.startsWith(`${i.item_name}: `)) m = m.slice(i.item_name.length + 2);
+  return m;
+};
 
 export default function PlanNewPage() {
   const [params] = useSearchParams();
@@ -24,6 +60,7 @@ export default function PlanNewPage() {
   const [date, setDate] = useState(params.get("date") ?? todayIso(1));
   const [zone, setZone] = useState(params.get("zone") ?? "");
   const [vehicleId, setVehicleId] = useState("");
+  const [ruleSet, setRuleSet] = useState<RuleSet>("adg");
 
   const zones = useZones();
   const vehicles = useVehicles();
@@ -44,7 +81,7 @@ export default function PlanNewPage() {
 
   const create = useMutation({
     mutationFn: () =>
-      unwrap(api.POST("/api/ops/plans", { body: { delivery_date: date, zone, vehicle_id: Number(vehicleId) } })),
+      unwrap(api.POST("/api/ops/plans", { body: { delivery_date: date, zone, vehicle_id: Number(vehicleId), rule_set: ruleSet } })),
     onSuccess: (plan) => {
       void qc.invalidateQueries({ queryKey: ["ops"] });
       navigate(`/ops/plans/${plan.id}`);
@@ -91,6 +128,26 @@ export default function PlanNewPage() {
           </label>
         </div>
 
+        <fieldset className="method-choice rule-set-choice">
+          <legend>Dangerous goods rules</legend>
+          {RULE_SETS.map((r) => (
+            <label key={r.value} className={`method-option${ruleSet === r.value ? " on" : ""}`}>
+              <input
+                type="radio"
+                name="rule_set"
+                value={r.value}
+                checked={ruleSet === r.value}
+                aria-describedby={`rule-${r.value}-hint`}
+                onChange={() => { setRuleSet(r.value); create.reset(); }}
+              />
+              <span>
+                <b>{r.label}</b>
+                <span id={`rule-${r.value}-hint`} className="small muted rule-set-hint">{r.hint}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+
         <div className="plan-preview" aria-live="polite">
           <p id="vehicle-limits" className="small">
             {vehicle ? (
@@ -120,14 +177,38 @@ export default function PlanNewPage() {
           {infeasible ? (
             <div className="error infeasible">
               <p><b>⚠️ {infeasible.message}</b></p>
-              <ul>
-                {infeasible.misfits.map((m) => (
-                  <li key={`${m.order_line_id}`}>
-                    <Link to={`/ops/orders/${m.order_id}`}>{m.order_reference}</Link>: {m.message}
-                    <span className="small"> (too big in {m.dimensions.map((d) => DIM_LABEL[d]).join(" and ")})</span>
-                  </li>
-                ))}
-              </ul>
+              {infeasible.misfits.length ? (
+                <>
+                  {infeasible.dg_issues?.length ? <h3 className="infeasible-h">Too big for {vehicle?.name ?? "the vehicle"}</h3> : null}
+                  <ul>
+                    {infeasible.misfits.map((m) => (
+                      <li key={`${m.order_line_id}`}>
+                        <Link to={`/ops/orders/${m.order_id}`}>{m.order_reference}</Link>: {m.message}
+                        <span className="small"> (too big in {m.dimensions.map((d) => DIM_LABEL[d]).join(" and ")})</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+              {infeasible.dg_issues?.length ? (
+                <>
+                  <h3 className="infeasible-h">Dangerous goods Northline won't accept</h3>
+                  <ul>
+                    {byOrder(infeasible.dg_issues).map((g) => (
+                      <li key={g.orderId}>
+                        <Link to={`/ops/orders/${g.orderId}`}>{g.reference}</Link>
+                        <ul>
+                          {g.issues.map((i, k) => (
+                            <li key={k}>
+                              <b>{ISSUE_KIND[i.kind]}</b>{i.item_name ? <>: {i.item_name}</> : null}. {issueText(i)}
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
             </div>
           ) : create.error ? (
             <div className="error">⚠️ {errorMessage(create.error)}</div>

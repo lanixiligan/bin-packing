@@ -14,7 +14,7 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Vector3 } from "three";
 import { Edges, OrbitControls } from "@react-three/drei";
-import { colorFor, describeSize, describeUsage, limitedDims, shipmentFractions, sizeOf, truckFill } from "./capacity.ts";
+import { colorFor, describeSize, describeUsage, dgTextOf, limitedDims, shipmentFractions, sizeOf, truckFill } from "./capacity.ts";
 import { DARK_SCHEME, REDUCED_MOTION, useMediaQuery } from "../useMediaQuery.js";
 
 // Scene units (roughly metres, scaled down).
@@ -372,9 +372,10 @@ export default function TruckScene3D({
                     onFocus={() => onFocusBlock(s.id)}
                     onBlur={() => onFocusBlock(null)}
                   >
+                    {`${s.name}${dgTextOf(s) ? `, ${dgTextOf(s)}` : ""}${s.detail ? `, ${s.detail}` : ""}, `}
                     {multi
-                      ? `${s.name}${s.detail ? `, ${s.detail}` : ""}, ${describeSize(sizeOf(s))}, ${truckName(t).toLowerCase()} of ${data.num_trucks}`
-                      : `${s.name}, ${s.weight} kg, truck ${t.truck} of ${data.num_trucks}`}
+                      ? `${describeSize(sizeOf(s))}, ${truckName(t).toLowerCase()} of ${data.num_trucks}`
+                      : `${s.weight} kg, truck ${t.truck} of ${data.num_trucks}`}
                   </li>
                 ))}
               </ul>

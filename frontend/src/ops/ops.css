@@ -117,3 +117,26 @@ h2[tabindex="-1"]:focus { outline: 2px solid var(--primary); outline-offset: 4px
 @media (prefers-reduced-motion: reduce) {
   .load-card { transition: none; }
 }
+
+/* Dangerous goods */
+.rule-set-choice { margin-top: 14px; }
+.rule-set-hint { display: block; font-weight: 400; margin-top: 2px; }
+.infeasible-h { font-size: 0.95rem; margin: 10px 0 4px; }
+.infeasible ul ul { padding-left: 18px; margin: 2px 0 6px; }
+.chip.rule-chip { background: var(--neutral-bg); color: var(--text); margin-left: 6px; }
+.chip.rule-chip.northline { background: var(--info-bg); color: var(--info); }
+.load-card-chips { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.load-card-chips .chip { margin-left: 0; }
+.load-card.dg-bad { border-color: var(--bad); }
+.load-card.drop-clash { border-color: var(--bad); }
+.drop-hint.clash { color: var(--bad-text); }
+.warn-box p { margin: 0; }
+.warn-box ul { margin: 4px 0 0; padding-left: 18px; }
+.warn-box.dg-bad-box { background: var(--bad-bg); color: var(--bad-text); }
+.load-line-main .dg-badge { margin-left: 4px; }
+.dg-approval { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
+.dg-approval-form { display: flex; flex-direction: column; gap: 4px; }
+.dg-approval-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.dg-approval-row input { flex: 1 1 140px; min-width: 0; }
+.dg-approved { margin: 0; }
+.dg-notice ul { margin: 4px 0 0; padding-left: 18px; }

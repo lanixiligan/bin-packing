@@ -2,10 +2,13 @@
 // An in-memory copy of one customer's data (Acme Hardware, company 1) plus a
 // little of another company's, to show that other tenants' rows answer 404.
 // The handlers follow docs/api.md: FastAPI-shaped 422s, 409 for a duplicate
-// SKU and for invalid status changes, the real quote formula.
+// SKU and for invalid status changes, the real quote formula, and dangerous
+// goods: items carry `dg`, lines copy it, orders list `dg_conflicts`.
 import { fail, mock, newId, nowIso, ok, type MockRequest, type MockResponse } from "../api/mock.ts";
 import { todayIso } from "../shell/format.ts";
-import type { Address, Item, Order, OrderEvent, OrderLine, OrderStatus, OrderSummary, Pod, Quote } from "./types.ts";
+import { DG_CLASSES, checkAll, isGeneral, normalise, validateDg, type DgInfo, type DgLike } from "../dg/rules.ts";
+import { dgItemLabel } from "./logic.ts";
+import type { Address, DgConflict, Item, Order, OrderEvent, OrderLine, OrderStatus, OrderSummary, Pod, Quote } from "./types.ts";
 
 // ---- Pricing (same as backend/app/pricing.py) -------------------------------------
 
@@ -92,8 +95,9 @@ function seed(): Store {
   const created = hoursAgo(24 * 60);
   const item = (id: number, sku: string, name: string, weight_kg: number, volume_m3: number, pallet_spaces: number,
     description: string | null = null, company_id = MY_COMPANY, archived = false): Item => ({
-    id, company_id, sku, name, description, weight_kg, volume_m3, pallet_spaces, archived, created_at: created,
+    id, company_id, sku, name, description, weight_kg, volume_m3, pallet_spaces, dg: null, archived, created_at: created,
   });
+  const dgItem = (it: Item, dg: DgLike): Item => ({ ...it, dg: normalise(dg) });
   const items: Item[] = [
     item(1, "BOLT-M10-100", "M10 bolts, box of 100", 4.2, 0.003, 0, "Zinc-plated hex bolts with nuts."),
     item(2, "CEM-20", "Cement bag 20 kg", 20, 0.014, 0),
@@ -106,6 +110,16 @@ function seed(): Store {
     item(9, "BARROW", "Wheelbarrow, boxed", 14, 0.18, 0),
     item(10, "PAVER-PAL", "Concrete pavers, pallet", 1100, 0.8, 1),
     item(11, "DRILL-18V", "Cordless drill 18 V (discontinued)", 3.5, 0.008, 0, null, MY_COMPANY, true),
+    // Dangerous goods: pool chlorine can't share a vehicle with the thinners (5.1 × 3) or the acids (5.1 × 8);
+    // the drain cleaner's Table 9.2 details aren't recorded, so with the acid it needs a check.
+    dgItem(item(12, "POOL-CHLOR-10", "Pool chlorine granules 10 kg", 10.5, 0.012, 0, "Calcium hypochlorite, 65% available chlorine."),
+      { dg_class: "5.1", packing_group: "II", un_number: "2880", t92: ["calcium_hypochlorite", "hypochlorite"] }),
+    dgItem(item(13, "THINNERS-20L", "Paint thinners 20 L", 17, 0.024, 0),
+      { dg_class: "3", packing_group: "II", un_number: "1263", container: "drum", t92: [] }),
+    dgItem(item(14, "HCL-20L", "Hydrochloric acid 20 L", 23, 0.022, 0, "Pool and masonry acid, 32%."),
+      { dg_class: "8", packing_group: "II", un_number: "1789", t92: ["acid_strong"] }),
+    dgItem(item(15, "DRAIN-5L", "Drain cleaner 5 L", 6, 0.006, 0, "Sodium hydroxide solution."),
+      { dg_class: "8", packing_group: "II", un_number: "1824", t92: null }),
     item(50, "CABLE-100M", "Cable drum 100 m", 45, 0.2, 0, null, 2),
   ];
 
@@ -189,6 +203,8 @@ function seed(): Store {
   order(10, { pickup: 1, delivery: 4, day: -1, lastHoursAgo: 22, lines: [[10, 2]], startedHoursAgo: 80,
     steps: [["submitted", ALICE, null], ["accepted", DANA, null], ["planned", DANA, null], ["exception", DAVE,
       "Site gate locked and nobody answered the phone. Goods returned to the depot."]] });
+  order(11, { pickup: 1, delivery: 6, day: 5, lines: [[12, 4], [13, 2], [14, 2], [15, 1]], startedHoursAgo: 4, steps: [],
+    ref: "PO-4475", notes: "Pool supplies for the Sutherland store." });
   order(20, { pickup: 60, delivery: 60, day: 2, lines: [[50, 3]], startedHoursAgo: 10, steps: [], company: 2 });
   return store;
 }
@@ -202,7 +218,24 @@ function lineFrom(store: Store, itemId: number, quantity: number): OrderLine {
   return {
     id: newId(), item_id: it.id, item_name: it.name, item_sku: it.sku, quantity,
     unit_weight_kg: it.weight_kg, unit_volume_m3: it.volume_m3, unit_pallet_spaces: it.pallet_spaces,
+    dg: it.dg ?? null, dg_approval_ref: null,
   };
+}
+
+/** Pairs of lines that can't share a vehicle or need a Table 9.2 check (as backend/app/serializers.py). */
+export function dgConflicts(lines: OrderLine[]): DgConflict[] {
+  return checkAll(lines, (l) => l.dg).map((c) => {
+    const items = [dgItemLabel(c.a.item_name, c.a.dg), dgItemLabel(c.b.item_name, c.b.dg)];
+    const reasons = c.reasons.join(" ");
+    return {
+      status: c.status,
+      order_line_ids: [c.a.id, c.b.id],
+      items,
+      message: c.status === "incompatible"
+        ? `${items[0]} and ${items[1]} can't travel on the same vehicle. ${reasons}`
+        : `Check ${items[0]} with ${items[1]}: ${reasons}`,
+    };
+  });
 }
 
 function quoteForRecord(store: Store, rec: OrderRecord, stored: boolean): Quote {
@@ -249,6 +282,7 @@ function detail(rec: OrderRecord): Order {
     delivery_address: db.addresses.find((a) => a.id === rec.delivery_address_id)!,
     notes: rec.notes,
     lines: rec.lines,
+    dg_conflicts: dgConflicts(rec.lines),
     events: rec.events,
     quote: rec.quote,
     pods: rec.pods,
@@ -353,8 +387,49 @@ function itemIssues(body: Body, partial: boolean): Issue[] {
   checkNum(body, "weight_kg", issues, { gt: 0, le: 100_000, required });
   checkNum(body, "volume_m3", issues, { ge: 0, le: 1_000 });
   checkNum(body, "pallet_spaces", issues, { ge: 0, le: 100 });
+  dgIssues(body, issues);
   return issues;
 }
+
+const DG_KEYS = ["dg_class", "subsidiary", "packing_group", "un_number", "explosive_code", "container", "t92", "carrier_tags", "food", "fire_risk"];
+
+/** The DgInfo model's checks (backend/app/dg.py): field errors first, then its model validator. */
+function dgIssues(body: Body, issues: Issue[]) {
+  const raw = body.dg;
+  if (raw === undefined || raw === null) return;
+  const loc = ["body", "dg"];
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    return void issues.push({ type: "model_type", loc, msg: "Input should be a valid dictionary or instance of DgInfo", input: raw });
+  }
+  const d = raw as Body;
+  const before = issues.length;
+  for (const key of Object.keys(d)) {
+    if (!DG_KEYS.includes(key)) issues.push({ type: "extra_forbidden", loc: [...loc, key], msg: "Extra inputs are not permitted", input: d[key] });
+  }
+  if (d.dg_class != null && !(DG_CLASSES as unknown[]).includes(d.dg_class)) {
+    issues.push({ type: "literal_error", loc: [...loc, "dg_class"], msg: `Input should be ${DG_CLASSES.map((c) => `'${c}'`).join(", ")}`, input: d.dg_class });
+  }
+  if (d.un_number != null && (typeof d.un_number !== "string" || !/^\d{4}$/.test(d.un_number))) {
+    issues.push({ type: "string_pattern_mismatch", loc: [...loc, "un_number"], msg: "String should match pattern '^\\d{4}$'", input: d.un_number });
+  }
+  if (Array.isArray(d.subsidiary) && d.subsidiary.length > 4) {
+    issues.push({ type: "too_long", loc: [...loc, "subsidiary"], msg: `List should have at most 4 items after validation, not ${d.subsidiary.length}`, input: d.subsidiary });
+  }
+  if (issues.length > before) return;
+  const dg = d as DgLike;
+  let msg: string | undefined;
+  if (!dg?.dg_class) {
+    if (dg?.subsidiary?.length || dg?.packing_group || dg?.un_number || dg?.explosive_code || dg?.t92?.length || dg?.carrier_tags?.length) {
+      msg = "Choose a DG class before you add DG details, or clear them.";
+    }
+  } else if (dg.food) msg = "Dangerous goods can't be marked as food.";
+  else if (dg.dg_class !== "1" && dg.explosive_code) msg = "The explosive code is only for Class 1.";
+  msg ??= validateDg(dg)[0];
+  if (msg) issues.push({ type: "value_error", loc, msg: `Value error, ${msg}`, input: raw });
+}
+
+/** What's stored in `items.dg`: null for general freight, else the DgInfo with its defaults. */
+const storeDg = (raw: unknown): DgInfo | null => (isGeneral(raw as DgLike) ? null : normalise(raw as DgLike));
 
 const skuTaken = (company: number, sku: string, exceptId?: number) =>
   db.items.some((i) => i.company_id === company && i.id !== exceptId && i.sku.toLowerCase() === sku.trim().toLowerCase());
@@ -376,7 +451,7 @@ mock("post", "/api/portal/items", customer(({ body: raw }, company) => {
     id: newId(), company_id: company, sku, name: String(body.name).trim(),
     description: (body.description as string | null | undefined) ?? null,
     weight_kg: body.weight_kg as number, volume_m3: (body.volume_m3 as number | undefined) ?? 0,
-    pallet_spaces: (body.pallet_spaces as number | undefined) ?? 0, archived: false, created_at: nowIso(),
+    pallet_spaces: (body.pallet_spaces as number | undefined) ?? 0, dg: storeDg(body.dg), archived: false, created_at: nowIso(),
   };
   db.items.push(item);
   return ok(item, 201);
@@ -405,6 +480,7 @@ mock("patch", "/api/portal/items/{item_id}", customer((req, company) => {
     if (v === null && key !== "description") continue; // not nullable columns: ignore
     (item as Record<string, unknown>)[key] = typeof v === "string" && key !== "description" ? v.trim() : v;
   }
+  if ("dg" in body) item.dg = storeDg(body.dg); // null clears it
   return ok(item);
 }));
 

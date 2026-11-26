@@ -26,8 +26,12 @@ function TallyRow({ label, count, kind, extraFrom, note, noun = "truck" }) {
 //   bound_note    replaces the 1D "⌈total ÷ capacity⌉" note
 //   bound_details [{ label, text, binding }]: the lower bound per dimension
 //   ortools: null when CP-SAT found no solution in time (FFD is shown alone)
+//   segregated    true when some dangerous goods must travel apart: the lower
+//                 bound ignores that, so a note says so
+//   dg_floor      like `segregated` for the wording of the "above the bound"
+//                 sentence only (the caller shows its own segregation note)
 export default function Summary({ result, noun = "truck" }) {
-  const { ffd, lower_bound: lb, total_weight, capacity, bound_note, bound_details } = result;
+  const { ffd, lower_bound: lb, total_weight, capacity, bound_note, bound_details, segregated } = result;
   if (!result.ortools) return <FfdOnlySummary result={result} noun={noun} />;
   const { ortools } = result;
   const saved = ffd.num_trucks - ortools.num_trucks;
@@ -48,7 +52,9 @@ export default function Summary({ result, noun = "truck" }) {
   if (ortools.num_trucks === lb) {
     floorNote = `No plan can use fewer than ${nouns(lb)}, so ${ortools.num_trucks} is the best possible.`;
   } else if (ortools.optimal) {
-    floorNote = `The lower bound is ${lb}, but OR-Tools proved that ${ortools.num_trucks} is the fewest possible: the ${noun === "truck" ? "shipments" : "items"} don't split evenly enough to reach it.`;
+    floorNote = segregated || result.dg_floor
+      ? `The lower bound is ${lb}, but OR-Tools proved that ${ortools.num_trucks} is the fewest possible: some dangerous goods must travel apart, or the ${noun === "truck" ? "shipments" : "items"} don't split evenly enough.`
+      : `The lower bound is ${lb}, but OR-Tools proved that ${ortools.num_trucks} is the fewest possible: the ${noun === "truck" ? "shipments" : "items"} don't split evenly enough to reach it.`;
   } else {
     floorNote = `The best possible is somewhere between ${lb} and ${ortools.num_trucks}; OR-Tools couldn't prove which in ${ortools.time_limit_s} s.`;
   }
@@ -84,6 +90,7 @@ export default function Summary({ result, noun = "truck" }) {
       </div>
 
       {bound_details && <BoundDetails details={bound_details} />}
+      {segregated && <SegregationNote noun={noun} />}
 
       <ul className="tally-legend small muted" aria-hidden="true">
         <li><span className="swatch ffd" /> {noun} used</li>
@@ -91,6 +98,16 @@ export default function Summary({ result, noun = "truck" }) {
         <li><span className="swatch line" /> lower bound</li>
       </ul>
     </section>
+  );
+}
+
+/** Shown when incompatible dangerous goods had to go on separate trucks. */
+function SegregationNote({ noun }) {
+  return (
+    <p className="dg-bound-note">
+      ⚠️ Some dangerous goods are incompatible (ADG Code Table 9.1) and never share a {noun}. The lower bound
+      only counts {noun === "truck" ? "weight" : "capacity"} and ignores this segregation, so it can be lower than any plan that keeps them apart.
+    </p>
   );
 }
 
@@ -113,7 +130,7 @@ function BoundDetails({ details }) {
 
 /** When OR-Tools has no solution: FFD against the lower bound only. */
 function FfdOnlySummary({ result, noun }) {
-  const { ffd, lower_bound: lb, bound_note, bound_details } = result;
+  const { ffd, lower_bound: lb, bound_note, bound_details, segregated } = result;
   const scale = Math.max(ffd.num_trucks, lb);
   return (
     <section className="card summary" style={{ "--n": scale, "--lb": lb }} aria-label="Summary">
@@ -130,6 +147,7 @@ function FfdOnlySummary({ result, noun }) {
         <TallyRow label="Lower bound" kind="bound" count={lb} note={bound_note ?? "no plan can use fewer"} noun={noun} />
       </div>
       {bound_details && <BoundDetails details={bound_details} />}
+      {segregated && <SegregationNote noun={noun} />}
     </section>
   );
 }

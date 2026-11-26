@@ -8,10 +8,12 @@ import { ApiError } from "../api/errors";
 import { ErrorBox, Loading } from "../shell/QueryState";
 import { formatDateTime, formatKg, formatMoney, todayIso } from "../shell/format";
 import { ErrorSummary, Field } from "./components/Field";
-import { Notice, QuoteDetails, TotalsRow, ZoneNote } from "./components/OrderParts";
+import { DgBadge } from "../dg/DgBadge";
+import { dgLabel, isGeneral } from "../dg/rules";
+import { DgNotices, Notice, QuoteDetails, TotalsRow, ZoneNote, type DgNoticeEntry } from "./components/OrderParts";
 import {
-  formatVolume, lineTotals, orNull, pricedLines, splitApiErrors, timeInput, validateOrder,
-  type BuilderLine, type FieldErrors, type OrderFormValues,
+  formatVolume, lineTotals, orNull, orderDgWarnings, pricedLines, splitApiErrors, timeInput, validateOrder,
+  type BuilderLine, type DgPairWarning, type FieldErrors, type OrderFormValues,
 } from "./logic";
 import { useAddresses, useItems, useOrderSaved, useQuotePreview } from "./queries";
 import type { Address, Item, Order, OrderCreate, QuotePreviewRequest } from "./types";
@@ -19,6 +21,11 @@ import type { Address, Item, Order, OrderCreate, QuotePreviewRequest } from "./t
 const ORDER_FIELDS = ["pickup_address_id", "delivery_address_id", "delivery_date", "window_start", "window_end", "customer_reference", "notes", "lines"];
 
 let lineSeq = 0;
+
+const dgEntry = (w: DgPairWarning): DgNoticeEntry => ({
+  key: w.key,
+  content: <><strong>{w.a}</strong> and <strong>{w.b}</strong>{w.reason ? <span className="small">: {w.reason}</span> : null}</>,
+});
 const newLine = (itemId = "", quantity = "1"): BuilderLine => ({ key: `l${++lineSeq}`, itemId, quantity });
 
 function initialValues(order: Order | null, template: Order | null): OrderFormValues {
@@ -101,6 +108,7 @@ function BuilderForm({ order, template, flash, items, addresses }: {
   const clientErrors = useMemo(() => validateOrder(v, today), [v, today]);
   const shown = (k: string) => (attempted ? clientErrors[k] : undefined) || serverFields[k] || undefined;
 
+  const dgWarnings = useMemo(() => orderDgWarnings(v.lines, itemsById), [v.lines, itemsById]);
   const totals = lineTotals(v.lines.map((l) => ({ itemId: l.itemId ? Number(l.itemId) : null, quantity: Number(l.quantity) })), itemsById);
 
   // Live quote preview (debounced), once there's a delivery address and a complete line.
@@ -291,7 +299,9 @@ function BuilderForm({ order, template, flash, items, addresses }: {
                             onChange={(e) => updateLine(line.key, { itemId: e.target.value })}>
                       <option value="">Choose an item…</option>
                       {options.map((i) => (
-                        <option key={i.id} value={i.id}>{i.sku}: {i.name}{i.archived ? " (archived)" : ""}</option>
+                        <option key={i.id} value={i.id}>
+                          {i.sku}: {i.name}{isGeneral(i.dg) ? "" : ` · ${dgLabel(i.dg)}`}{i.archived ? " (archived)" : ""}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -302,7 +312,8 @@ function BuilderForm({ order, template, flash, items, addresses }: {
                            onChange={(e) => updateLine(line.key, { quantity: e.target.value })} />
                   </div>
                   <p className="line-sub small muted">
-                    {item && qty > 0 ? `${formatKg(item.weight_kg * qty)} · ${formatVolume(item.volume_m3 * qty)}` : null}
+                    {item ? <DgBadge dg={item.dg} showUn /> : null}
+                    {item && qty > 0 ? <span>{formatKg(item.weight_kg * qty)} · {formatVolume(item.volume_m3 * qty)}</span> : null}
                   </p>
                   <button type="button" className="secondary line-remove" disabled={v.lines.length === 1}
                           aria-label={`Remove item ${idx + 1}${item ? ` (${item.sku})` : ""}`} onClick={() => removeLine(line.key)}>
@@ -337,6 +348,13 @@ function BuilderForm({ order, template, flash, items, addresses }: {
         <section className="card">
           <h2 className="card-title">Summary</h2>
           <TotalsRow totals={totals} />
+          <div aria-live="polite">
+            <DgNotices
+              incompatible={dgWarnings.incompatible.map(dgEntry)}
+              check={dgWarnings.check.map(dgEntry)}
+              checkAdvice={<>Record the items’ Table 9.2 details in the <Link to="/portal/items">item catalogue</Link>, or check section 14 of the safety data sheet (SDS).</>}
+            />
+          </div>
           <div className="quote-preview" role="status" aria-live="polite" aria-busy={quote.isFetching || !settled}>
             {!quoteReq ? (
               <p className="muted small">Choose a delivery address and at least one item to see a price.</p>

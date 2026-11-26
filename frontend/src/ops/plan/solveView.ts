@@ -3,6 +3,7 @@
 // shape: { num_trucks, drop_order, trucks: [{ truck, shipments }] }.
 import type { Schemas } from "../../api/client";
 import { limitedDims, limitOf, type CapacityLimits } from "../../components/capacity.ts";
+import { checkAll, dgKey, dgLabel, isGeneral, type DgLike } from "../../dg/rules.ts";
 
 type SolveResult = Schemas["SolveResult"];
 type MethodResult = Schemas["MethodResult"];
@@ -16,8 +17,23 @@ export interface ViewShipment {
   pallets: number;
   /** Color by order, so all units of one order look alike. */
   colorKey: number;
-  /** Shown in labels: the order reference. */
+  /** Shown in labels: the order reference (and the DG class, e.g. "ORD-1 · Class 3"). */
   detail: string;
+  /** Dangerous goods only: "Class 3" (Truck.jsx shows it on the block). */
+  dgLabel?: string;
+  /** Dangerous goods only: the placard Truck.jsx draws ("3", "6.1", or "food" / "fire_risk"). */
+  dgCode?: string;
+}
+
+/** `detail`, `dgLabel` and `dgCode` of a shipment: the DG class is added for dangerous goods only. */
+function dgFields(reference: string, dg: DgLike): Pick<ViewShipment, "detail" | "dgLabel" | "dgCode"> {
+  if (isGeneral(dg)) return { detail: reference };
+  const label = dgLabel(dg);
+  return {
+    detail: `${reference} · ${label}${dg?.un_number ? ` · UN ${dg.un_number}` : ""}`,
+    dgLabel: label,
+    dgCode: dg?.dg_class ?? (dg?.food ? "food" : "fire_risk"),
+  };
 }
 
 export interface ViewTruck {
@@ -42,7 +58,7 @@ const unitShipment = (u: PackUnit): ViewShipment => ({
   volume: u.volume_m3,
   pallets: u.pallets,
   colorKey: u.order_id,
-  detail: u.order_reference,
+  ...dgFields(u.order_reference, u.dg),
 });
 
 /** One solver method's loads, as trucks of units. */
@@ -71,7 +87,7 @@ export function loadsPanelData(loads: Schemas["LoadRead"][]): PanelData {
       volume: line.unit_volume_m3 * line.quantity,
       pallets: line.unit_pallet_spaces * line.quantity,
       colorKey: line.order_id,
-      detail: line.order_reference,
+      ...dgFields(line.order_reference, line.dg),
     })),
   }));
   return { num_trucks: loads.length, drop_order: trucks.flatMap((t) => t.shipments.map((s) => s.id)), trucks };
@@ -106,7 +122,27 @@ export function summaryData(result: SolveResult) {
     capacity: cap.weight_kg ?? 0,
     bound_note: `by ${binding.join(" and ") || "capacity"}: no plan can use fewer`,
     bound_details: details,
+    // SolveComparison shows its own segregation note; this only fixes the "above the bound" wording.
+    dg_floor: segregationNote(result) !== null,
   };
+}
+
+/**
+ * A note for the comparison when the units carry dangerous goods that can't share a load:
+ * the lower bound only counts capacity, so the best plan may need more loads. Null otherwise.
+ */
+export function segregationNote(result: SolveResult): string | null {
+  const distinct = new Map<string, DgLike>();
+  for (const u of result.units) {
+    const k = dgKey(u.dg);
+    if (k && !distinct.has(k)) distinct.set(k, u.dg);
+  }
+  const clashes = checkAll([...distinct.values()], (d) => d).filter((c) => c.status === "incompatible");
+  if (!clashes.length) return null;
+  const pairs = clashes.slice(0, 3).map((c) => `${dgLabel(c.a)} with ${dgLabel(c.b)}`);
+  const more = clashes.length > 3 ? ` and ${clashes.length - 3} more` : "";
+  return `The lower bound ignores dangerous goods segregation: ${pairs.join(", ")}${more} can't share a load, `
+    + "so the best plan may need more loads than the bound. Both methods keep them apart.";
 }
 
 /** Where each unit ended up, per method: unit id → load numbers. */

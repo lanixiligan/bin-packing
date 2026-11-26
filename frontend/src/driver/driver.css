@@ -80,3 +80,7 @@ label.tap-button { border: 1px solid var(--border); background: var(--card); }
 .photo-input[aria-invalid="true"] + .photo-pick { border-color: var(--bad); }
 .photo-pick { cursor: pointer; align-self: flex-start; font-weight: 600; }
 .pod-preview { max-width: 100%; max-height: 50vh; object-fit: contain; border-radius: 10px; border: 1px solid var(--border); align-self: flex-start; }
+
+/* Dangerous goods on a driver's lines (diamond + class as text) */
+.item-dg { display: block; margin-top: 2px; }
+.driver-dg { white-space: normal; }

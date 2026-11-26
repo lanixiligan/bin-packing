@@ -204,3 +204,115 @@ function podForm(photo) {
   f.set("photo", photo, "pod.png");
   return f;
 }
+
+// ---- Dangerous goods ------------------------------------------------------------------------
+
+/** Plan a batch, let the job finish and save the OR-Tools draft. */
+const planned = async (day, zone, rule_set) => {
+  const created = await call("POST", "/api/ops/plans", { body: { delivery_date: isoDay(day), zone, vehicle_id: 1, rule_set } });
+  assert.equal(created.status, 202, JSON.stringify(created.data));
+  finishJob(created.data.job_id);
+  const { data: result } = await call("GET", `/api/jobs/${created.data.job_id}/result`);
+  const draft = await call("POST", `/api/ops/plans/${created.data.id}/draft`, { body: { method: "ortools" } });
+  return { plan: draft.data, result };
+};
+const lineOf = (p, sku) => {
+  for (const load of p.loads) {
+    const line = load.lines.find((l) => l.item_sku === sku);
+    if (line) return { load, line };
+  }
+  throw new Error(`${sku} not on any load`);
+};
+
+test("DG: the solver keeps Class 3 and Class 5.1 apart; the order shows the conflict", async () => {
+  const { data: o } = await call("GET", "/api/ops/orders/1022");
+  assert.equal(o.lines[0].dg.dg_class, "3");
+  assert.equal(o.dg_conflicts.length, 1);
+  assert.equal(o.dg_conflicts[0].status, "incompatible");
+  assert.match(o.dg_conflicts[0].message, /Paint thinners \(20 L\) \(Class 3\) and Pool chlorine tub \(Class 5\.1\) can't travel/);
+
+  const { plan, result } = await planned(2, "WEST", undefined);
+  assert.equal(plan.rule_set, "adg");
+  assert.equal(result.lower_bound, 1); // by weight: one van would do without segregation
+  assert.ok(result.units.some((u) => u.dg?.dg_class === "5.1"));
+  for (const m of [result.ffd, result.ortools]) {
+    assert.equal(m.num_loads, 2);
+    for (const l of m.loads) {
+      const classes = new Set(l.unit_ids.map((id) => result.units[id].dg?.dg_class));
+      assert.ok(!(classes.has("3") && classes.has("5.1")), `load ${l.number} mixes Class 3 and 5.1`);
+    }
+  }
+  assert.ok(plan.loads.every((l) => l.dg_conflicts.length === 0 && l.approvals_missing === 0));
+  // ADG plans need no approvals
+  assert.equal(lineOf(plan, "HRB-200").line.dg_approval_required, false);
+});
+
+test("DG: moving goods onto a load they clash with is a 422; a forced clash blocks locking", async () => {
+  const { plan } = await planned(2, "WEST");
+  const chlorine = lineOf(plan, "CHL-10");
+  const thinners = lineOf(plan, "THN-20");
+  assert.notEqual(chlorine.load.id, thinners.load.id);
+  const r = await call("POST", `/api/ops/plans/${plan.id}/moves`, {
+    body: { order_line_id: chlorine.line.order_line_id, from_load_id: chlorine.load.id, to_load_id: thinners.load.id },
+  });
+  assert.equal(r.status, 422);
+  assert.match(r.data.detail, new RegExp(`^Load ${thinners.load.number} can't take these units: it carries .*Class 3.*Pool chlorine tub \\(Class 5\\.1\\) can't travel with it`));
+
+  // Put them together behind the API's back (e.g. data saved before the item got its DG class).
+  const rec = db.plans.find((p) => p.id === plan.id);
+  const from = rec.loads.find((l) => l.id === chlorine.load.id);
+  const to = rec.loads.find((l) => l.id === thinners.load.id);
+  to.assignments.push(...from.assignments.splice(0));
+  rec.loads = rec.loads.filter((l) => l.assignments.length);
+  rec.loads.forEach((l, i) => (l.number = i + 1));
+  const { data: p } = await call("GET", `/api/ops/plans/${plan.id}`);
+  const clashes = p.loads.flatMap((l) => l.dg_conflicts);
+  assert.ok(clashes.every((c) => c.status === "incompatible"));
+  assert.ok(clashes.some((c) => [...c.items].sort().join(" + ") === "Paint thinners (20 L) (Class 3) + Pool chlorine tub (Class 5.1)"));
+  const locked = await call("POST", `/api/ops/plans/${plan.id}/lock`);
+  assert.equal(locked.status, 409);
+  assert.match(locked.data.detail, /dangerous goods that can't travel together/);
+});
+
+test("DG: Northline plans refuse prohibited goods and need approval references before locking", async () => {
+  const refused = await call("POST", "/api/ops/plans", { body: { delivery_date: isoDay(3), zone: "WEST", vehicle_id: 1, rule_set: "northline" } });
+  assert.equal(refused.status, 422);
+  assert.deepEqual(refused.data.detail.misfits, []);
+  assert.equal(refused.data.detail.dg_issues.length, 1);
+  assert.equal(refused.data.detail.dg_issues[0].kind, "prohibited");
+  assert.equal(refused.data.detail.dg_issues[0].order_reference, "ORD-1024");
+  assert.match(refused.data.detail.dg_issues[0].message, /fuels/);
+  assert.match(refused.data.detail.message, /Northline won't accept 1 order line/);
+  // The ADG rule set takes the same batch.
+  assert.equal((await call("POST", "/api/ops/plans", { body: { delivery_date: isoDay(3), zone: "WEST", vehicle_id: 1, rule_set: "adg" } })).status, 202);
+
+  const { plan } = await planned(2, "WEST", "northline");
+  assert.equal(plan.rule_set, "northline");
+  const weed = lineOf(plan, "HRB-200");
+  assert.equal(weed.line.dg_approval_required, true);
+  assert.equal(weed.line.dg_approval_ref, null);
+  assert.equal(weed.load.approvals_missing, 1);
+  assert.ok(lineOf(plan, "LPG-9").load.dg_warnings.some((w) => /steel cage/.test(w)));
+  const blocked = await call("POST", `/api/ops/plans/${plan.id}/lock`);
+  assert.equal(blocked.status, 409);
+  assert.match(blocked.data.detail, /Northline HSEQ approval/);
+
+  const saved = await call("PATCH", `/api/ops/order-lines/${weed.line.order_line_id}`, { body: { dg_approval_ref: "  HSEQ-2041 " } });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.data.dg_approval_ref, "HSEQ-2041");
+  const { data: after } = await call("GET", `/api/ops/plans/${plan.id}`);
+  assert.equal(lineOf(after, "HRB-200").line.dg_approval_ref, "HSEQ-2041");
+  assert.ok(after.loads.every((l) => l.approvals_missing === 0));
+  assert.equal((await call("POST", `/api/ops/plans/${plan.id}/lock`)).status, 200);
+  // the driver sees the class and UN number
+  await call("PATCH", `/api/ops/loads/${weed.load.id}`, { body: { driver_id: 1 } });
+  const { data: run } = await call("GET", `/api/driver/run?date=${isoDay(2)}`, { role: "driver" });
+  const driverLine = run.loads.flatMap((l) => l.orders).flatMap((o) => o.lines).find((l) => l.item_sku === "HRB-200");
+  assert.deepEqual([driverLine.dg_class, driverLine.un_number], ["6.1", "2902"]);
+  // still editable on a locked plan (the order is planned now)
+  assert.equal((await call("PATCH", `/api/ops/order-lines/${weed.line.order_line_id}`, { body: { dg_approval_ref: "HSEQ-2042" } })).status, 200);
+
+  // only accepted or planned orders
+  const { data: submitted } = await call("GET", "/api/ops/orders/1013");
+  assert.equal((await call("PATCH", `/api/ops/order-lines/${submitted.lines[0].id}`, { body: { dg_approval_ref: "X" } })).status, 409);
+});

@@ -10,6 +10,7 @@ import { StatusChip } from "../../shell/StatusChip";
 import {
   STATUS_LABEL, formatAddress, formatDate, formatDateTime, formatMoney, formatWindow,
 } from "../../shell/format";
+import { DgBadge } from "../../dg/DgBadge";
 import { sizeText } from "../format";
 import { useInvalidateOps } from "../queries";
 import { RejectForm } from "../RejectForm";
@@ -123,7 +124,10 @@ function OrderDetail({ order }: { order: Order }) {
             <tbody>
               {order.lines.map((l) => (
                 <tr key={l.id}>
-                  <td data-label="Item">{l.item_name}</td>
+                  <td data-label="Item">
+                    {l.item_name} <DgBadge dg={l.dg} showUn />
+                    {l.dg_approval_ref ? <div className="small muted">Northline approval: {l.dg_approval_ref}</div> : null}
+                  </td>
                   <td data-label="SKU">{l.item_sku}</td>
                   <td data-label="Quantity" className="num">{l.quantity}</td>
                   <td data-label="Per unit">{sizeText(l.unit_weight_kg, l.unit_volume_m3, l.unit_pallet_spaces)}</td>
@@ -141,6 +145,7 @@ function OrderDetail({ order }: { order: Order }) {
             </tfoot>
           </table>
         </div>
+        <DgConflictNotice order={order} />
       </section>
 
       <div className="detail-grid">
@@ -190,5 +195,27 @@ function AddressBlock({ a }: { a: Schemas["AddressRead"] }) {
         </span>
       ) : null}
     </span>
+  );
+}
+
+/** Dangerous goods in this order that can't share a vehicle (or need a Table 9.2 check). */
+function DgConflictNotice({ order }: { order: Order }) {
+  const bad = order.dg_conflicts.filter((c) => c.status === "incompatible");
+  const check = order.dg_conflicts.filter((c) => c.status === "check");
+  return (
+    <>
+      {bad.length ? (
+        <div className="warn-box dg-bad-box dg-notice">
+          <p><b>⚠️ Some goods in this order can't travel on the same vehicle.</b> The planner puts them on separate loads.</p>
+          <ul>{bad.map((c) => <li key={c.order_line_ids.join("-")}>{c.message}</li>)}</ul>
+        </div>
+      ) : null}
+      {check.length ? (
+        <div className="warn-box dg-notice">
+          <p><b>Check before loading together</b> (Table 9.2, against the products' safety data sheets):</p>
+          <ul>{check.map((c) => <li key={c.order_line_ids.join("-")}>{c.message}</li>)}</ul>
+        </div>
+      ) : null}
+    </>
   );
 }

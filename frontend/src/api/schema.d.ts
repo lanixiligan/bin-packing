@@ -649,6 +649,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ops/order-lines/{line_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Line Approval
+         * @description Record (or clear) the Northline HSEQ approval reference of an order line.
+         *     The order must be accepted or planned (409 otherwise).
+         */
+        patch: operations["set_line_approval_api_ops_order_lines__line_id__patch"];
+        trace?: never;
+    };
     "/api/ops/loads/{load_id}": {
         parameters: {
             query?: never;
@@ -1076,6 +1097,72 @@ export interface components {
             pallets?: number | null;
         };
         /**
+         * DgConflict
+         * @description Two order lines whose goods must not share a vehicle (incompatible), or that
+         *     need a Table 9.2 check against the products' SDS (check, a warning only).
+         */
+        DgConflict: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "incompatible" | "check";
+            /** Order Line Ids */
+            order_line_ids: number[];
+            /** Items */
+            items: string[];
+            /** Message */
+            message: string;
+        };
+        /**
+         * DgInfo
+         * @description Dangerous goods data of an item (copied onto each order line). `dg_class`
+         *     null = not dangerous goods; then only `food` / `fire_risk` matter.
+         */
+        DgInfo: {
+            /** Dg Class */
+            dg_class?: ("1" | "2.1" | "2.2" | "2.3" | "3" | "4.1" | "4.2" | "4.3" | "5.1" | "5.2" | "6.1" | "6.2" | "7" | "8" | "9") | null;
+            /** Subsidiary */
+            subsidiary?: ("2.1" | "2.3" | "3" | "4.1" | "4.2" | "4.3" | "5.1" | "6.1" | "8")[];
+            /** Packing Group */
+            packing_group?: ("I" | "II" | "III") | null;
+            /**
+             * Un Number
+             * @description 4 digits, e.g. '1263'
+             */
+            un_number?: string | null;
+            /**
+             * Explosive Code
+             * @description Class 1 only: division and compatibility group, e.g. '1.4S'
+             */
+            explosive_code?: string | null;
+            /**
+             * Container
+             * @default package
+             * @enum {string}
+             */
+            container: "package" | "drum" | "ibc" | "cylinder" | "aerosol" | "tank_over_500l";
+            /**
+             * T92
+             * @description Table 9.2 specific goods. null = not answered (gives a 'check' warning against classes Table 9.2 covers); [] = none apply.
+             */
+            t92?: ("ammonium_nitrate" | "tetranitromethane" | "chloroisocyanuric_acid" | "chloroisocyanurate" | "bromate_chlorate_chlorite" | "hypochlorite" | "inorganic_nitrite" | "calcium_hypochlorite" | "nitromethane" | "acid_strong" | "acid_other" | "alkali_strong" | "cyanide")[] | null;
+            /** Carrier Tags */
+            carrier_tags?: ("fuel" | "unodourised_lpg" | "peroxide_over_60" | "env_hazardous" | "lithium_battery")[];
+            /**
+             * Food
+             * @description Food or food packaging (not DG).
+             * @default false
+             */
+            food: boolean;
+            /**
+             * Fire Risk
+             * @description Fire-risk substance: a non-DG combustible liquid, or Class 6/9 goods (exception 5).
+             * @default false
+             */
+            fire_risk: boolean;
+        };
+        /**
          * DriverCreate
          * @description Creates a driver login (role=driver) and its driver profile.
          */
@@ -1100,6 +1187,10 @@ export interface components {
             item_name: string;
             /** Item Sku */
             item_sku: string;
+            /** Dg Class */
+            dg_class?: string | null;
+            /** Un Number */
+            un_number?: string | null;
             /** Quantity */
             quantity: number;
         };
@@ -1333,6 +1424,8 @@ export interface components {
              * @default 0
              */
             pallet_spaces: number;
+            /** @description Dangerous goods data; null = general freight. */
+            dg?: components["schemas"]["DgInfo"] | null;
         };
         /** ItemRead */
         ItemRead: {
@@ -1352,6 +1445,7 @@ export interface components {
             volume_m3: number;
             /** Pallet Spaces */
             pallet_spaces: number;
+            dg?: components["schemas"]["DgInfo"] | null;
             /** Archived */
             archived: boolean;
             /**
@@ -1374,6 +1468,8 @@ export interface components {
             volume_m3?: number | null;
             /** Pallet Spaces */
             pallet_spaces?: number | null;
+            /** @description null clears it (general freight). */
+            dg?: components["schemas"]["DgInfo"] | null;
         };
         /**
          * JobKind
@@ -1452,6 +1548,14 @@ export interface components {
             unit_volume_m3: number;
             /** Unit Pallet Spaces */
             unit_pallet_spaces: number;
+            dg?: components["schemas"]["DgInfo"] | null;
+            /**
+             * Dg Approval Required
+             * @default false
+             */
+            dg_approval_required: boolean;
+            /** Dg Approval Ref */
+            dg_approval_ref?: string | null;
         };
         /** LoadRead */
         LoadRead: {
@@ -1468,6 +1572,21 @@ export interface components {
             over_capacity: boolean;
             /** Lines */
             lines: components["schemas"]["LoadLineRead"][];
+            /**
+             * Dg Conflicts
+             * @default []
+             */
+            dg_conflicts: components["schemas"]["DgConflict"][];
+            /**
+             * Dg Warnings
+             * @default []
+             */
+            dg_warnings: string[];
+            /**
+             * Approvals Missing
+             * @default 0
+             */
+            approvals_missing: number;
         };
         /**
          * LoadUpdate
@@ -1632,6 +1751,14 @@ export interface components {
              */
             created_at: string;
         };
+        /**
+         * OrderLineApproval
+         * @description Record (or clear with null) the Northline HSEQ approval for an order line.
+         */
+        OrderLineApproval: {
+            /** Dg Approval Ref */
+            dg_approval_ref: string | null;
+        };
         /** OrderLineIn */
         OrderLineIn: {
             /** Item Id */
@@ -1657,6 +1784,9 @@ export interface components {
             unit_volume_m3: number;
             /** Unit Pallet Spaces */
             unit_pallet_spaces: number;
+            dg?: components["schemas"]["DgInfo"] | null;
+            /** Dg Approval Ref */
+            dg_approval_ref?: string | null;
         };
         /**
          * OrderRead
@@ -1721,6 +1851,11 @@ export interface components {
             notes: string | null;
             /** Lines */
             lines: components["schemas"]["OrderLineRead"][];
+            /**
+             * Dg Conflicts
+             * @default []
+             */
+            dg_conflicts: components["schemas"]["DgConflict"][];
             /** Events */
             events: components["schemas"]["OrderEventRead"][];
             quote: components["schemas"]["QuoteRead"] | null;
@@ -1842,6 +1977,7 @@ export interface components {
             volume_m3: number;
             /** Pallets */
             pallets: number;
+            dg?: components["schemas"]["DgInfo"] | null;
         };
         /** PackedLoad */
         PackedLoad: {
@@ -1866,6 +2002,11 @@ export interface components {
              * @description Capacity profile to pack against.
              */
             vehicle_id: number;
+            /**
+             * @description Dangerous goods rules: 'adg' (ADG segregation) or 'northline' (ADG + Northline acceptance).
+             * @default adg
+             */
+            rule_set: components["schemas"]["RuleSet"];
         };
         /** PlanRead */
         PlanRead: {
@@ -1887,6 +2028,7 @@ export interface components {
             job_status: components["schemas"]["JobStatus"];
             /** Method */
             method: string | null;
+            rule_set: components["schemas"]["RuleSet"];
             /** Order Count */
             order_count: number;
             /** Load Count */
@@ -1941,6 +2083,7 @@ export interface components {
             job_status: components["schemas"]["JobStatus"];
             /** Method */
             method: string | null;
+            rule_set: components["schemas"]["RuleSet"];
             /** Order Count */
             order_count: number;
             /** Load Count */
@@ -2018,6 +2161,12 @@ export interface components {
              */
             note: string;
         };
+        /**
+         * RuleSet
+         * @description Dangerous goods rules a plan is checked against (see app/dg.py).
+         * @enum {string}
+         */
+        RuleSet: "adg" | "northline";
         /** Shipment */
         Shipment: {
             /** Name */
@@ -2027,6 +2176,11 @@ export interface components {
              * @description Weight in kg (whole number)
              */
             weight: number;
+            /**
+             * Dg Class
+             * @description DG class, 'food', 'fire_risk', or null for general freight
+             */
+            dg_class?: ("1" | "2.1" | "2.2" | "2.3" | "3" | "4.1" | "4.2" | "4.3" | "5.1" | "5.2" | "6.1" | "6.2" | "7" | "8" | "9" | "food" | "fire_risk") | null;
         };
         /** SolveRequest */
         SolveRequest: {
@@ -2037,6 +2191,12 @@ export interface components {
             capacity: number;
             /** Shipments */
             shipments: components["schemas"]["Shipment"][];
+            /**
+             * Rule Set
+             * @default adg
+             * @enum {string}
+             */
+            rule_set: "adg" | "northline";
         };
         /**
          * SolveResult
@@ -2260,6 +2420,27 @@ export interface components {
             active?: boolean | null;
         };
         /**
+         * DgIssue
+         * @description A Northline acceptance problem with an order line (or a whole order for limits).
+         */
+        DgIssue: {
+            /** Order Id */
+            order_id: number;
+            /** Order Reference */
+            order_reference: string;
+            /** Order Line Id */
+            order_line_id: number | null;
+            /** Item Name */
+            item_name: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "prohibited" | "limit" | "approval" | "note";
+            /** Message */
+            message: string;
+        };
+        /**
          * InfeasibleDetail
          * @description `detail` of a 422 from POST /api/ops/plans when some units can never fit.
          */
@@ -2268,6 +2449,11 @@ export interface components {
             message: string;
             /** Misfits */
             misfits: components["schemas"]["UnitMisfit"][];
+            /**
+             * Dg Issues
+             * @default []
+             */
+            dg_issues: components["schemas"]["DgIssue"][];
         };
         /**
          * UnitMisfit
@@ -3748,6 +3934,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_line_approval_api_ops_order_lines__line_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                line_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrderLineApproval"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderLineRead"];
                 };
             };
             /** @description Validation Error */

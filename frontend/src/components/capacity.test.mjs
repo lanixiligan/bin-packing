@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  bindingDim, describeUsage, fillPercent, fits, limitedDims, lowerBounds, overDims, shipmentFractions,
+  bindingDim, describeUsage, dgClassText, dgTextOf, fillPercent, fits, limitedDims, lowerBounds, overDims, shipmentFractions,
 } from "./capacity.ts";
 import { exact, ffd, misfits } from "../ops/packing.ts";
 
@@ -74,4 +74,15 @@ test("misfits lists units bigger than the vehicle with their dimensions", () => 
   const m = misfits([u(0, 1200, 2.5, 2), u(1, 25)], { weight_kg: 1000, pallets: 1 });
   assert.equal(m.length, 1);
   assert.deepEqual(m[0].dims, ["weight", "pallets"]);
+});
+
+test("DG text for truck blocks", () => {
+  assert.equal(dgClassText(null), "");
+  assert.equal(dgClassText("3"), "Class 3");
+  assert.equal(dgClassText("1"), "Class 1.4S");
+  assert.equal(dgClassText("food"), "Food");
+  assert.equal(dgClassText("fire_risk"), "Fire-risk");
+  assert.equal(dgTextOf({ dg_class: "5.1" }), "Class 5.1");
+  assert.equal(dgTextOf({ dg_class: "8", dgLabel: "Class 8 (sub 6.1)" }), "Class 8 (sub 6.1)");
+  assert.equal(dgTextOf({}), "");
 });

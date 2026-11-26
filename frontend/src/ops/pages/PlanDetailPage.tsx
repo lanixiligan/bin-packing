@@ -13,7 +13,7 @@ import LoadEditor from "../plan/LoadEditor";
 import LoadsTruckView from "../plan/LoadsTruckView";
 import SolveComparison from "../plan/SolveComparison";
 import { vehicleLimits } from "../queries";
-import { ConfirmAction, ZoneTag } from "../ui";
+import { ConfirmAction, RuleSetChip, ZoneTag } from "../ui";
 
 type Plan = Schemas["PlanRead"];
 type JobStatus = Schemas["JobStatus"];
@@ -79,17 +79,24 @@ function PlanView({ plan }: { plan: Plan }) {
   };
 
   const overLoads = plan.loads.filter((l) => l.over_capacity).length;
+  const dgLoads = plan.loads.filter((l) => l.dg_conflicts.length).length;
+  const approvalsMissing = plan.loads.reduce((s, l) => s + l.approvals_missing, 0);
+  const lockBlocker = overLoads > 0 ? "A load is over capacity."
+    : dgLoads > 0 ? "A load carries dangerous goods that can't travel together."
+    : approvalsMissing > 0 ? `${approvalsMissing} line${approvalsMissing === 1 ? " needs" : "s need"} a Northline approval reference.`
+    : undefined;
   const locked = plan.status === "locked";
   const n = plan.order_ids.length;
 
   return (
     <>
       <PageHeader
-        title={<>Plan #{plan.id} <span className={`chip plan-${plan.status}`}>{locked ? "🔒 Locked" : "Draft"}</span></>}
+        title={<>Plan #{plan.id} <span className={`chip plan-${plan.status}`}>{locked ? "🔒 Locked" : "Draft"}</span> <RuleSetChip ruleSet={plan.rule_set} /></>}
         subtitle={
           <>
             {formatDate(plan.delivery_date)} · zone <ZoneTag zone={plan.zone} /> · {n} order{n === 1 ? "" : "s"} ·
             packed for <b>{plan.vehicle.name}</b> ({vehicleLimits(plan.vehicle)})
+            {plan.rule_set === "northline" ? <> · dangerous goods: ADG + Northline acceptance</> : <> · dangerous goods: ADG Code</>}
             {plan.method ? <> · saved from {plan.method === "ortools" ? "OR-Tools" : "FFD"}</> : null}
             {locked && plan.locked_at ? <> · locked {formatDateTime(plan.locked_at)}</> : null}
           </>
@@ -106,8 +113,8 @@ function PlanView({ plan }: { plan: Plan }) {
                   </>
                 }
                 confirmLabel="Yes, lock the plan"
-                disabled={overLoads > 0}
-                disabledReason={overLoads > 0 ? "A load is over capacity." : undefined}
+                disabled={lockBlocker != null}
+                disabledReason={lockBlocker}
                 onConfirm={lock}
               />
             ) : null}

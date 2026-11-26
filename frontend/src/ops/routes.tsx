@@ -11,6 +11,7 @@ import PlanDetailPage from "./pages/PlanDetailPage";
 import FleetPage from "./pages/FleetPage";
 import ZonesPage from "./pages/ZonesPage";
 import InvoicesPage from "./pages/InvoicesPage";
+import DgCheckerPage from "./pages/DgCheckerPage";
 
 export const opsRoutes: RouteObject = {
   path: "/ops",
@@ -29,5 +30,6 @@ export const opsRoutes: RouteObject = {
     { path: "fleet", element: <FleetPage /> },
     { path: "zones", element: <ZonesPage /> },
     { path: "invoices", element: <InvoicesPage /> },
+    { path: "dg", element: <DgCheckerPage /> },
   ],
 };
