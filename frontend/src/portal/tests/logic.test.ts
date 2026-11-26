@@ -2,7 +2,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  lastEventTo, lineTotals, matchesItemSearch, matchesSearch, pricedLines, sortEvents, splitApiErrors,
+  formatVolume, lastEventTo, lineTotals, matchesItemSearch, matchesSearch, pricedLines, sortEvents, splitApiErrors,
   statusesForGroup, validateAddress, validateItem, validateOrder, volumeFromCm, type OrderFormValues,
 } from "../logic.ts";
 import type { OrderEvent } from "../types.ts";
@@ -50,6 +50,11 @@ describe("totals and volume", () => {
     assert.equal(volumeFromCm("10", "10", "10"), 0.001);
     assert.equal(volumeFromCm("10", "", "10"), null);
     assert.equal(volumeFromCm("10", "-1", "10"), null);
+  });
+  test("formatVolume keeps three decimals for small volumes", () => {
+    assert.match(formatVolume(0.003), /^0[.,]003 m³$/);
+    assert.match(formatVolume(1.234), /^1[.,]23 m³$/);
+    assert.equal(formatVolume(0), "0 m³");
   });
 });
 

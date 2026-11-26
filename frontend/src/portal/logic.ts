@@ -93,6 +93,12 @@ export function orderLineTotals(order: Pick<Order, "lines">): Totals {
   );
 }
 
+/** Volume with enough decimals for small items: 0.003 m³ stays 0.003, not "0". */
+export function formatVolume(m3: number): string {
+  const digits = m3 !== 0 && Math.abs(m3) < 0.1 ? 3 : 2;
+  return `${m3.toLocaleString(undefined, { maximumFractionDigits: digits })} m³`;
+}
+
 /** m³ from L × W × H in centimetres, rounded to 4 decimals (null if any side is missing). */
 export function volumeFromCm(l: string, w: string, h: string): number | null {
   const dims = [l, w, h].map((s) => Number(s));
