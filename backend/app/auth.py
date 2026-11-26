@@ -19,6 +19,7 @@ from fastapi_users import exceptions as fu_exceptions
 from fastapi_users.authentication import AuthenticationBackend, BearerTransport, JWTStrategy
 from fastapi_users.password import PasswordHelper
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -29,6 +30,7 @@ from app.models import Company, Driver, User, UserRole
 from app.schemas import MeRead, UserCreate
 
 MIN_PASSWORD_LENGTH = 8
+MAX_PASSWORD_LENGTH = 128  # long inputs only make hashing slow
 password_helper = PasswordHelper()
 
 
@@ -36,6 +38,9 @@ async def get_user_db(
     session: AsyncSession = Depends(get_session),
 ) -> AsyncIterator[SQLAlchemyUserDatabase]:
     yield SQLAlchemyUserDatabase(session, User)
+
+
+_COMPANY_TAKEN = "A company with this name is already registered. Ask a colleague to add you instead."
 
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
@@ -47,7 +52,12 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             raise InvalidPasswordException(
                 reason=f"Password must be at least {MIN_PASSWORD_LENGTH} characters."
             )
-        if user.email and user.email.lower() in password.lower():
+        if len(password) > MAX_PASSWORD_LENGTH:
+            raise InvalidPasswordException(
+                reason=f"Password must be at most {MAX_PASSWORD_LENGTH} characters."
+            )
+        email = (getattr(user, "email", None) or "").lower()
+        if email and email in password.lower():
             raise InvalidPasswordException(reason="Password must not contain the e-mail address.")
 
     async def create(self, user_create: UserCreate, safe: bool = False,
@@ -58,27 +68,41 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         never taken from the request.
         """
         await self.validate_password(user_create.password, user_create)
-        if await self.user_db.get_by_email(user_create.email) is not None:
+        email = user_create.email.strip().lower()
+        if await self.user_db.get_by_email(email) is not None:
             raise fu_exceptions.UserAlreadyExists()
 
         session: AsyncSession = self.user_db.session
-        company = Company(name=user_create.company_name.strip())
+        company_name = " ".join(user_create.company_name.split())
+        full_name = " ".join(user_create.full_name.split())
+        if not company_name or not full_name:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Enter your name and your company's name.")
+        taken = (await session.exec(
+            select(Company.id).where(func.lower(Company.name) == company_name.lower())
+        )).first()
+        if taken is not None:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, _COMPANY_TAKEN)
+
+        company = Company(name=company_name)
         session.add(company)
         try:
             await session.flush()
-        except IntegrityError as exc:
+        except IntegrityError as exc:  # lost a race for the same name
             await session.rollback()
-            raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                                "A company with this name is already registered.") from exc
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, _COMPANY_TAKEN) from exc
         user = User(
-            email=user_create.email,
+            email=email,
             hashed_password=self.password_helper.hash(user_create.password),
-            full_name=user_create.full_name.strip(),
+            full_name=full_name,
             role=UserRole.customer,
             company_id=company.id,
         )
         session.add(user)
-        await session.commit()
+        try:
+            await session.commit()
+        except IntegrityError as exc:  # lost a race for the same e-mail
+            await session.rollback()
+            raise fu_exceptions.UserAlreadyExists() from exc
         await session.refresh(user)
         await self.on_after_register(user, request)
         return user
