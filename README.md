@@ -1,216 +1,157 @@
-# 🚚 Truck Loading Optimizer: a 1D Bin Packing Demo
+# 🚚 Freight Operations Platform
 
-A small local web app that shows the **1D bin packing problem** with a freight example:
+A local web app for a small freight company. Customers place delivery orders, a dispatcher turns them
+into truck loads with an optimiser, and drivers deliver them with proof of delivery. It grew out of a
+**1D bin packing demo** (FFD vs OR-Tools CP-SAT), which still runs at `/demo`.
 
-| Bin packing term | In our world |
-|---|---|
-| Item (with a size) | **Shipment** (with a weight in kg) |
-| Bin (with a capacity) | **Truck** (all trucks have the same max load, e.g. 1000 kg) |
-| Goal | Load **every** shipment using the **fewest trucks** |
-
-The app solves the same shipments two ways and shows them side by side:
-
-1. **FFD (First-Fit Decreasing)** is a quick rule of thumb. It sorts the shipments from heaviest to lightest. Each shipment goes in the first truck that still has room, and if none has room, it opens a new truck. It is very fast and usually good, but **not guaranteed** to find the best answer.
-2. **OR-Tools CP-SAT** is Google's optimization solver. It searches for the plan with the fewest trucks and can **prove** that no better plan exists. It has a time limit of 10 seconds. If it runs out of time, it shows the best plan found so far and says the result is "not proven".
-
-The **lower bound** is `ceil(total weight / capacity)`. No plan can ever use fewer trucks than this. If a method reaches the lower bound, its answer is definitely optimal.
+| Role | What they do | Pages |
+|---|---|---|
+| **Customer** | Keep an item catalogue and address book, build and submit orders with a price quote, track status and the full history | `/portal/*` |
+| **Dispatcher** | Accept or reject orders, zone addresses, run the optimiser per delivery date + zone, edit and lock load plans, assign vehicles and drivers, manage the fleet, export monthly invoices | `/ops/*` |
+| **Driver** | See today's run on a phone, mark pickups, deliver with a signature name and photo, report problems | `/driver/*` |
 
 ---
 
-## Project structure
+## Architecture
 
 ```
 bin-packing/
-├── README.md
-├── backend/                 Python + FastAPI + OR-Tools
-│   ├── requirements.txt
-│   ├── main.py              API: POST /solve, input validation
-│   └── solver.py            FFD and the CP-SAT model (well commented)
-└── frontend/                React + Vite
-    ├── package.json
-    ├── vite.config.js       forwards /solve to the backend on port 8000
-    ├── index.html
-    └── src/
-        ├── main.jsx
-        ├── App.jsx          state, form, summary, animation timer
-        ├── App.css
-        └── components/
-            ├── ShipmentForm.jsx
-            ├── ResultPanel.jsx
-            ├── Truck.jsx    one truck drawn as a bar of stacked shipments
-            └── TruckScene3D.jsx  3D view (three.js), loaded only when chosen
+├── backend/                  Python 3.12, FastAPI, SQLModel / SQLAlchemy 2 (async), Alembic
+│   ├── app/
+│   │   ├── main.py           app, routers under /api, error handlers
+│   │   ├── models.py         all tables and status enums
+│   │   ├── schemas.py        request / response models (the API contract)
+│   │   ├── auth.py           fastapi-users, JWT, role dependencies
+│   │   ├── lifecycle.py      the ONLY place that changes Order.status (+ writes OrderEvent)
+│   │   ├── pricing.py        quotes (cubic weight × zone rate) and monthly invoices / CSV
+│   │   ├── solver/           1D demo solver + multi-dimension FFD and CP-SAT (weight, m³, pallets)
+│   │   ├── workers.py        arq worker: runs solver jobs in the background
+│   │   └── routers/          portal (customer), ops (dispatcher), driver, jobs, demo
+│   ├── alembic/              migrations
+│   ├── scripts/seed.py       demo data
+│   └── tests/                pytest on a real Postgres (one test database per checkout)
+├── frontend/                 React 19 + Vite, React Router, TanStack Query, plain CSS
+│   └── src/
+│       ├── api/              typed client generated from the OpenAPI schema, mock API for dev
+│       ├── auth/, shell/     login, role guards, layout, shared UI
+│       ├── portal/           customer pages
+│       ├── ops/              dispatcher pages
+│       ├── driver/           phone-first driver pages
+│       ├── components/       2D and 3D truck views (weight / volume / pallet fill)
+│       └── demo/             the original 1D bin packing demo
+├── e2e/                      Playwright walkthrough of the whole order loop over real HTTP
+├── docs/api.md               API contract: every endpoint, lifecycle, planning and driver flows
+├── docker-compose.yml        Postgres 16 + Redis 7
+├── scripts/                  services.sh (Postgres + Redis with or without Docker), dev.sh
+└── Makefile                  `make help` lists every target
 ```
+
+**How a plan is made.** `POST /api/ops/plans` reserves the accepted orders for one delivery date and
+zone, checks every unit fits the chosen vehicle profile, and queues a job in Redis. The arq worker
+expands order lines into units and packs them twice: **FFD** (fast rule of thumb) and **CP-SAT**
+(optimiser, warm-started from FFD, 10 s limit, one capacity constraint per limited dimension). The UI
+polls `GET /api/jobs/{id}` and shows both answers side by side in the truck views, with the lower bound
+(the maximum over dimensions of `ceil(total / capacity)`).
+
+See [`docs/api.md`](docs/api.md) for the full API, and `/docs` on a running backend for Swagger.
 
 ---
 
-## 1. One-time setup (Linux Mint / Ubuntu)
+## Setup (once)
 
-### System packages
-
-```bash
-sudo apt update
-sudo apt install -y python3 python3-venv python3-pip curl git
-```
-
-### Node.js (via nvm)
-
-Vite needs Node **20.19+ or 22.12+**. Check what you have:
+You need Python 3.12, Node 20.19+ or 22.12+ (use [nvm](https://github.com/nvm-sh/nvm) if `apt`'s is
+older), and either Docker or nothing else: without Docker, `scripts/services.sh` downloads Postgres and
+Redis binaries from pip packages into `.tools/`.
 
 ```bash
-node --version
+cd ~/Projects/bin-packing
+cp .env.example .env        # local defaults; change JWT_SECRET outside development
+make install                # backend venv + frontend packages
+make seed                   # starts Postgres + Redis, migrates, loads the demo data
 ```
 
-If the command is not found, or the version is older than that (the version from `apt` often is), install Node with **nvm**:
+## Run
 
 ```bash
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-# close and reopen your terminal (or run:  source ~/.bashrc)
-nvm install --lts
-nvm use --lts
-node --version    # should now be v22 or newer
+make dev
 ```
 
-### Backend (Python virtual environment)
+This runs the API on <http://localhost:8000> (Swagger at `/docs`), the solver worker, and the web app on
+<http://localhost:5173>. Ctrl+C stops all three. Other ports: `API_PORT=8010 WEB_PORT=5180 scripts/dev.sh`.
+`make services-stop` stops Postgres and Redis.
 
-```bash
-cd ~/Projects/bin-packing/backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
+To work on the UI without the backend: `cd frontend && npm run dev:mock` (an in-browser mock API; any
+password works, an e-mail containing "dispatch" or "driver" picks that role).
 
-> OR-Tools is a big download (~25 MB), so the first install can take a minute.
+## Seed logins
 
-### Frontend
+All passwords are `demo-pass-123`.
 
-```bash
-cd ~/Projects/bin-packing/frontend
-npm install
-```
+| Role | E-mail |
+|---|---|
+| Customer (Acme Hardware Pty Ltd) | `alice@acme.example.com`, `bob@acme.example.com` |
+| Dispatcher | `dispatch@freightco.example.com` |
+| Driver | `driver1@freightco.example.com`, `driver2@freightco.example.com` |
+
+The seed has about 36 orders in every status, three zones (NORTH, SOUTH, WEST), four vehicles with
+different capacity mixes, accepted orders for today and tomorrow ready to plan, a run today for both
+drivers, and delivered orders last month for the invoices page. `make seed` resets the database.
 
 ---
 
-## 2. Running the app (two terminals)
+## The workflow
 
-**Terminal 1: backend**
-
-```bash
-cd ~/Projects/bin-packing/backend
-source .venv/bin/activate
-uvicorn main:app --reload --port 8000
+```
+draft ─► submitted ─► accepted ─► planned ─► picked_up ─► in_transit ─► delivered
+            └─► rejected                └──────────┴────────────┴─► exception
+draft / submitted ─► cancelled
 ```
 
-You should see `Uvicorn running on http://127.0.0.1:8000`.
-Interactive API docs: <http://localhost:8000/docs>
+1. **Customer** creates an order (items and quantities, pickup and delivery address, date and time
+   window), sees the quote, and submits it. Price = `max(kg, m³ × 250)` × the delivery zone's rate.
+2. **Dispatcher** accepts it (or rejects it with a reason) and makes sure the delivery address has a zone.
+3. **Dispatcher** opens *Plans*, picks the batch (date + zone) and a vehicle profile, and runs the
+   optimiser. When the job finishes, they compare FFD and OR-Tools, save one as a draft, move lines
+   between loads if needed (the server re-checks capacity), lock the plan, and assign a vehicle and a
+   driver to each load. Locking moves the orders to `planned`.
+4. **Driver** opens today's run, marks the pickup, then delivers with the receiver's name and a photo
+   (or reports a problem with a note).
+5. **Customer** sees `delivered`, the proof of delivery and every step in the order's history.
+6. **Dispatcher** downloads the month's invoice CSV per customer company.
 
-**Terminal 2: frontend**
-
-```bash
-cd ~/Projects/bin-packing/frontend
-npm run dev
-```
-
-Open **<http://localhost:5173>** in your browser.
-
-To stop either part, press `Ctrl+C` in its terminal.
+Every status change goes through `backend/app/lifecycle.py`, which allows only valid transitions for the
+right role and writes an event with the time, the actor and an optional note.
 
 ---
 
-## 3. Using the app
-
-1. Set the **truck capacity** (default 1000 kg).
-2. Add or remove shipments, or click **🎲 Load random shipments** (20 shipments, each 5–60% of the truck capacity, e.g. 50–600 kg for 1000 kg).
-3. Click **▶ Solve**.
-4. Watch the shipments drop into the trucks:
-   * **FFD** loads them in the order the algorithm actually uses (heaviest first).
-   * **OR-Tools** loads them truck by truck.
-5. Compare the **summary** to see how many trucks each method used and the lower bound.
-
-Switch between **2D bars** and **3D trucks** above the panels. In 3D, each shipment is a crate whose *length* matches its weight, so a crate row that reaches the back door is a full truck. Drag to rotate the view.
-
-Each shipment keeps **the same color in both panels**, so you can see where each method put it. Hover over a block to see its full name and weight. Click **↻ Replay animation** to watch it again.
-
-**Validation:** a shipment heavier than the truck capacity can never be loaded. Its row turns red and Solve shows an error that names it. The backend also checks this and rejects such input with HTTP 400.
-
-### Demo tip: a case where FFD loses
-
-FFD is often already optimal on random data. To show a case where it uses an extra truck, keep **capacity = 1000**, click **Clear all**, and add these 8 shipments:
-
-```
-560, 490, 440, 370, 360, 340, 190, 150   (kg)
-```
-
-The total is 2900 kg, so the lower bound is 3 trucks.
-
-* **FFD needs 4 trucks.** It puts 560 + 440 in truck 1, 490 + 370 in truck 2 and 360 + 340 + 190 in truck 3. The last 150 kg shipment doesn't fit anywhere, so it opens a 4th truck.
-* **OR-Tools uses 3 trucks**, for example 560 + 440, 490 + 340 + 150 and 370 + 360 + 190. There's more than one optimal split, so your screen may show a different one.
-
-Picking the "first truck that fits" early on can leave awkward gaps later. An optimizer looks at the whole plan at once.
-
----
-
-## 4. The API
-
-`POST /solve`
-
-```json
-{
-  "capacity": 1000,
-  "shipments": [
-    { "name": "Rice 01", "weight": 420 },
-    { "name": "Steel 02", "weight": 310 }
-  ]
-}
-```
-
-The response looks like this (shortened):
-
-```json
-{
-  "capacity": 1000,
-  "total_weight": 730,
-  "lower_bound": 1,
-  "ffd": {
-    "num_trucks": 1,
-    "trucks": [ { "truck": 1, "shipments": [...], "load": 730, "empty": 270, "fill_percent": 73.0 } ],
-    "solve_time_ms": 0.01,
-    "hits_lower_bound": true,
-    "drop_order": [0, 1]
-  },
-  "ortools": {
-    "num_trucks": 1,
-    "trucks": [...],
-    "solve_time_ms": 12.3,
-    "optimal": true,
-    "status": "OPTIMAL",
-    "time_limit_s": 10.0,
-    "drop_order": [0, 1]
-  }
-}
-```
-
-Try it from the command line:
+## Tests
 
 ```bash
-curl -s -X POST http://localhost:8000/solve \
-  -H "Content-Type: application/json" \
-  -d '{"capacity":1000,"shipments":[{"name":"A","weight":600},{"name":"B","weight":500},{"name":"C","weight":400}]}'
+make test          # ruff + pytest (needs Postgres; starts it if needed)
+make lint          # backend ruff + frontend ESLint and tsc
+make build         # production build of the web app
+make e2e           # Playwright walkthrough against a running stack (make dev first)
+cd frontend && npm test   # frontend unit tests (pure helpers and the mock API)
 ```
+
+`make e2e` drives the whole loop over real HTTP with the real worker: customer submits → dispatcher
+accepts → plans → locks → assigns → driver picks up and delivers with POD → customer sees the timeline →
+the order is on the month's invoice CSV. Point it elsewhere with `E2E_API_URL` and `E2E_WEB_URL`.
+
+After changing an endpoint or schema, run `make api-types` to regenerate `frontend/src/api/schema.d.ts`.
 
 ---
 
-## 5. How the OR-Tools model works (in `backend/solver.py`)
+## The 1D bin packing demo (`/demo`)
 
-* **Variables**
-  * `x[i][t]` = 1 if shipment *i* goes in truck *t*
-  * `y[t]` = 1 if truck *t* is used
-* **Constraints**
-  * Every shipment is in exactly one truck: `sum over t of x[i][t] = 1`
-  * No truck is overloaded: `sum over i of weight[i] * x[i][t] <= capacity * y[t]`
-  * Trucks are used in order (`y[t] >= y[t+1]`). This speeds up the search because the solver doesn't try the same plan with the trucks renumbered.
-* **Objective:** minimize `sum of y[t]`, the number of trucks used.
-* The FFD answer is given to the solver as a starting point (a *hint*). It also caps how many trucks the model needs to consider.
+The original demo is still there: shipments (items with a weight) go into trucks (bins with the same
+capacity) using the fewest trucks. It solves the same input with **FFD** (sort heaviest first, put each
+in the first truck with room) and **OR-Tools CP-SAT** (searches for the fewest trucks and can prove it's
+optimal), and animates both in 2D bars or 3D trucks. `POST /api/solve` is its API.
+
+**A case where FFD loses:** capacity 1000, shipments `560, 490, 440, 370, 360, 340, 190, 150` kg. The
+lower bound is 3. FFD needs 4 trucks (560+440, 490+370, 360+340+190, then 150 fits nowhere); CP-SAT
+finds 3, for example 560+440, 490+340+150, 370+360+190.
 
 ---
 
@@ -218,9 +159,9 @@ curl -s -X POST http://localhost:8000/solve \
 
 | Problem | Fix |
 |---|---|
-| `The virtual environment was not created successfully because ensurepip is not available` | `sudo apt install python3-venv`, then delete `.venv` and create it again |
-| `error: externally-managed-environment` when running pip | You forgot `source .venv/bin/activate` |
-| The app says "Cannot reach the backend" | Start the backend (Terminal 1) and check that it's on port 8000 |
-| `npm run dev` fails with a Node version error | Install a newer Node with nvm (see above) |
-| `npm install` warns `esbuild ... has install scripts not yet covered by allowScripts` | Usually harmless. If `npm run dev` then fails with an esbuild error, run `npm install-scripts approve esbuild` and `npm install` again |
-| Port 5173 or 8000 is already in use | Stop the other program, or use `--port 8001` for uvicorn (and update `vite.config.js`) |
+| `make seed` or `make test` can't connect to Postgres | `make services-status`, then `make services` |
+| The web app says it can't reach the backend | Start it with `make dev` (or `make api`) and check the port |
+| A plan stays "queued" | The worker isn't running: `make worker` (or use `make dev`, which starts it) |
+| `externally-managed-environment` from pip | Use `make install`, which installs into `backend/.venv` |
+| `npm run dev` fails with a Node version error | Install a newer Node with nvm |
+| Port 8000 or 5173 is in use | `API_PORT=8010 WEB_PORT=5180 scripts/dev.sh` |
