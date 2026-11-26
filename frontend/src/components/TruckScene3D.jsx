@@ -3,13 +3,18 @@
 // row that reaches the back door means a full truck (the problem is still 1D:
 // only weight counts, the crate shape is just a picture of it).
 //
+// With a multi-dimension capacity ({ weight_kg, volume_m3, pallets }, see
+// Truck.jsx) each crate's length is its share of the truck's binding
+// dimension (shipmentFractions in capacity.ts), and the labels show the fill
+// of every limited dimension.
+//
 // Loaded lazily from ResultPanel so three.js is only downloaded when the user
 // switches to 3D.
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Vector3 } from "three";
 import { Edges, OrbitControls } from "@react-three/drei";
-import { colorFor } from "./Truck.jsx";
+import { colorFor, describeSize, describeUsage, dgTextOf, limitedDims, shipmentFractions, sizeOf, truckFill } from "./capacity.ts";
 import { DARK_SCHEME, REDUCED_MOTION, useMediaQuery } from "../useMediaQuery.js";
 
 // Scene units (roughly metres, scaled down).
@@ -86,13 +91,13 @@ function Crate({ shipment, x, length, colors, activeId, onHover, animate }) {
     >
       <boxGeometry args={[Math.max(0.02, length - GAP), H - 0.1, W - 0.14]} />
       <meshStandardMaterial
-        color={colorFor(shipment.id)}
+        color={colorFor(shipment.colorKey ?? shipment.id)}
         roughness={0.75}
         // always transparent: three.js doesn't recompile when this flag flips
         transparent
         depthWrite={!dim}
         opacity={dim ? 0.25 : 1}
-        emissive={active ? colorFor(shipment.id) : "#000000"}
+        emissive={active ? colorFor(shipment.colorKey ?? shipment.id) : "#000000"}
         emissiveIntensity={active ? 0.35 : 0}
       />
       <Edges color={active ? colors.active : "#000000"} transparent opacity={active ? 1 : dim ? 0.08 : 0.25} />
@@ -109,25 +114,45 @@ function Wheel({ x, z, colors }) {
   );
 }
 
+const isMulti = (cap) => typeof cap === "object" && cap !== null;
+const truckName = (t) => t.label ?? `Truck ${t.truck}`;
+
 /** Fill and state of a truck at this point of the drop animation. */
 function truckStatus(truck, capacity, step, dropIndex, activeId) {
+  const cap = truck.capacity ?? capacity;
+  if (isMulti(cap)) {
+    const f = truckFill(truck, cap, step, dropIndex);
+    const dims = limitedDims(cap)
+      .map((d) => `${d.short} ${Math.floor(100 * (f.usage[d.field] / cap[d.field]) + 1e-9)}%`)
+      .join(" · ");
+    return {
+      fill: f.fill,
+      done: f.done,
+      holdsActive: activeId != null && truck.shipments.some((s) => s.id === activeId),
+      sub: !f.done ? "loading…" : f.over ? `⚠ over capacity · ${dims}` : dims,
+      over: f.over,
+    };
+  }
   const visible = truck.shipments.filter((s) => dropIndex[s.id] < step);
   const load = visible.reduce((sum, s) => sum + s.weight, 0);
   return {
     fill: Math.floor((100 * load) / capacity), // floor: 100% only when completely full
     done: visible.length === truck.shipments.length,
     holdsActive: activeId != null && truck.shipments.some((s) => s.id === activeId),
+    sub: visible.length === truck.shipments.length ? `${truck.empty} kg free` : "loading…",
+    over: false,
   };
 }
 
 function TruckModel({ truck, position, capacity, step, dropIndex, colors, activeId, onHover, extra, animate }) {
-  const { holdsActive } = truckStatus(truck, capacity, step, dropIndex, activeId);
-  const frameColor = holdsActive ? colors.active : extra ? colors.warn : colors.frame;
+  const { holdsActive, over } = truckStatus(truck, capacity, step, dropIndex, activeId);
+  const frameColor = holdsActive ? colors.active : extra || over ? colors.warn : colors.frame;
+  const sizes = shipmentFractions(truck.shipments, truck.capacity ?? capacity);
 
   // Crates are loaded from the cab end towards the back door, in list order.
   let offset = -L / 2;
   const crates = truck.shipments.map((s) => {
-    const length = (s.weight / capacity) * L;
+    const length = Math.min(sizes.get(s.id), 1) * L;
     const x = offset + length / 2;
     offset += length;
     return { s, x, length };
@@ -309,16 +334,16 @@ export default function TruckScene3D({
 
       <div className="scene3d-labels" aria-hidden="true">
         {data.trucks.map((t, i) => {
-          const { fill, done, holdsActive } = truckStatus(t, capacity, step, dropIndex, activeId);
+          const { fill, sub, holdsActive, over } = truckStatus(t, capacity, step, dropIndex, activeId);
           const extra = extraFrom != null && t.truck > extraFrom;
           return (
             <div
               key={t.truck}
               ref={(el) => (labels.current[i] = el)}
-              className={`truck3d-label${holdsActive ? " active" : ""}${extra ? " extra" : ""}`}
+              className={`truck3d-label${holdsActive ? " active" : ""}${extra || over ? " extra" : ""}`}
             >
-              <span className="truck3d-title"><b>Truck {t.truck}</b> · {fill}%</span>
-              <span className="truck3d-sub">{done ? `${t.empty} kg free` : "loading…"}</span>
+              <span className="truck3d-title"><b>{truckName(t)}</b> · {fill}%</span>
+              <span className="truck3d-sub">{sub}</span>
               {extra && <span className="truck3d-extra">beyond optimum</span>}
             </div>
           );
@@ -330,23 +355,33 @@ export default function TruckScene3D({
       {/* The canvas can't be reached by keyboard or screen reader, so the same
           content is listed here. Tabbing through it highlights each crate. */}
       <ul className="sr-only">
-        {data.trucks.map((t) => (
-          <li key={t.truck}>
-            Truck {t.truck}: {t.load} of {capacity} kg loaded
-            <ul>
-              {t.shipments.map((s) => (
-                <li
-                  key={s.id}
-                  tabIndex={0}
-                  onFocus={() => onFocusBlock(s.id)}
-                  onBlur={() => onFocusBlock(null)}
-                >
-                  {s.name}, {s.weight} kg, truck {t.truck} of {data.num_trucks}
-                </li>
-              ))}
-            </ul>
-          </li>
-        ))}
+        {data.trucks.map((t) => {
+          const cap = t.capacity ?? capacity;
+          const multi = isMulti(cap);
+          const full = multi ? truckFill(t, cap, Infinity, {}) : null;
+          return (
+            <li key={t.truck}>
+              {multi
+                ? `${truckName(t)}: ${describeUsage(full.full, cap)}${full.over ? ". Over capacity" : ""}`
+                : `Truck ${t.truck}: ${t.load} of ${capacity} kg loaded`}
+              <ul>
+                {t.shipments.map((s) => (
+                  <li
+                    key={s.id}
+                    tabIndex={0}
+                    onFocus={() => onFocusBlock(s.id)}
+                    onBlur={() => onFocusBlock(null)}
+                  >
+                    {`${s.name}${dgTextOf(s) ? `, ${dgTextOf(s)}` : ""}${s.detail ? `, ${s.detail}` : ""}, `}
+                    {multi
+                      ? `${describeSize(sizeOf(s))}, ${truckName(t).toLowerCase()} of ${data.num_trucks}`
+                      : `${s.weight} kg, truck ${t.truck} of ${data.num_trucks}`}
+                  </li>
+                ))}
+              </ul>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

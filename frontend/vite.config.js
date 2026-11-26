@@ -1,14 +1,14 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// The dev server forwards /solve to the FastAPI backend on port 8000,
-// so the frontend can just call fetch("/solve").
+// The dev server forwards /api to the FastAPI backend (default port 8000).
+// Override with VITE_API_TARGET=http://localhost:8010 and --port for a second stack.
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,
+    port: Number(process.env.VITE_PORT || 5173),
     proxy: {
-      "/solve": "http://localhost:8000",
+      "/api": process.env.VITE_API_TARGET || "http://localhost:8000",
     },
   },
 });

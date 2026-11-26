@@ -1,19 +1,25 @@
 import { useId, useState } from "react";
-import { nextUid, parseWeights, shipmentsFromWeights } from "../shipments.js";
+import { DgDiamond } from "../dg/DgBadge.tsx";
+import { northlineIssues } from "../dg/rules.ts";
+import { DG_OPTIONS, demoDg, nextUid, parseWeights, shipmentsFromWeights } from "../shipments.js";
 
 // `capacity` is null while the capacity field is empty or invalid, so rows are
-// only flagged "heavier than truck" against a real capacity.
-export default function ShipmentForm({ shipments, capacity, onChange }) {
+// only flagged "heavier than truck" against a real capacity. With
+// `ruleSet === "northline"`, rows Northline won't accept are flagged too (the
+// server refuses them on Solve).
+export default function ShipmentForm({ shipments, capacity, onChange, ruleSet = "adg" }) {
   const [name, setName] = useState("");
   const [weight, setWeight] = useState("");
+  const [dgClass, setDgClass] = useState("");
 
   function add(e) {
     e.preventDefault();
     const w = Number(weight);
     if (!name.trim() || !(w > 0)) return;
-    onChange([...shipments, { uid: nextUid(), name: name.trim(), weight: Math.round(w) }]);
+    onChange([...shipments, { uid: nextUid(), name: name.trim(), weight: Math.round(w), dgClass: dgClass || null }]);
     setName("");
     setWeight("");
+    setDgClass("");
   }
 
   function update(uid, field, value) {
@@ -30,9 +36,13 @@ export default function ShipmentForm({ shipments, capacity, onChange }) {
         {shipments.length === 0 && <p className="muted">No shipments yet. Add one below, paste weights, or load random ones.</p>}
         {shipments.map((s) => {
           const tooHeavy = capacity != null && Number(s.weight) > capacity;
+          const refused = ruleSet === "northline"
+            ? northlineIssues(demoDg(s.dgClass)).find((i) => i.kind === "prohibited")
+            : null;
           const errId = `row-err-${s.uid}`;
+          const dgErrId = `row-dg-err-${s.uid}`;
           return (
-            <div key={s.uid} className={`shipment-row ${tooHeavy ? "invalid" : ""}`}>
+            <div key={s.uid} className={`shipment-row ${tooHeavy ? "invalid" : ""}${refused ? " dg-refused" : ""}`}>
               <input
                 className="name"
                 value={s.name}
@@ -50,6 +60,12 @@ export default function ShipmentForm({ shipments, capacity, onChange }) {
                 aria-describedby={tooHeavy ? errId : undefined}
               />
               <span className="unit">kg</span>
+              <DgSelect
+                value={s.dgClass}
+                onChange={(v) => update(s.uid, "dgClass", v)}
+                label={`Dangerous goods class of ${s.name || "shipment"}`}
+                describedBy={refused ? dgErrId : undefined}
+              />
               <button
                 type="button"
                 className="icon"
@@ -60,6 +76,7 @@ export default function ShipmentForm({ shipments, capacity, onChange }) {
                 ✕
               </button>
               {tooHeavy && <span id={errId} className="row-error">heavier than truck!</span>}
+              {refused && <span id={dgErrId} className="row-error">{refused.message}</span>}
             </div>
           );
         })}
@@ -81,11 +98,33 @@ export default function ShipmentForm({ shipments, capacity, onChange }) {
           onChange={(e) => setWeight(e.target.value)}
         />
         <span className="unit">kg</span>
+        <DgSelect value={dgClass} onChange={(v) => setDgClass(v ?? "")} label="New shipment dangerous goods class" />
         <button type="submit">+ Add shipment</button>
       </form>
 
       <PasteWeights shipments={shipments} onChange={onChange} />
     </div>
+  );
+}
+
+/** Compact DG class picker: "—" (general freight), food, fire-risk or a class. */
+function DgSelect({ value, onChange, label, describedBy }) {
+  const v = value ?? "";
+  const code = v === "food" ? "F" : v === "fire_risk" ? "R" : v;
+  return (
+    <span className="dg-select">
+      {code ? <DgDiamond code={code} size="sm" /> : null}
+      <select
+        value={v}
+        onChange={(e) => onChange(e.target.value || null)}
+        aria-label={label}
+        aria-describedby={describedBy}
+        title={v ? DG_OPTIONS.find((o) => o.value === v)?.label : "Not dangerous goods"}
+      >
+        <option value="">— not DG</option>
+        {DG_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </span>
   );
 }
 

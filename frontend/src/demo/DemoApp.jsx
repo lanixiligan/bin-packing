@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import ShipmentForm from "./components/ShipmentForm.jsx";
-import ResultPanel from "./components/ResultPanel.jsx";
-import Summary from "./components/Summary.jsx";
-import { FFD_LOSES_EXAMPLE, randomShipments, shipmentsFromWeights } from "./shipments.js";
-import { NARROW_SCREEN, REDUCED_MOTION, SMALL_SCREEN, useMediaQuery } from "./useMediaQuery.js";
+import ShipmentForm from "../components/ShipmentForm.jsx";
+import ResultPanel from "../components/ResultPanel.jsx";
+import Summary from "../components/Summary.jsx";
+import { dgClassText } from "../components/capacity.ts";
+import { checkAll } from "../dg/rules.ts";
+import { demoDg, FFD_LOSES_EXAMPLE, randomShipments, shipmentsFromWeights } from "../shipments.js";
+import { NARROW_SCREEN, REDUCED_MOTION, SMALL_SCREEN, useMediaQuery } from "../useMediaQuery.js";
 
 const DROP_INTERVAL_MS = 150; // time between each shipment dropping in
-const SOLVER_TIME_LIMIT_S = 10; // matches TIME_LIMIT_SECONDS in backend/main.py
+const SOLVER_TIME_LIMIT_S = 10; // matches TIME_LIMIT_SECONDS in backend/app/routers/demo.py
 
 // The capacity field is kept as text so it can be empty while typing.
 function capacityProblem(text) {
@@ -30,6 +32,8 @@ export default function App() {
   const [hoverId, setHoverId] = useState(null);
   const [focusId, setFocusId] = useState(null);
   const [view, setView] = useState("2d"); // "2d" bars or "3d" trucks
+  const [ruleSet, setRuleSet] = useState("adg"); // "adg" or "northline" (dangerous goods rules)
+  const [randomDg, setRandomDg] = useState(false); // random shipments get random DG classes
   const timer = useRef(null);
   const resultsRef = useRef(null);
   const errorRef = useRef(null);
@@ -43,6 +47,12 @@ export default function App() {
   const totalWeight = shipments.reduce((s, x) => s + (Number(x.weight) || 0), 0);
   const lowerBound = capacity ? Math.ceil(totalWeight / capacity) : null;
   const activeId = hoverId ?? focusId; // shipment highlighted in both panels
+  const dgCount = shipments.filter((s) => s.dgClass).length;
+  // Pairs of shipments that must travel apart (the server decides on Solve).
+  const dgConflicts = useMemo(
+    () => (dgCount ? checkAll(shipments, (s) => demoDg(s.dgClass)).filter((p) => p.status === "incompatible").length : 0),
+    [shipments, dgCount]
+  );
 
   // ---- Animation: bump `step` until every shipment has dropped ----------
   function startAnimation(n) {
@@ -131,12 +141,18 @@ export default function App() {
     if (msg) return;
     setLoading(true);
     try {
-      const res = await fetch("/solve", {
+      const res = await fetch("/api/solve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           capacity,
-          shipments: shipments.map((s) => ({ name: s.name.trim(), weight: Number(s.weight) })),
+          // dg_class only for dangerous goods, so a plain request looks as before
+          shipments: shipments.map((s) => ({
+            name: s.name.trim(),
+            weight: Number(s.weight),
+            ...(s.dgClass ? { dg_class: s.dgClass } : {}),
+          })),
+          rule_set: ruleSet,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -239,15 +255,44 @@ export default function App() {
             <span><b>{shipments.length}</b> shipments</span>
             <span><b>{totalWeight.toLocaleString()}</b> kg total</span>
             <span>Lower bound: <b>{lowerBound ?? "—"}</b> trucks</span>
+            {dgCount > 0 && (
+              <span className="dg-quick">
+                <b>{dgCount}</b> dangerous goods · <b>{dgConflicts}</b> incompatible pair{dgConflicts === 1 ? "" : "s"}
+              </span>
+            )}
           </div>
+          <fieldset className="rule-set">
+            <legend>Dangerous goods rules</legend>
+            <div className="rule-set-options">
+              {[["adg", "ADG Code"], ["northline", "ADG + Northline"]].map(([v, label]) => (
+                <label key={v} className={ruleSet === v ? "on" : ""}>
+                  <input
+                    type="radio"
+                    name="rule-set"
+                    value={v}
+                    checked={ruleSet === v}
+                    onChange={() => {
+                      setRuleSet(v);
+                      clearResult();
+                    }}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
         </div>
 
-        <ShipmentForm shipments={shipments} capacity={capacity} onChange={changeShipments} />
+        <ShipmentForm shipments={shipments} capacity={capacity} onChange={changeShipments} ruleSet={ruleSet} />
 
         <div className="actions">
-          <button type="button" onClick={() => changeShipments(randomShipments(capacity ?? undefined))}>
+          <button type="button" onClick={() => changeShipments(randomShipments(capacity ?? undefined, 20, { dg: randomDg }))}>
             🎲 Load random shipments
           </button>
+          <label className="random-dg">
+            <input type="checkbox" checked={randomDg} onChange={(e) => setRandomDg(e.target.checked)} />
+            Random DG classes
+          </label>
           <button type="button" onClick={loadExample}>
             🧪 Example where FFD loses
           </button>
@@ -294,6 +339,7 @@ export default function App() {
                 <>
                   <span className="inspector-name">{active.shipment.name}</span>
                   <span>{active.shipment.weight} kg</span>
+                  {active.shipment.dg_class && <span>DG: <b>{dgClassText(active.shipment.dg_class)}</b></span>}
                   <span>FFD: <b>truck {active.ffd}</b></span>
                   <span>OR-Tools: <b>truck {active.ortools}</b></span>
                 </>
