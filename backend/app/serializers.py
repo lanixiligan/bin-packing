@@ -3,13 +3,17 @@ Shared ORM → response conversions for orders (used by the portal and ops
 routers). Orchestrator-owned: ask before changing.
 """
 
+from collections.abc import Sequence
+
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app import dg as dgrules
 from app.models import Driver as DriverRow
-from app.models import Order, ProofOfDelivery, User, UserRole
+from app.models import Order, OrderLine, ProofOfDelivery, User, UserRole
 from app.schemas import (
     AddressRead,
+    DgConflict,
     OrderEventRead,
     OrderLineRead,
     OrderRead,
@@ -17,6 +21,26 @@ from app.schemas import (
     PodRead,
     QuoteRead,
 )
+
+
+def dg_item_label(name: str, dg: dgrules.DgInfo | None) -> str:
+    """'Pool chlorine (Class 5.1)'; general freight keeps its bare name."""
+    return name if dgrules.is_general(dg) else f"{name} ({dgrules.label(dg)})"
+
+
+def dg_conflicts(lines: Sequence[OrderLine]) -> list[DgConflict]:
+    """Pairs of `lines` that are incompatible, or need a Table 9.2 check (ADG Code)."""
+    dgs = [dgrules.parse(ln.dg) for ln in lines]
+    out = []
+    for c in dgrules.check_all(dgs):
+        a, b = lines[c.a], lines[c.b]
+        items = [dg_item_label(a.item_name, dgs[c.a]), dg_item_label(b.item_name, dgs[c.b])]
+        if c.status == "incompatible":
+            message = f"{items[0]} and {items[1]} can't travel on the same vehicle. " + " ".join(c.reasons)
+        else:
+            message = f"Check {items[0]} with {items[1]}: " + " ".join(c.reasons)
+        out.append(DgConflict(status=c.status, order_line_ids=[a.id, b.id], items=items, message=message))
+    return out
 
 
 def pod_photo_url(pod_id: int) -> str:
@@ -94,6 +118,7 @@ async def order_read(session: AsyncSession, order: Order, *, for_customer: bool 
         delivery_address=AddressRead.model_validate(order.delivery_address),
         notes=order.notes,
         lines=[OrderLineRead.model_validate(ln) for ln in order.lines],
+        dg_conflicts=dg_conflicts(order.lines),
         events=events,
         quote=QuoteRead.model_validate(order.quote) if order.quote else None,
         pods=await pods_for(session, order.id),

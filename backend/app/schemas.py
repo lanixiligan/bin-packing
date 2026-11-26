@@ -35,7 +35,8 @@ from pydantic import (
     model_validator,
 )
 
-from app.models import JobKind, JobStatus, OrderStatus, PlanStatus, UserRole
+from app.dg import DgInfo
+from app.models import JobKind, JobStatus, OrderStatus, PlanStatus, RuleSet, UserRole
 
 # Item sizes and vehicle limits are kept to the solver's resolution (app/solver/
 # multi.py SCALE: grams, cm³, 1/1000 pallet), so its integer model is exact.
@@ -148,6 +149,7 @@ class ItemCreate(BaseModel):
     weight_kg: Kg = Field(ge=0.001, le=100_000)
     volume_m3: M3 = Field(default=0, ge=0, le=1_000)
     pallet_spaces: Pallets = Field(default=0, ge=0, le=100)
+    dg: DgInfo | None = Field(default=None, description="Dangerous goods data; null = general freight.")
 
 
 class ItemUpdate(BaseModel):
@@ -157,6 +159,7 @@ class ItemUpdate(BaseModel):
     weight_kg: Kg | None = Field(default=None, ge=0.001, le=100_000)
     volume_m3: M3 | None = Field(default=None, ge=0, le=1_000)
     pallet_spaces: Pallets | None = Field(default=None, ge=0, le=100)
+    dg: DgInfo | None = Field(default=None, description="null clears it (general freight).")
 
 
 class ItemRead(APIModel):
@@ -168,8 +171,28 @@ class ItemRead(APIModel):
     weight_kg: float
     volume_m3: float
     pallet_spaces: float
+    dg: DgInfo | None = None
     archived: bool
     created_at: datetime
+
+
+class DgConflict(BaseModel):
+    """Two order lines whose goods must not share a vehicle (incompatible), or that
+    need a Table 9.2 check against the products' SDS (check, a warning only)."""
+    status: Literal["incompatible", "check"]
+    order_line_ids: list[int]   # the two lines
+    items: list[str]            # "Pool chlorine (Class 5.1)" for each line
+    message: str
+
+
+class DgIssue(BaseModel):
+    """A Northline acceptance problem with an order line (or a whole order for limits)."""
+    order_id: int
+    order_reference: str
+    order_line_id: int | None
+    item_name: str | None
+    kind: Literal["prohibited", "limit", "approval", "note"]
+    message: str
 
 
 # ---------------------------------------------------------------------------
@@ -260,6 +283,8 @@ class OrderLineRead(APIModel):
     unit_weight_kg: float
     unit_volume_m3: float
     unit_pallet_spaces: float
+    dg: DgInfo | None = None
+    dg_approval_ref: str | None = None
 
 
 class OrderEventRead(APIModel):
@@ -315,6 +340,8 @@ class OrderRead(OrderSummary):
     delivery_address: AddressRead
     notes: str | None
     lines: list[OrderLineRead]
+    # Pairs of lines that can't travel together: the planner puts them on separate loads.
+    dg_conflicts: list[DgConflict] = []
     events: list[OrderEventRead]  # oldest first
     quote: QuoteRead | None
     pods: list[PodRead]
@@ -484,6 +511,7 @@ class PackUnit(BaseModel):
     weight_kg: float
     volume_m3: float
     pallets: float
+    dg: DgInfo | None = None   # incompatible units are never packed on the same load
 
 
 class PackedLoad(BaseModel):
@@ -530,6 +558,7 @@ class InfeasibleDetail(BaseModel):
     """`detail` of a 422 from POST /api/ops/plans when some units can never fit."""
     message: str
     misfits: list[UnitMisfit]
+    dg_issues: list[DgIssue] = []   # Northline plans: goods Northline won't accept
 
 
 # ---------------------------------------------------------------------------
@@ -540,6 +569,8 @@ class PlanCreate(BaseModel):
     delivery_date: date
     zone: str
     vehicle_id: int = Field(description="Capacity profile to pack against.")
+    rule_set: RuleSet = Field(default=RuleSet.adg, description="Dangerous goods rules: 'adg' "
+                              "(ADG segregation) or 'northline' (ADG + Northline acceptance).")
 
 
 class PlanSaveDraft(BaseModel):
@@ -579,6 +610,9 @@ class LoadLineRead(BaseModel):
     unit_weight_kg: float
     unit_volume_m3: float
     unit_pallet_spaces: float
+    dg: DgInfo | None = None
+    dg_approval_required: bool = False   # Northline plans: needs an HSEQ approval reference
+    dg_approval_ref: str | None = None
 
 
 class LoadRead(BaseModel):
@@ -591,6 +625,14 @@ class LoadRead(BaseModel):
     fill_percent: FillPercent
     over_capacity: bool
     lines: list[LoadLineRead]
+    dg_conflicts: list[DgConflict] = []   # incompatible ones block locking
+    dg_warnings: list[str] = []           # Table 9.2 checks and carrier notes
+    approvals_missing: int = 0            # Northline: lines without an approval reference
+
+
+class OrderLineApproval(BaseModel):
+    """Record (or clear with null) the Northline HSEQ approval for an order line."""
+    dg_approval_ref: str | None = Field(max_length=100)
 
 
 class PlanSummary(BaseModel):
@@ -601,6 +643,7 @@ class PlanSummary(BaseModel):
     job_id: uuid.UUID
     job_status: JobStatus
     method: str | None
+    rule_set: RuleSet
     order_count: int
     load_count: int
     created_at: datetime
@@ -636,6 +679,8 @@ class JobRead(APIModel):
 class DriverLine(BaseModel):
     item_name: str
     item_sku: str
+    dg_class: str | None = None     # e.g. "3"; null = not dangerous goods
+    un_number: str | None = None
     quantity: int   # units of this line on the driver's load
 
 

@@ -1,16 +1,23 @@
 """
 The original stateless 1D bin packing demo: POST /api/solve (public).
-Owner: Agent B. Keep its request and response unchanged.
+Owner: Agent B. Keep its request and response backward compatible (new fields
+are optional in the request and only added to the response).
+
+Dangerous goods: a shipment may carry a `dg_class` (or "food" / "fire_risk");
+incompatible shipments (ADG Table 9.1, app/dg.py) never share a truck. With
+`rule_set: "northline"`, classes Northline never accepts are rejected (400).
 
 It runs on the multi-dimension solver (app/solver/multi.py) with weight as
 the only limited dimension, so the demo and load planning share one model.
 """
 
 import threading
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app import dg as dgrules
 from app.schemas import Capacity, PackUnit
 from app.solver.multi import solve as solve_units
 
@@ -24,14 +31,35 @@ _solve_slots = threading.BoundedSemaphore(MAX_CONCURRENT_SOLVES)
 router = APIRouter()
 
 
+DemoDg = Literal["1", "2.1", "2.2", "2.3", "3", "4.1", "4.2", "4.3", "5.1", "5.2", "6.1", "6.2",
+                 "7", "8", "9", "food", "fire_risk"]
+# Class 1 in the demo means small arms ammunition (1.4S), the only explosive with wide acceptance.
+DEMO_EXPLOSIVE = "1.4S"
+
+
 class Shipment(BaseModel):
     name: str = Field(min_length=1, max_length=50)
     weight: int = Field(gt=0, le=1_000_000, description="Weight in kg (whole number)")
+    dg_class: DemoDg | None = Field(default=None, description="DG class, 'food', 'fire_risk', or "
+                                                              "null for general freight")
 
 
 class SolveRequest(BaseModel):
     capacity: int = Field(gt=0, le=1_000_000, description="Truck max capacity in kg")
     shipments: list[Shipment]
+    rule_set: dgrules.RuleSet = "adg"
+
+
+def demo_dg(value: str | None) -> dgrules.DgInfo | None:
+    """DgInfo for a demo shipment's class (Table 9.2 answered 'none of these')."""
+    if value is None:
+        return None
+    if value == "food":
+        return dgrules.DgInfo(food=True)
+    if value == "fire_risk":
+        return dgrules.DgInfo(fire_risk=True)
+    return dgrules.DgInfo(dg_class=value, t92=[],
+                          explosive_code=DEMO_EXPLOSIVE if value == "1" else None)
 
 
 def build_result(trucks, shipments, capacity):
@@ -66,17 +94,27 @@ def solve(req: SolveRequest):
             f"({req.capacity} kg) and can never fit: {names}",
         )
 
+    dgs = [demo_dg(s.dg_class) for s in req.shipments]
+    if req.rule_set == "northline":
+        refused = [f"'{s.name}' (Class {s.dg_class})" for s, d in zip(req.shipments, dgs, strict=True)
+                   if dgrules.northline_prohibited(d)]
+        if refused:
+            raise HTTPException(400, "Northline does not accept these shipments: " + ", ".join(refused))
+
     # Give each shipment an id so the frontend can track it across panels.
     shipments = [
-        {"id": i, "name": s.name, "weight": s.weight}
+        {"id": i, "name": s.name, "weight": s.weight, "dg_class": s.dg_class}
         for i, s in enumerate(req.shipments)
     ]
     weights = [s["weight"] for s in shipments]
     units = [
         PackUnit(id=s["id"], order_id=0, order_reference="", order_line_id=s["id"],
-                 item_name=s["name"], item_sku="", weight_kg=s["weight"], volume_m3=0, pallets=0)
-        for s in shipments
+                 item_name=s["name"], item_sku="", weight_kg=s["weight"], volume_m3=0, pallets=0,
+                 dg=d)
+        for s, d in zip(shipments, dgs, strict=True)
     ]
+    segregated = any(c.status == "incompatible" for c in dgrules.check_all(list({
+        d.key(): d for d in dgs if not dgrules.is_general(d)}.values())))
 
     # ---- FFD, then CP-SAT warm-started with the FFD answer ---------------
     if not _solve_slots.acquire(blocking=False):
@@ -97,6 +135,8 @@ def solve(req: SolveRequest):
         "capacity": req.capacity,
         "total_weight": sum(weights),
         "lower_bound": lb,
+        # True when some shipments must travel apart (the lower bound ignores that).
+        "segregated": segregated,
         "ffd": {
             "num_trucks": len(ffd_trucks),
             "trucks": build_result(ffd_trucks, shipments, req.capacity),

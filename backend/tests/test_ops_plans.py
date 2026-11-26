@@ -482,6 +482,7 @@ OPS_ROUTES = [
     ("PATCH", "/api/ops/drivers/1"), ("POST", "/api/ops/plans"), ("GET", "/api/ops/plans"),
     ("GET", "/api/ops/plans/1"), ("DELETE", "/api/ops/plans/1"), ("POST", "/api/ops/plans/1/draft"),
     ("POST", "/api/ops/plans/1/moves"), ("POST", "/api/ops/plans/1/lock"), ("PATCH", "/api/ops/loads/1"),
+    ("PATCH", "/api/ops/order-lines/1"),
     ("GET", "/api/ops/invoices?month=2026-11"), ("GET", "/api/ops/invoices/1?month=2026-11"),
     ("GET", "/api/ops/invoices/1/csv?month=2026-11"),
 ]

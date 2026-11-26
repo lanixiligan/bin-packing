@@ -45,8 +45,8 @@ async def seeded(session):
 async def test_counts(seeded, session):
     assert seeded["companies"] == 1 and seeded["users"] == 5 and seeded["drivers"] == 2
     assert seeded["zones"] == 3 and seeded["vehicles"] == 4
-    assert 14 <= seeded["addresses"] <= 16 and 18 <= seeded["items"] <= 22
-    assert 28 <= seeded["orders"] <= 40
+    assert 14 <= seeded["addresses"] <= 16 and 26 <= seeded["items"] <= 32
+    assert 28 <= seeded["orders"] <= 44
     roles = Counter(u.role for u in (await session.exec(select(User))).all())
     assert roles == {UserRole.customer: 2, UserRole.dispatcher: 1, UserRole.driver: 2}
     zones = Counter(a.zone for a in (await session.exec(select(Address))).all())

@@ -92,11 +92,18 @@ class JobKind(StrEnum):
     solve = "solve"
 
 
+class RuleSet(StrEnum):
+    """Dangerous goods rules a plan is checked against (see app/dg.py)."""
+    adg = "adg"              # ADG Code segregation (Tables 9.1 and 9.2)
+    northline = "northline"  # ADG + Northline GDE-56 acceptance rules
+
+
 UserRoleType = _pg_enum(UserRole, "user_role")
 OrderStatusType = _pg_enum(OrderStatus, "order_status")
 PlanStatusType = _pg_enum(PlanStatus, "plan_status")
 JobStatusType = _pg_enum(JobStatus, "job_status")
 JobKindType = _pg_enum(JobKind, "job_kind")
+RuleSetType = _pg_enum(RuleSet, "rule_set")
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +195,8 @@ class Item(SQLModel, table=True):
     weight_kg: float
     volume_m3: float = Field(default=0)
     pallet_spaces: float = Field(default=0)  # 0 = does not use a pallet space
+    # Dangerous goods data (app.dg.DgInfo as JSON); None = general freight.
+    dg: dict[str, Any] | None = Field(default=None, sa_type=JSONB, nullable=True)
     archived: bool = Field(default=False)
     created_at: datetime = _ts(default_factory=utcnow)
 
@@ -311,6 +320,9 @@ class OrderLine(SQLModel, table=True):
     unit_weight_kg: float
     unit_volume_m3: float
     unit_pallet_spaces: float
+    dg: dict[str, Any] | None = Field(default=None, sa_type=JSONB, nullable=True)  # item.dg snapshot
+    # Northline "needs approval" goods: the HSEQ approval reference, set by a dispatcher.
+    dg_approval_ref: str | None = Field(default=None, max_length=100)
 
     order: Order = Relationship(back_populates="lines", sa_relationship_kwargs={"lazy": "selectin"})
 
@@ -418,6 +430,8 @@ class Plan(SQLModel, table=True):
     vehicle_id: int = Field(foreign_key="vehicles.id")
     job_id: uuid.UUID = Field(foreign_key="jobs.id", unique=True)
     method: str | None = Field(default=None, max_length=16)  # "ortools" | "ffd" once saved
+    rule_set: RuleSet = Field(default=RuleSet.adg, sa_type=RuleSetType, nullable=False,
+                              sa_column_kwargs={"server_default": "adg"})
     created_by_id: uuid.UUID | None = Field(default=None, foreign_key="users.id")
     created_at: datetime = _ts(default_factory=utcnow)
     locked_at: datetime | None = _ts()

@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app import dg as dgrules
 from app import pricing, workers
 from app.auth import DispatcherUser, create_user
 from app.config import settings
@@ -33,6 +34,7 @@ from app.models import (
     OrderStatus,
     Plan,
     PlanStatus,
+    RuleSet,
     User,
     UserRole,
     Vehicle,
@@ -44,6 +46,8 @@ from app.schemas import (
     AddressZoneUpdate,
     BatchSummary,
     Capacity,
+    DgConflict,
+    DgIssue,
     DriverCreate,
     DriverRead,
     DriverUpdate,
@@ -55,6 +59,8 @@ from app.schemas import (
     LoadRead,
     LoadUpdate,
     OpsAddressRead,
+    OrderLineApproval,
+    OrderLineRead,
     OrderRead,
     OrderSummary,
     PlanCreate,
@@ -73,7 +79,7 @@ from app.schemas import (
     ZoneRead,
     ZoneUpdate,
 )
-from app.serializers import order_read, order_summary
+from app.serializers import dg_conflicts, dg_item_label, order_read, order_summary
 from app.solver import exceeded, expand_lines, fill_percent, find_misfits
 
 log = logging.getLogger(__name__)
@@ -496,9 +502,33 @@ def _amounts(usage: Usage, capacity: Capacity, dims: list[str]) -> str:
     return " and ".join(parts)
 
 
+def _approval_required(plan: Plan, line: OrderLine) -> bool:
+    """Northline plans: 'needs approval' goods need an HSEQ approval reference."""
+    return plan.rule_set == RuleSet.northline and dgrules.approval_required(dgrules.parse(line.dg))
+
+
+def _load_dg(load: Load, plan: Plan) -> tuple[list[DgConflict], list[str], int]:
+    """(incompatible pairs, warnings, lines missing an approval) of a load."""
+    lines = [a.order_line for a in load.assignments]
+    found = dg_conflicts(lines)
+    conflicts = [c for c in found if c.status == "incompatible"]
+    warnings = [c.message for c in found if c.status == "check"]
+    missing = 0
+    if plan.rule_set == RuleSet.northline:
+        for line in lines:
+            dg = dgrules.parse(line.dg)
+            for issue in dgrules.northline_line_issues(dg):
+                if issue.kind == "note":
+                    warnings.append(f"{dg_item_label(line.item_name, dg)}: {issue.message}")
+            if _approval_required(plan, line) and not line.dg_approval_ref:
+                missing += 1
+    return conflicts, warnings, missing
+
+
 def _load_read(load: Load, plan: Plan) -> LoadRead:
     capacity = _load_capacity(load, plan)
     usage = _load_usage(load)
+    conflicts, warnings, missing = _load_dg(load, plan)
     return LoadRead(
         id=load.id,
         number=load.number,
@@ -522,9 +552,15 @@ def _load_read(load: Load, plan: Plan) -> LoadRead:
                 unit_weight_kg=a.order_line.unit_weight_kg,
                 unit_volume_m3=a.order_line.unit_volume_m3,
                 unit_pallet_spaces=a.order_line.unit_pallet_spaces,
+                dg=a.order_line.dg,
+                dg_approval_required=_approval_required(plan, a.order_line),
+                dg_approval_ref=a.order_line.dg_approval_ref,
             )
             for a in load.assignments
         ],
+        dg_conflicts=conflicts,
+        dg_warnings=warnings,
+        approvals_missing=missing,
     )
 
 
@@ -565,7 +601,7 @@ async def _plan_read(session: AsyncSession, plan_id: int) -> PlanRead:
     )).all())
     return PlanRead(
         id=plan.id, delivery_date=plan.delivery_date, zone=plan.zone, status=plan.status,
-        job_id=plan.job_id, job_status=job.status, method=plan.method,
+        job_id=plan.job_id, job_status=job.status, method=plan.method, rule_set=plan.rule_set,
         order_count=len(order_ids), load_count=len(plan.loads),
         created_at=plan.created_at, locked_at=plan.locked_at,
         vehicle=VehicleRead.model_validate(plan.vehicle),
@@ -591,6 +627,42 @@ async def _renumber(session: AsyncSession, plan: Plan) -> None:
     for i, load in enumerate(loads, start=1):
         load.number = i
     await session.flush()
+
+
+def _northline_issues(orders: list[Order]) -> list[DgIssue]:
+    """Lines (and order quantities) that Northline does not accept: prohibited or over a limit."""
+    out = []
+    for order in orders:
+        refs = [dgrules.LineRef(dgrules.parse(ln.dg), ln.quantity, ln.unit_weight_kg, ln.item_name)
+                for ln in order.lines]
+        for index, issue in dgrules.northline_order_issues(refs):
+            if issue.kind not in ("prohibited", "limit"):
+                continue
+            line = order.lines[index] if index is not None else None
+            out.append(DgIssue(
+                order_id=order.id, order_reference=order.reference,
+                order_line_id=line.id if line else None, item_name=line.item_name if line else None,
+                kind=issue.kind,
+                message=f"{order.reference}: " + (f"{line.item_name}: " if line else "") + issue.message,
+            ))
+    return out
+
+
+def _dg_clash(line: OrderLine, others: Iterable[OrderLine]) -> str | None:
+    """Why `line` can't join a load carrying `others` (ADG), or None."""
+    dg = dgrules.parse(line.dg)
+    if dgrules.is_general(dg):
+        return None
+    for other in others:
+        if other.id == line.id:
+            continue
+        odg = dgrules.parse(other.dg)
+        verdict = dgrules.pair_verdict(dg, odg)
+        if verdict.status == "incompatible":
+            return (f"it carries {dg_item_label(other.item_name, odg)}, and "
+                    f"{dg_item_label(line.item_name, dg)} can't travel with it. "
+                    + " ".join(verdict.reasons))
+    return None
 
 
 # ---- Plans and loads ------------------------------------------------------------------
@@ -636,19 +708,27 @@ async def create_plan(body: PlanCreate, user: DispatcherUser, session: Session):
     capacity = _capacity(vehicle)
     units = expand_lines(line for order in orders for line in order.lines)
     misfits = find_misfits(units, capacity)
-    if misfits:
-        n = len(misfits)
+    dg_issues = _northline_issues(orders) if body.rule_set == RuleSet.northline else []
+    if misfits or dg_issues:
+        parts = []
+        if misfits:
+            n = len(misfits)
+            parts.append(f"{n} order line{'s' if n != 1 else ''} can't fit {vehicle.name} even on "
+                         "an empty load. Choose a bigger vehicle or remove those items.")
+        if dg_issues:
+            n = len(dg_issues)
+            parts.append(f"Northline won't accept {n} order line{'s' if n != 1 else ''} or "
+                         "quantit" + ("ies" if n != 1 else "y") + ". Reject those orders or plan "
+                         "with the ADG rule set.")
         raise _unprocessable(InfeasibleDetail(
-            message=f"{n} order line{'s' if n != 1 else ''} can't fit {vehicle.name} even on an "
-                    "empty load. Choose a bigger vehicle or remove those items.",
-            misfits=misfits,
+            message=" ".join(parts), misfits=misfits, dg_issues=dg_issues,
         ).model_dump())
 
     job = Job(kind=JobKind.solve, payload={}, created_by_id=user.id)
     session.add(job)
     await session.flush()
     plan = Plan(delivery_date=body.delivery_date, zone=code, status=PlanStatus.draft,
-                vehicle_id=vehicle.id, job_id=job.id, created_by_id=user.id)
+                vehicle_id=vehicle.id, job_id=job.id, created_by_id=user.id, rule_set=body.rule_set)
     session.add(plan)
     await session.flush()
     job.payload = SolveJobPayload(
@@ -691,7 +771,7 @@ async def list_plans(user: DispatcherUser, session: Session,
     counts = await _order_counts(session, [p.id for p, _ in rows])
     return [
         PlanSummary(id=p.id, delivery_date=p.delivery_date, zone=p.zone, status=p.status,
-                    job_id=p.job_id, job_status=job_status, method=p.method,
+                    job_id=p.job_id, job_status=job_status, method=p.method, rule_set=p.rule_set,
                     order_count=counts.get(p.id, 0), load_count=len(p.loads),
                     created_at=p.created_at, locked_at=p.locked_at)
         for p, job_status in rows
@@ -800,6 +880,10 @@ async def move_line(plan_id: int, body: LineMove, user: DispatcherUser, session:
     dims = exceeded(after, capacity)
     if dims:
         raise _unprocessable(f"{label} would carry {_amounts(after, capacity, dims)}.")
+    if target is not None:
+        clash = _dg_clash(line, (a.order_line for a in target.assignments))
+        if clash:
+            raise _unprocessable(f"{label} can't take these units: {clash}")
 
     if quantity == assignment.quantity:
         source.assignments.remove(assignment)
@@ -840,6 +924,14 @@ async def lock_plan(plan_id: int, user: DispatcherUser, session: Session):
         if dims:
             raise _conflict(f"Load {load.number} is over capacity: it carries "
                             f"{_amounts(usage, capacity, dims)}.")
+        conflicts, _, missing = _load_dg(load, plan)
+        if conflicts:
+            raise _conflict(f"Load {load.number} carries dangerous goods that can't travel "
+                            f"together: {conflicts[0].message} Move them to another load.")
+        if missing:
+            raise _conflict(f"Load {load.number} has {missing} line{'s' if missing != 1 else ''} "
+                            "that need a Northline HSEQ approval. Record the approval reference "
+                            "before you lock the plan.")
 
     orders = await _reserved_orders(session, plan, lock=True)
     assigned: Counter[int] = Counter()
@@ -860,6 +952,25 @@ async def lock_plan(plan_id: int, user: DispatcherUser, session: Session):
     plan.locked_at = utcnow()
     await session.commit()
     return await _plan_read(session, plan.id)
+
+
+@router.patch("/order-lines/{line_id}", response_model=OrderLineRead)
+async def set_line_approval(line_id: int, body: OrderLineApproval, user: DispatcherUser,
+                            session: Session):
+    """Record (or clear) the Northline HSEQ approval reference of an order line.
+    The order must be accepted or planned (409 otherwise)."""
+    line = await session.get(OrderLine, line_id)
+    if line is None:
+        raise _not_found("Order line")
+    order = await _order_or_404(session, line.order_id, lock=True)
+    if order.status not in (OrderStatus.accepted, OrderStatus.planned):
+        raise _conflict(f"{order.reference} is {order.status.value}; approvals can only be recorded "
+                        "for accepted or planned orders.")
+    ref = (body.dg_approval_ref or "").strip() or None
+    line.dg_approval_ref = ref
+    await session.commit()
+    await session.refresh(line)
+    return OrderLineRead.model_validate(line)
 
 
 @router.patch("/loads/{load_id}", response_model=LoadRead)

@@ -5,6 +5,8 @@ import time
 
 import pytest
 
+from app import dg as dgrules
+from app.dg import DgInfo
 from app.schemas import Capacity, PackUnit, SolveResult, Usage
 from app.solver import exceeded, pack, usage_of
 from app.solver import multi as multi_mod
@@ -15,11 +17,13 @@ CLASSIC = [560, 490, 440, 370, 360, 340, 190, 150]
 
 
 def unit(i: int, weight: float = 1.0, volume: float = 0.0, pallets: float = 0.0,
-         line: int | None = None) -> PackUnit:
+         line: int | None = None, dg: str | dict | None = None) -> PackUnit:
+    """`dg`: a DG class ("3") or DgInfo fields."""
     line = i if line is None else line
+    info = DgInfo.model_validate({"dg_class": dg, "t92": []} if isinstance(dg, str) else dg) if dg else None
     return PackUnit(id=i, order_id=1, order_reference="ORD-000001", order_line_id=line,
                     item_name=f"Item {line}", item_sku=f"SKU-{line}",
-                    weight_kg=weight, volume_m3=volume, pallets=pallets)
+                    weight_kg=weight, volume_m3=volume, pallets=pallets, dg=info)
 
 
 def units_1d(weights) -> list[PackUnit]:
@@ -40,6 +44,8 @@ def assert_valid(result: SolveResult, units: list[PackUnit], capacity: Capacity)
             usage = usage_of(by_id[i] for i in load.unit_ids)
             assert load.usage == usage
             assert exceeded(usage, capacity) == []
+            on_load = [by_id[i].dg for i in load.unit_ids]
+            assert not [c for c in dgrules.check_all(on_load) if c.status == "incompatible"]
     if result.ortools:
         assert result.ortools.num_loads <= result.ffd.num_loads
     assert result.lower_bound == max(v for v in result.lower_bounds.model_dump().values() if v is not None)
@@ -92,7 +98,8 @@ async def test_demo_endpoint_response(client):
     r = await client.post("/api/solve", json=body)
     assert r.status_code == 200, r.text
     data = r.json()
-    assert set(data) == {"capacity", "total_weight", "lower_bound", "ffd", "ortools"}
+    assert set(data) == {"capacity", "total_weight", "lower_bound", "segregated", "ffd", "ortools"}
+    assert data["segregated"] is False
     assert data["capacity"] == 1000 and data["total_weight"] == sum(CLASSIC) and data["lower_bound"] == 3
 
     ffd = data["ffd"]
@@ -111,7 +118,8 @@ async def test_demo_endpoint_response(client):
     assert set(truck) == {"truck", "shipments", "load", "empty", "fill_percent"}
     assert truck == {
         "truck": 1,
-        "shipments": [{"id": 0, "name": "S0", "weight": 560}, {"id": 2, "name": "S2", "weight": 440}],
+        "shipments": [{"id": 0, "name": "S0", "weight": 560, "dg_class": None},
+                      {"id": 2, "name": "S2", "weight": 440, "dg_class": None}],
         "load": 1000, "empty": 0, "fill_percent": 100.0,
     }
     for t in cp["trucks"]:
@@ -264,3 +272,86 @@ def test_unit_ids_are_reported_not_positions():
     result = pack(units, Capacity(weight_kg=1000), 5)
     assert sorted(uid for load in result.ortools.loads for uid in load.unit_ids) == [10, 11, 12]
     assert result.ffd.drop_order == [10, 11, 12]
+
+
+# ---------------------------------------------------------------------------
+# Dangerous goods segregation
+# ---------------------------------------------------------------------------
+
+def test_incompatible_goods_get_separate_loads():
+    # Everything fits one load by weight, but Class 3 and Class 5.1 can't travel together.
+    units = [unit(0, 10, dg="3"), unit(1, 10, dg="5.1"), unit(2, 10), unit(3, 10, dg="3"),
+             unit(4, 10, dg="5.1")]
+    capacity = Capacity(weight_kg=1000)
+    result = pack(units, capacity, time_limit_s=5)
+    assert_valid(result, units, capacity)
+    assert result.lower_bound == 1
+    assert result.ffd.num_loads == 2 and result.ortools.num_loads == 2
+    assert result.ortools.status == "OPTIMAL"
+
+
+def test_three_mutually_incompatible_classes_need_three_loads():
+    # 3 x 5.1, 5.1 x 4.2 and 3 x 4.2 are all "N" in Table 9.1.
+    units = [unit(i, 5, dg=c) for i, c in enumerate(["3", "5.1", "4.2", "3", "5.1", "4.2"])]
+    capacity = Capacity(weight_kg=1000)
+    result = pack(units, capacity, time_limit_s=5)
+    assert_valid(result, units, capacity)
+    assert result.ffd.num_loads == result.ortools.num_loads == 3
+
+
+def test_compatible_classes_and_exceptions_share_a_load():
+    units = [unit(0, 5, dg="3"), unit(1, 5, dg="8"), unit(2, 5, dg={"food": True}),
+             unit(3, 5, dg={"dg_class": "2.1", "container": "aerosol"})]
+    capacity = Capacity(weight_kg=1000)
+    result = pack(units, capacity, time_limit_s=5)
+    assert_valid(result, units, capacity)
+    # Food can't go with Class 8 (exception 8), everything else can.
+    assert result.ortools.num_loads == 2
+
+
+def test_cpsat_beats_ffd_with_segregation():
+    # FFD (largest first) needs 4 loads here; CP-SAT finds 3 (= the weight bound, so optimal).
+    weights = [50, 20, 50, 50, 60, 20]
+    classes = ["5.1", "3", "3", "5.1", None, "5.1"]
+    units = [unit(i, w, dg=c) for i, (w, c) in enumerate(zip(weights, classes, strict=True))]
+    capacity = Capacity(weight_kg=100)
+    result = pack(units, capacity, time_limit_s=5)
+    assert_valid(result, units, capacity)
+    assert result.ffd.num_loads == 4
+    assert result.ortools.num_loads == 3 and result.ortools.optimal
+    assert result.recommended == "ortools"
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_random_dg_packings_are_valid(seed):
+    rng = random.Random(seed)
+    classes = [None, None, "3", "5.1", "8", "6.1", {"food": True}, "2.1", "9"]
+    units = [unit(i, rng.uniform(20, 400), rng.uniform(0.1, 3.0), dg=rng.choice(classes))
+             for i in range(25)]
+    capacity = Capacity(weight_kg=1500, volume_m3=12)
+    assert_valid(pack(units, capacity, time_limit_s=3), units, capacity)
+
+
+async def test_demo_endpoint_segregates_dg_classes(client):
+    shipments = [{"name": "Thinners", "weight": 100, "dg_class": "3"},
+                 {"name": "Chlorine", "weight": 100, "dg_class": "5.1"},
+                 {"name": "Bricks", "weight": 100}]
+    r = await client.post("/api/solve", json={"capacity": 1000, "shipments": shipments})
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["segregated"] is True and data["lower_bound"] == 1
+    assert data["ffd"]["num_trucks"] == data["ortools"]["num_trucks"] == 2
+    for truck in data["ortools"]["trucks"]:
+        classes = {s["dg_class"] for s in truck["shipments"]}
+        assert not {"3", "5.1"} <= classes
+
+
+async def test_demo_endpoint_northline_rule_set(client):
+    shipments = [{"name": "Matches", "weight": 10, "dg_class": "4.3"}, {"name": "Paint", "weight": 10,
+                                                                         "dg_class": "3"}]
+    r = await client.post("/api/solve", json={"capacity": 100, "shipments": shipments})
+    assert r.status_code == 200
+    r = await client.post("/api/solve", json={"capacity": 100, "shipments": shipments,
+                                              "rule_set": "northline"})
+    assert r.status_code == 400 and "'Matches' (Class 4.3)" in r.json()["detail"]
+    assert "Paint" not in r.json()["detail"]

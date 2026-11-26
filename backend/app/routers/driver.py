@@ -95,7 +95,10 @@ async def _driver_order(session: AsyncSession, order: Order, load: Load) -> Driv
         delivery_address=AddressRead.model_validate(order.delivery_address),
         notes=order.notes,
         lines=[DriverLine(item_name=a.order_line.item_name, item_sku=a.order_line.item_sku,
-                          quantity=a.quantity) for a in assignments],
+                          quantity=a.quantity,
+                          dg_class=(a.order_line.dg or {}).get("dg_class"),
+                          un_number=(a.order_line.dg or {}).get("un_number"))
+               for a in assignments],
         total_weight_kg=round(sum(a.order_line.unit_weight_kg * a.quantity for a in assignments), 3),
         next_statuses=[] if await _has_my_pod(session, order.id, load.driver_id)
         else next_statuses(order.status, UserRole.driver),

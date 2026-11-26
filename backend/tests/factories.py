@@ -47,9 +47,12 @@ async def make_address(session: AsyncSession, company: Company, *, label: str = 
 
 async def make_item(session: AsyncSession, company: Company, *, sku: str = "BOX-1",
                     name: str | None = None, weight_kg: float = 100, volume_m3: float = 0.5,
-                    pallet_spaces: float = 0) -> Item:
+                    pallet_spaces: float = 0, dg: dict | None = None) -> Item:
+    """`dg`: DG data as a dict (e.g. {"dg_class": "3"}), normalised like the API stores it."""
+    from app import dg as dgrules
     item = Item(company_id=company.id, sku=sku, name=name or f"Item {sku}", weight_kg=weight_kg,
-                volume_m3=volume_m3, pallet_spaces=pallet_spaces)
+                volume_m3=volume_m3, pallet_spaces=pallet_spaces,
+                dg=dgrules.to_json(dgrules.parse(dg)))
     session.add(item)
     await session.commit()
     return item
@@ -86,7 +89,7 @@ async def make_order(
         order.lines.append(OrderLine(
             item_id=item.id, quantity=qty, item_name=item.name, item_sku=item.sku,
             unit_weight_kg=item.weight_kg, unit_volume_m3=item.volume_m3,
-            unit_pallet_spaces=item.pallet_spaces,
+            unit_pallet_spaces=item.pallet_spaces, dg=item.dg,
         ))
     if with_quote and status != OrderStatus.draft:
         w = sum(i.weight_kg * q for i, q in lines)

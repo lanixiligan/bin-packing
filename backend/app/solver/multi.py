@@ -15,6 +15,12 @@ and rounded CONSERVATIVELY: unit sizes up, capacities down. A load that is
 feasible in the integer model is therefore feasible with the real numbers.
 Every final load is still checked with the real floats (`exceeded()`); a
 CP-SAT answer that fails the check is dropped and FFD is recommended.
+
+Dangerous goods segregation: units are grouped by DG data (`dg_groups`).
+FFD skips a load holding a group that conflicts with the unit's group;
+CP-SAT has z[g][t] = "group g is on load t" and z[g][t] + z[h][t] <= 1 for
+each conflicting pair (g, h). The lower bound ignores segregation, so it
+stays valid but may be lower than the true minimum.
 """
 
 import logging
@@ -26,7 +32,15 @@ from dataclasses import dataclass
 from ortools.sat.python import cp_model
 
 from app.schemas import Capacity, LowerBounds, MethodResult, PackedLoad, PackUnit, SolveResult
-from app.solver.core import EPS, exceeded, fill_percent, find_misfits, limited_dims, usage_of
+from app.solver.core import (
+    EPS,
+    dg_groups,
+    exceeded,
+    fill_percent,
+    find_misfits,
+    limited_dims,
+    usage_of,
+)
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +66,11 @@ class _Problem:
     dims: list[tuple[str, str, float]]  # limited dimensions: (name, attribute, capacity)
     order: list[int]                    # unit positions, largest first
     rank: list[int]                     # rank[i] = index of unit i in `order`
+    group: list[int]                    # DG group of each unit
+    conflicts: set[tuple[int, int]]     # conflicting DG group pairs (g < h)
+
+    def clash(self, g: int, h: int) -> bool:
+        return (min(g, h), max(g, h)) in self.conflicts
 
 
 def _size_key(u: PackUnit, dims) -> tuple[float, float]:
@@ -81,7 +100,8 @@ def _problem(units: Sequence[PackUnit], capacity: Capacity) -> _Problem:
     rank = [0] * len(units)
     for k, i in enumerate(order):
         rank[i] = k
-    return _Problem(units, capacity, dims, order, rank)
+    group, conflicts = dg_groups(units)
+    return _Problem(units, capacity, dims, order, rank, group, conflicts)
 
 
 def lower_bounds(units: Sequence[PackUnit], capacity: Capacity) -> dict[str, int]:
@@ -102,17 +122,22 @@ def _ffd(p: _Problem) -> tuple[Loads, float]:
     attrs = [attr for _, attr, _ in p.dims]
     loads: Loads = []
     used: list[list[float]] = []  # per load, per limited dimension
+    groups: list[set[int]] = []   # DG groups on each load
     for i in p.order:
         size = [getattr(p.units[i], a) for a in attrs]
+        g = p.group[i]
         for t, use in enumerate(used):
-            if all(use[d] + size[d] <= caps[d] for d in range(len(caps))):
+            if all(use[d] + size[d] <= caps[d] for d in range(len(caps))) \
+                    and not (p.conflicts and any(p.clash(g, h) for h in groups[t])):
                 loads[t].append(i)
+                groups[t].add(g)
                 for d in range(len(caps)):
                     use[d] += size[d]
                 break
         else:
             loads.append([i])
             used.append(list(size))
+            groups.append({g})
     return loads, time.perf_counter() - start
 
 
@@ -134,6 +159,8 @@ def _cpsat(p: _Problem, hint: Loads, lb: int, time_limit_s: float) -> tuple[Load
       - symmetry breaking: the k-th largest unit only goes in loads 0..k (in
         particular the largest is in load 0), and identical units are loaded
         in non-decreasing load order
+      - DG segregation: z[g][t] >= x[i][t] for units i of group g, and
+        z[g][t] + z[h][t] <= 1 for every conflicting group pair (g, h)
     Minimise sum(y). Returns (loads or None, status name, seconds).
     """
     n, max_loads = len(p.units), len(hint)
@@ -165,6 +192,19 @@ def _cpsat(p: _Problem, hint: Loads, lb: int, time_limit_s: float) -> tuple[Load
             for t in range(allowed[i]):
                 model.add_implication(x[i][t], y[t])
 
+    # Dangerous goods: conflicting groups never share a load.
+    if p.conflicts:
+        involved = sorted({g for pair in p.conflicts for g in pair})
+        z = {g: [model.new_bool_var(f"z_{g}_{t}") for t in range(max_loads)] for g in involved}
+        for i in range(n):
+            g = p.group[i]
+            if g in z:
+                for t in range(allowed[i]):
+                    model.add_implication(x[i][t], z[g][t])
+        for g, h in p.conflicts:
+            for t in range(max_loads):
+                model.add_at_most_one(z[g][t], z[h][t])
+
     for t in range(max_loads - 1):
         model.add(y[t] >= y[t + 1])
     model.add(sum(y) >= min(lb, max_loads))
@@ -172,7 +212,8 @@ def _cpsat(p: _Problem, hint: Loads, lb: int, time_limit_s: float) -> tuple[Load
     # Identical neighbours in the sorted order: load(a) <= load(b). FFD satisfies this too.
     for k in range(n - 1):
         a, b = p.order[k], p.order[k + 1]
-        if all(getattr(p.units[a], attr) == getattr(p.units[b], attr) for _, attr, _ in p.dims):
+        if p.group[a] == p.group[b] and \
+                all(getattr(p.units[a], attr) == getattr(p.units[b], attr) for _, attr, _ in p.dims):
             model.add(sum(t * v for t, v in enumerate(x[a])) <= sum(t * v for t, v in enumerate(x[b])))
 
     # Warm start from FFD. FFD opens loads in sorted order, so its k-th unit is in a load <= k.
@@ -218,6 +259,10 @@ def _problems_with(p: _Problem, loads: Loads) -> str | None:
         over = exceeded(usage_of(p.units[i] for i in load), p.capacity)
         if over:
             return f"load {number} is over capacity in {', '.join(over)}"
+        if p.conflicts:
+            groups = {p.group[i] for i in load}
+            if any(p.clash(g, h) for g in groups for h in groups if g < h):
+                return f"load {number} carries dangerous goods that are incompatible"
     return None
 
 

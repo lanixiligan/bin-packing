@@ -33,6 +33,7 @@ from decimal import Decimal
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app import dg as dgrules
 from app import lifecycle, pricing
 from app.auth import create_user
 from app.config import settings
@@ -145,7 +146,30 @@ ITEMS = [
     ("PNT-10L", "Paint tin 10 L", 13, 0.012, 0, False),
     ("INS-R2", "Insulation batts bale R2.0", 12, 0.45, 0, False),
     ("FEN-OLD", "Fence panel (discontinued)", 28, 0.12, 0, True),
+    # Dangerous goods (their DG data is in DG_ITEMS)
+    ("POOL-CL", "Pool chlorine 10 kg (calcium hypochlorite)", 10, 0.012, 0, False),
+    ("THIN-20", "Paint thinners 20 L drum", 18, 0.025, 0, False),
+    ("SPRAY-CTN", "Spray paint carton (12 cans)", 6, 0.01, 0, False),
+    ("HCL-20", "Hydrochloric acid 20 L", 24, 0.025, 0, False),
+    ("CAUSTIC-25", "Caustic soda 25 kg", 25, 0.02, 0, False),
+    ("PEST-5", "Garden pesticide 5 L", 6, 0.006, 0, False),
+    ("LIB-PAL", "Power tool lithium batteries pallet", 300, 0.8, 1, False),
+    ("SNACK-CTN", "Site canteen snacks carton (food)", 8, 0.05, 0, False),
 ]
+
+# DG data per SKU (app.dg.DgInfo fields); every other item is general freight.
+DG_ITEMS: dict[str, dict] = {
+    "POOL-CL": {"dg_class": "5.1", "packing_group": "II", "un_number": "2880",
+                "t92": ["calcium_hypochlorite", "hypochlorite"]},
+    "THIN-20": {"dg_class": "3", "packing_group": "II", "un_number": "1263", "container": "drum",
+                "t92": []},
+    "SPRAY-CTN": {"dg_class": "2.1", "un_number": "1950", "container": "aerosol"},
+    "HCL-20": {"dg_class": "8", "packing_group": "II", "un_number": "1789", "t92": ["acid_strong"]},
+    "CAUSTIC-25": {"dg_class": "8", "packing_group": "II", "un_number": "1823", "t92": ["alkali_strong"]},
+    "PEST-5": {"dg_class": "6.1", "packing_group": "III", "un_number": "2902", "t92": []},
+    "LIB-PAL": {"dg_class": "9", "un_number": "3480", "carrier_tags": ["lithium_battery"]},
+    "SNACK-CTN": {"food": True},
+}
 
 PATHS: dict[OrderStatus, list[OrderStatus]] = {
     S.draft: [S.draft],
@@ -231,6 +255,10 @@ def _orders(today: date) -> list[Spec]:
         Spec(1, "hurst", S.accepted, [("HWS-250", 3), ("PVC-100", 6)], ref="PO-8003"),
         Spec(1, "black", S.accepted, [("TIM-9045", 4), ("ROOF-B", 3)], ref="PO-8004"),
         Spec(1, "liver", S.accepted, [("CEM-PAL", 2)], ref="PO-8005", by=1),
+        # Tomorrow, SOUTH: dangerous goods that must travel apart (ADG Table 9.1 / 9.2)
+        Spec(1, "kog", S.accepted, [("POOL-CL", 20), ("SNACK-CTN", 4)], ref="PO-8010"),
+        Spec(1, "suth", S.accepted, [("THIN-20", 10), ("SPRAY-CTN", 6), ("PEST-5", 8)], ref="PO-8011"),
+        Spec(1, "hurst", S.accepted, [("HCL-20", 6), ("CAUSTIC-25", 4)], ref="PO-8012", by=1),
         Spec(1, "chats", S.submitted, [("TOOL-BOX", 4), ("DOOR-SC", 2)], ref="PO-8006",
              submit_note="Please call Ken 30 minutes before arrival."),
         Spec(1, "penrith", S.submitted, [("PNT-PAL", 2)], ref="PO-8007"),
@@ -406,7 +434,8 @@ async def seed(session: AsyncSession) -> dict[str, int]:
     items: dict[str, Item] = {}
     for sku, name, kg, m3, pallets, archived in ITEMS:
         items[sku] = Item(company_id=company.id, sku=sku, name=name, weight_kg=kg, volume_m3=m3,
-                          pallet_spaces=pallets, archived=archived)
+                          pallet_spaces=pallets, archived=archived,
+                          dg=dgrules.to_json(dgrules.parse(DG_ITEMS.get(sku))))
     session.add_all([*addresses.values(), *items.values()])
     await session.flush()
 
@@ -439,7 +468,8 @@ async def seed(session: AsyncSession) -> dict[str, int]:
         order.lines = [OrderLine(
             item_id=items[sku].id, quantity=qty, item_name=items[sku].name, item_sku=sku,
             unit_weight_kg=items[sku].weight_kg, unit_volume_m3=items[sku].volume_m3,
-            unit_pallet_spaces=items[sku].pallet_spaces) for sku, qty in spec.lines]
+            unit_pallet_spaces=items[sku].pallet_spaces, dg=items[sku].dg)
+            for sku, qty in spec.lines]
         session.add(order)
         await session.flush()
         session.add(lifecycle.record_created(order, creator, now=times[S.draft]))

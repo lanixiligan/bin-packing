@@ -6,6 +6,7 @@ so the solver, the ops router and the plan editor agree on what "fits" means.
 
 from collections.abc import Iterable, Sequence
 
+from app import dg as dgrules
 from app.models import OrderLine
 from app.schemas import Capacity, FillPercent, PackUnit, UnitMisfit, Usage
 
@@ -41,6 +42,7 @@ def expand_lines(lines: Iterable[OrderLine]) -> list[PackUnit]:
                 weight_kg=line.unit_weight_kg,
                 volume_m3=line.unit_volume_m3,
                 pallets=line.unit_pallet_spaces,
+                dg=dgrules.parse(line.dg),
             ))
     return units
 
@@ -70,6 +72,24 @@ def fill_percent(usage: Usage, capacity: Capacity) -> FillPercent:
         cap = getattr(capacity, attr)
         vals[dim] = None if cap is None else round(100 * getattr(usage, attr) / cap, 1)
     return FillPercent(**vals)
+
+
+def dg_groups(units: Sequence[PackUnit]) -> tuple[list[int], set[tuple[int, int]]]:
+    """Segregation: (group of each unit, conflicting group pairs g < h). Units with the
+    same DG data share a group; two groups conflict when ADG Table 9.1 / 9.2 says
+    their goods can't travel on the same vehicle (app.dg.conflicts)."""
+    keys: dict[str, int] = {}
+    profiles: list[dgrules.DgInfo | None] = []
+    group: list[int] = []
+    for u in units:
+        k = "" if dgrules.is_general(u.dg) else u.dg.key()
+        if k not in keys:
+            keys[k] = len(profiles)
+            profiles.append(None if k == "" else u.dg)
+        group.append(keys[k])
+    pairs = {(g, h) for g in range(len(profiles)) for h in range(g + 1, len(profiles))
+             if dgrules.conflicts(profiles[g], profiles[h])}
+    return group, pairs
 
 
 def find_misfits(units: Sequence[PackUnit], capacity: Capacity) -> list[UnitMisfit]:

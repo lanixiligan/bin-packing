@@ -23,6 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from app import dg as dgrules
 from app import lifecycle, pricing
 from app.auth import CustomerUser
 from app.config import settings
@@ -112,7 +113,7 @@ def _make_lines(lines: list[OrderLineIn], items: dict[int, Item]) -> list[OrderL
         out.append(OrderLine(
             item_id=item.id, quantity=ln.quantity, item_name=item.name, item_sku=item.sku,
             unit_weight_kg=item.weight_kg, unit_volume_m3=item.volume_m3,
-            unit_pallet_spaces=item.pallet_spaces,
+            unit_pallet_spaces=item.pallet_spaces, dg=item.dg,
         ))
     return out
 
@@ -178,6 +179,7 @@ async def list_items(user: CustomerUser, session: Session, include_archived: boo
 async def create_item(body: ItemCreate, user: CustomerUser, session: Session):
     """409 if the SKU is already used by this company."""
     data = body.model_dump()
+    data["dg"] = dgrules.to_json(body.dg)
     data["sku"], data["name"] = data["sku"].strip(), data["name"].strip()
     if not data["sku"] or not data["name"]:
         raise _unprocessable("SKU and name cannot be blank.")
@@ -198,6 +200,8 @@ async def update_item(item_id: int, body: ItemUpdate, user: CustomerUser, sessio
     item = await _owned(session, Item, item_id, user, "Item")
     changes = body.model_dump(exclude_unset=True)
     _no_nulls(changes, ("sku", "name", "weight_kg", "volume_m3", "pallet_spaces"))
+    if "dg" in changes:  # null clears it
+        changes["dg"] = dgrules.to_json(body.dg)
     for key in ("sku", "name"):
         if key in changes:
             changes[key] = changes[key].strip()

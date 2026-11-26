@@ -92,7 +92,8 @@ async def test_run_shows_own_loads_in_locked_plans_for_the_date(client, session,
     (order,) = load["orders"]
     assert order["order_id"] == a.id and order["reference"] == a.reference
     assert order["status"] == "planned" and order["load_id"] == load["load_id"]
-    assert order["lines"] == [{"item_name": "Item BOX", "item_sku": "BOX", "quantity": 6}]
+    assert order["lines"] == [{"item_name": "Item BOX", "item_sku": "BOX", "quantity": 6,
+                               "dg_class": None, "un_number": None}]
     assert order["total_weight_kg"] == 600.0
     assert order["next_statuses"] == ["picked_up", "exception"]
     assert order["pickup_address"]["label"] == "Depot" and order["delivery_address"]["label"] == "Shop"
