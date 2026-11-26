@@ -300,8 +300,9 @@ async def test_list_filters_newest_first_and_pages(client, session, customer, ca
     assert ids(await client.get("/api/portal/orders?status=draft", headers=h)) == [a["id"]]
     assert ids(await client.get("/api/portal/orders?status=draft&status=submitted", headers=h)) == [
         b["id"], a["id"]]
-    assert ids(await client.get(f"/api/portal/orders?from_date={in_days(2)}", headers=h)) == [c["id"], b["id"]]
-    assert ids(await client.get(f"/api/portal/orders?to_date={in_days(2)}", headers=h)) == [b["id"], a["id"]]
+    url = "/api/portal/orders"
+    assert ids(await client.get(f"{url}?from_date={in_days(2)}", headers=h)) == [c["id"], b["id"]]
+    assert ids(await client.get(f"{url}?to_date={in_days(2)}", headers=h)) == [b["id"], a["id"]]
     assert ids(await client.get(
         f"/api/portal/orders?from_date={in_days(2)}&to_date={in_days(2)}", headers=h)) == [b["id"]]
     assert ids(await client.get("/api/portal/orders?limit=1&offset=1", headers=h)) == [b["id"]]
