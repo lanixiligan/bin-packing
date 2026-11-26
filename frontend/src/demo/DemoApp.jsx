@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import ShipmentForm from "./components/ShipmentForm.jsx";
-import ResultPanel from "./components/ResultPanel.jsx";
-import Summary from "./components/Summary.jsx";
-import { FFD_LOSES_EXAMPLE, randomShipments, shipmentsFromWeights } from "./shipments.js";
-import { NARROW_SCREEN, REDUCED_MOTION, SMALL_SCREEN, useMediaQuery } from "./useMediaQuery.js";
+import ShipmentForm from "../components/ShipmentForm.jsx";
+import ResultPanel from "../components/ResultPanel.jsx";
+import Summary from "../components/Summary.jsx";
+import { FFD_LOSES_EXAMPLE, randomShipments, shipmentsFromWeights } from "../shipments.js";
+import { NARROW_SCREEN, REDUCED_MOTION, SMALL_SCREEN, useMediaQuery } from "../useMediaQuery.js";
 
 const DROP_INTERVAL_MS = 150; // time between each shipment dropping in
-const SOLVER_TIME_LIMIT_S = 10; // matches TIME_LIMIT_SECONDS in backend/main.py
+const SOLVER_TIME_LIMIT_S = 10; // matches TIME_LIMIT_SECONDS in backend/app/routers/demo.py
 
 // The capacity field is kept as text so it can be empty while typing.
 function capacityProblem(text) {
@@ -131,7 +131,7 @@ export default function App() {
     if (msg) return;
     setLoading(true);
     try {
-      const res = await fetch("/solve", {
+      const res = await fetch("/api/solve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
