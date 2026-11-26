@@ -131,6 +131,19 @@ async def _own_order(session: AsyncSession, order_id: int, user: User) -> Order:
     return await _owned(session, Order, order_id, user, "Order")
 
 
+async def _own_order_locked(session: AsyncSession, order_id: int, user: User) -> Order:
+    """The customer's order with its row locked (FOR UPDATE) until commit, freshly
+    loaded. Edit, submit and cancel take this lock, so an edit can't change the
+    lines of an order that a concurrent submit has just priced."""
+    order = (await session.exec(
+        select(Order).where(Order.id == order_id, Order.company_id == user.company_id)
+        .with_for_update().execution_options(populate_existing=True)
+    )).first()
+    if order is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found.")
+    return order
+
+
 # ---- Items ------------------------------------------------------------------
 
 async def _sku_taken(session: AsyncSession, user: User, sku: str, exclude_id: int | None = None) -> None:
@@ -347,7 +360,7 @@ async def get_order(order_id: int, user: CustomerUser, session: Session):
 @router.patch("/orders/{order_id}", response_model=OrderRead)
 async def update_order(order_id: int, body: OrderUpdate, user: CustomerUser, session: Session):
     """Draft orders only (409 otherwise)."""
-    order = await _own_order(session, order_id, user)
+    order = await _own_order_locked(session, order_id, user)
     if order.status != OrderStatus.draft:
         raise HTTPException(status.HTTP_409_CONFLICT,
                             f"Only draft orders can be edited; this one is {order.status.value}.")
@@ -386,7 +399,7 @@ async def update_order(order_id: int, body: OrderUpdate, user: CustomerUser, ses
 async def submit_order(order_id: int, user: CustomerUser, session: Session,
                        body: StatusNote | None = None):
     """draft → submitted. Prices the order (stores a Quote and links it)."""
-    order = await _own_order(session, order_id, user)
+    order = await _own_order_locked(session, order_id, user)
     lifecycle.check_transition(order.status, OrderStatus.submitted, user.role)  # 409 early
     _check_delivery_date(order.delivery_date)
     for addr, role in ((order.pickup_address, "pickup"), (order.delivery_address, "delivery")):
@@ -412,7 +425,7 @@ async def submit_order(order_id: int, user: CustomerUser, session: Session,
 async def cancel_order(order_id: int, user: CustomerUser, session: Session,
                        body: StatusNote | None = None):
     """draft | submitted → cancelled."""
-    order = await _own_order(session, order_id, user)
+    order = await _own_order_locked(session, order_id, user)
     await lifecycle.transition(session, order, OrderStatus.cancelled, user, body.note if body else None)
     await session.commit()
     return await order_read(session, await _reload_order(session, order.id), for_customer=True)

@@ -24,6 +24,7 @@ from typing import Annotated, Literal
 
 from fastapi_users import schemas as fu_schemas
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     EmailStr,
@@ -35,6 +36,12 @@ from pydantic import (
 )
 
 from app.models import JobKind, JobStatus, OrderStatus, PlanStatus, UserRole
+
+# Item sizes and vehicle limits are kept to the solver's resolution (app/solver/
+# multi.py SCALE: grams, cm³, 1/1000 pallet), so its integer model is exact.
+Kg = Annotated[float, AfterValidator(lambda v: round(v, 3))]
+M3 = Annotated[float, AfterValidator(lambda v: round(v, 6))]
+Pallets = Annotated[float, AfterValidator(lambda v: round(v, 3))]
 
 # Decimal money in responses, always a string with 2+ decimals: "12.50".
 MoneyOut = Annotated[
@@ -138,18 +145,18 @@ class ItemCreate(BaseModel):
     sku: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=1000)
-    weight_kg: float = Field(gt=0, le=100_000)
-    volume_m3: float = Field(default=0, ge=0, le=1_000)
-    pallet_spaces: float = Field(default=0, ge=0, le=100)
+    weight_kg: Kg = Field(ge=0.001, le=100_000)
+    volume_m3: M3 = Field(default=0, ge=0, le=1_000)
+    pallet_spaces: Pallets = Field(default=0, ge=0, le=100)
 
 
 class ItemUpdate(BaseModel):
     sku: str | None = Field(default=None, min_length=1, max_length=64)
     name: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=1000)
-    weight_kg: float | None = Field(default=None, gt=0, le=100_000)
-    volume_m3: float | None = Field(default=None, ge=0, le=1_000)
-    pallet_spaces: float | None = Field(default=None, ge=0, le=100)
+    weight_kg: Kg | None = Field(default=None, ge=0.001, le=100_000)
+    volume_m3: M3 | None = Field(default=None, ge=0, le=1_000)
+    pallet_spaces: Pallets | None = Field(default=None, ge=0, le=100)
 
 
 class ItemRead(APIModel):
@@ -367,8 +374,8 @@ class BatchSummary(BaseModel):
 class VehicleCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     registration: str = Field(min_length=1, max_length=20)
-    max_weight_kg: float | None = Field(default=None, gt=0, le=100_000)
-    max_volume_m3: float | None = Field(default=None, gt=0, le=1_000)
+    max_weight_kg: Kg | None = Field(default=None, ge=0.001, le=100_000)
+    max_volume_m3: M3 | None = Field(default=None, ge=0.000001, le=1_000)
     max_pallets: int | None = Field(default=None, gt=0, le=100)
     active: bool = True
 
@@ -383,8 +390,8 @@ class VehicleUpdate(BaseModel):
     """The server re-checks that at least one capacity remains set."""
     name: str | None = Field(default=None, min_length=1, max_length=100)
     registration: str | None = Field(default=None, min_length=1, max_length=20)
-    max_weight_kg: float | None = Field(default=None, gt=0, le=100_000)
-    max_volume_m3: float | None = Field(default=None, gt=0, le=1_000)
+    max_weight_kg: Kg | None = Field(default=None, ge=0.001, le=100_000)
+    max_volume_m3: M3 | None = Field(default=None, ge=0.000001, le=1_000)
     max_pallets: int | None = Field(default=None, gt=0, le=100)
     active: bool | None = None
 

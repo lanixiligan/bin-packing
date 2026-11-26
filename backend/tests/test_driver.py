@@ -210,13 +210,37 @@ async def test_split_order_status_changes_are_idempotent(client, session, dispat
         assert r2.json()["status"] == status and r2.json()["load_id"] != r1.json()["load_id"]
         assert await event_count(session, b.id, status) == 1
 
+    # The order is delivered only when every driver carrying part of it has a POD.
     r = await upload(client, driver, b.id)
-    assert r.status_code == 200 and r.json()["status"] == "delivered"
+    assert r.status_code == 200 and r.json()["status"] == "in_transit"
+    assert r.json()["next_statuses"] == []  # this driver's part is done
+    assert (await client.get(f"/api/driver/orders/{b.id}", headers=driver2.headers)).json()[
+        "next_statuses"] == ["delivered", "exception"]
     r = await upload(client, driver2, b.id, data=PNG, filename="x.png", signed_by="Other receiver")
     assert r.status_code == 200 and r.json()["status"] == "delivered"
     assert [p["signed_by"] for p in r.json()["pods"]] == ["Pat Receiver", "Other receiver"]
     assert await event_count(session, b.id, OrderStatus.delivered) == 1
     assert (await upload(client, driver2, b.id)).status_code == 409  # already recorded
+    assert (await upload(client, driver, b.id)).status_code == 409
+
+
+async def test_split_order_later_driver_catches_up(client, session, dispatcher, customer, driver,
+                                                   driver2):
+    """driver is already in transit when driver2 picks up: driver2's steps are 200
+    no-ops, and driver's POD alone doesn't deliver the order."""
+    _, (_, b), _ = await run_world(client, session, dispatcher, customer, [driver, driver2],
+                                   loads=[[0, 1, 2, 3, 4, 5, 6], [7, 8]])
+    await set_status(client, driver, b.id, "picked_up")
+    await set_status(client, driver, b.id, "in_transit")
+    r = await set_status(client, driver2, b.id, "picked_up")
+    assert r.status_code == 200 and r.json()["status"] == "in_transit"
+    assert await event_count(session, b.id, OrderStatus.picked_up) == 1
+    assert (await upload(client, driver, b.id)).status_code == 200
+    order = await session.get(Order, b.id, populate_existing=True)
+    assert order.status == OrderStatus.in_transit and order.delivered_at is None
+    assert (await set_status(client, driver2, b.id, "in_transit")).status_code == 200
+    r = await upload(client, driver2, b.id, data=PNG, filename="x.png")
+    assert r.status_code == 200 and r.json()["status"] == "delivered"
 
 
 # ---- POD upload ------------------------------------------------------------------------------

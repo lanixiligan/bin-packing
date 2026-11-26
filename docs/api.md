@@ -95,9 +95,13 @@ created. `OrderRead.events` is the timeline, oldest first. `rejected`, `cancelle
 with the orders on each. Each `DriverOrder.next_statuses` says which actions to offer. Pickup:
 `status=picked_up`, then `status=in_transit`. Delivery: `POST /api/driver/orders/{id}/pod` (multipart:
 `signed_by`, `photo` as JPEG/PNG/WebP up to `MAX_UPLOAD_BYTES`, optional `note`) records the proof of delivery and
-sets `delivered`. A problem: `status=exception` with a note. If an order is split over several loads,
-the first driver's status change moves the order, and the same change from another driver returns 200
-without a second event.
+sets `delivered`. A problem: `status=exception` with a note.
+
+**Split orders.** If an order is split over several drivers' loads, the first driver to reach
+`picked_up` or `in_transit` moves the order; the others' requests for a step the order has already
+reached return 200 without a second event. Each driver records a POD for their part (409 if they already
+did, after which their `next_statuses` is empty), and the order becomes `delivered` with the last one.
+An `exception` from any driver ends the order for everyone.
 
 POD photos are stored on disk under `UPLOAD_DIR` with server-generated names. Fetch one with
 `GET /api/pods/{id}/photo` (from `PodRead.photo_url`), sending the bearer token.

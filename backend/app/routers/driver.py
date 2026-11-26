@@ -97,9 +97,40 @@ async def _driver_order(session: AsyncSession, order: Order, load: Load) -> Driv
         lines=[DriverLine(item_name=a.order_line.item_name, item_sku=a.order_line.item_sku,
                           quantity=a.quantity) for a in assignments],
         total_weight_kg=round(sum(a.order_line.unit_weight_kg * a.quantity for a in assignments), 3),
-        next_statuses=next_statuses(order.status, UserRole.driver),
+        next_statuses=[] if await _has_my_pod(session, order.id, load.driver_id)
+        else next_statuses(order.status, UserRole.driver),
         pods=await pods_for(session, order.id),
     )
+
+
+async def _has_my_pod(session: AsyncSession, order_id: int, driver_id: int | None) -> bool:
+    if driver_id is None:
+        return False
+    return (await session.exec(select(ProofOfDelivery.id).where(
+        ProofOfDelivery.order_id == order_id, ProofOfDelivery.driver_id == driver_id))).first() is not None
+
+
+async def _undelivered_drivers(session: AsyncSession, order_id: int) -> set[int]:
+    """Drivers of locked-plan loads carrying the order who haven't recorded a POD for it."""
+    carrying = set((await session.exec(
+        select(Load.driver_id)
+        .join(Plan, Plan.id == Load.plan_id)
+        .join(LoadAssignment, LoadAssignment.load_id == Load.id)
+        .join(OrderLine, OrderLine.id == LoadAssignment.order_line_id)
+        .where(Plan.status == PlanStatus.locked, OrderLine.order_id == order_id,
+               Load.driver_id.is_not(None))
+        .distinct()
+    )).all())
+    delivered = set((await session.exec(
+        select(ProofOfDelivery.driver_id).where(ProofOfDelivery.order_id == order_id)
+    )).all())
+    return carrying - delivered
+
+
+# Forward progress of a picked-up order. A split order moves with the first driver
+# to reach a step, so the others' later requests for that step are already done.
+_PROGRESS = {OrderStatus.planned: 0, OrderStatus.picked_up: 1, OrderStatus.in_transit: 2,
+             OrderStatus.delivered: 3}
 
 
 async def _driver_loads_for_order(session: AsyncSession, driver_id: int, order_id: int) -> list[Load]:
@@ -175,10 +206,12 @@ async def get_order(order_id: int, driver: CurrentDriver, session: Session):
 async def update_status(order_id: int, body: DriverStatusUpdate, driver: CurrentDriver,
                         session: Session):
     """planned → picked_up → in_transit, or → exception (note required).
-    If an order is split over several loads and another driver already made
-    this change, returns 200 without writing a second event."""
+    If an order is split over several loads and another driver already moved it
+    to this step or further, returns 200 without writing a second event."""
     order, load = await _order_on_my_load(session, driver, order_id, lock=True)
-    if order.status != body.status:
+    already = (body.status in _PROGRESS and order.status in _PROGRESS
+               and _PROGRESS[order.status] >= _PROGRESS[body.status])
+    if order.status != body.status and not already:
         await transition(session, order, body.status, driver.user, body.note)
         await session.commit()
     return await _driver_order(session, order, load)
@@ -203,8 +236,9 @@ async def upload_pod(
     stored under UPLOAD_DIR with a server-generated name. 413 if too large,
     415 if not an allowed image.
 
-    If the order is split over several loads and another driver already
-    delivered it, this driver's POD is stored without a second status change."""
+    If the order is split over several drivers' loads, each driver records a POD
+    for their part, and the order becomes delivered with the last one. 409 if
+    this driver already recorded one."""
     signed_by = signed_by.strip()
     if not signed_by:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -212,13 +246,10 @@ async def upload_pod(
     note = (note or "").strip() or None
 
     order, load = await _order_on_my_load(session, driver, order_id, lock=True)
-    if order.status == OrderStatus.delivered:
-        mine = (await session.exec(select(ProofOfDelivery.id).where(
-            ProofOfDelivery.order_id == order.id, ProofOfDelivery.driver_id == driver.id))).first()
-        if mine is not None:
-            raise HTTPException(status.HTTP_409_CONFLICT, "You already recorded a proof of delivery "
-                                                          "for this order.")
-    elif order.status != OrderStatus.in_transit:
+    if await _has_my_pod(session, order.id, driver.id):
+        raise HTTPException(status.HTTP_409_CONFLICT, "You already recorded a proof of delivery "
+                                                      "for this order.")
+    if order.status not in (OrderStatus.in_transit, OrderStatus.delivered):
         label = order.status.value.replace("_", " ")
         raise HTTPException(status.HTTP_409_CONFLICT,
                             f"Only an order that is in transit can be delivered (this one is {label}).")
@@ -242,7 +273,8 @@ async def upload_pod(
             order_id=order.id, load_id=load.id, driver_id=driver.id, signed_by=signed_by,
             photo_path=relative.as_posix(), photo_content_type=content_type, note=note,
         ))
-        if order.status == OrderStatus.in_transit:
+        await session.flush()
+        if order.status == OrderStatus.in_transit and not await _undelivered_drivers(session, order.id):
             await transition(session, order, OrderStatus.delivered, driver.user, note)
         await session.commit()
     except BaseException:

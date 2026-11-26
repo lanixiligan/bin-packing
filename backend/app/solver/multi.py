@@ -37,7 +37,10 @@ SCALE = {"weight_kg": 1_000, "volume_m3": 1_000_000, "pallets": 1_000}
 ROUND_TOL = 1e-6
 NUM_WORKERS = 8
 # Above this many x[i][t] variables the CP-SAT model is not built (FFD is used).
-MAX_CPSAT_VARS = 300_000
+# Measured: ~25k variables (600 units, 43 loads) solve to OPTIMAL in ~7 s in total;
+# ~67k (1000 units, 70 loads) find nothing within the 10 s limit, and model building
+# in Python grows with the variable count, so larger models only cost time.
+MAX_CPSAT_VARS = 50_000
 
 Loads = list[list[int]]  # each load: unit positions (indexes into `units`), in loading order
 

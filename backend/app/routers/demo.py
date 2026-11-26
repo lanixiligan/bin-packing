@@ -26,11 +26,11 @@ router = APIRouter()
 
 class Shipment(BaseModel):
     name: str = Field(min_length=1, max_length=50)
-    weight: int = Field(gt=0, description="Weight in kg (whole number)")
+    weight: int = Field(gt=0, le=1_000_000, description="Weight in kg (whole number)")
 
 
 class SolveRequest(BaseModel):
-    capacity: int = Field(gt=0, description="Truck max capacity in kg")
+    capacity: int = Field(gt=0, le=1_000_000, description="Truck max capacity in kg")
     shipments: list[Shipment]
 
 
