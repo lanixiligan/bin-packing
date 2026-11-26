@@ -33,9 +33,17 @@ function multiStats(data, capacity, noun) {
   );
 }
 
+/**
+ * @param {{
+ *   title: string, explanation?: string | null, data: any, capacity: any, step: number,
+ *   badge?: { text: string, kind: string } | null, truckHeight: number,
+ *   activeId?: number | null, onHover?: (id: number | null) => void, onFocusBlock?: (id: number | null) => void,
+ *   optimumTrucks?: number | null, view?: string, noun?: string, headingLevel?: number,
+ * }} props
+ */
 export default function ResultPanel({
-  title, explanation, data, capacity, step, badge, truckHeight,
-  activeId, onHover, onFocusBlock, optimumTrucks, view = "2d", noun = "truck", headingLevel = 2,
+  title, explanation = null, data, capacity, step, badge = null, truckHeight,
+  activeId, onHover, onFocusBlock, optimumTrucks = null, view = "2d", noun = "truck", headingLevel = 2,
 }) {
   const multi = typeof capacity === "object" && capacity !== null;
   const Heading = `h${headingLevel}`;
