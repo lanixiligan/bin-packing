@@ -1,12 +1,16 @@
 """
 The original stateless 1D bin packing demo: POST /api/solve (public).
 Owner: Agent B. Keep its request and response unchanged.
+
+It runs on the multi-dimension solver (app/solver/multi.py) with weight as
+the only limited dimension, so the demo and load planning share one model.
 """
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.solver.packing import ffd, lower_bound, solve_cpsat
+from app.schemas import Capacity, PackUnit
+from app.solver.multi import solve as solve_units
 
 TIME_LIMIT_SECONDS = 10.0
 MAX_SHIPMENTS = 200
@@ -62,17 +66,22 @@ def solve(req: SolveRequest):
         for i, s in enumerate(req.shipments)
     ]
     weights = [s["weight"] for s in shipments]
-    lb = lower_bound(weights, req.capacity)
+    units = [
+        PackUnit(id=s["id"], order_id=0, order_reference="", order_line_id=s["id"],
+                 item_name=s["name"], item_sku="", weight_kg=s["weight"], volume_m3=0, pallets=0)
+        for s in shipments
+    ]
 
-    # ---- 1. First-Fit Decreasing ----------------------------------------
-    ffd_trucks, ffd_order, ffd_time = ffd(shipments, req.capacity)
-
-    # ---- 2. OR-Tools CP-SAT (warm-started with the FFD answer) ----------
-    cp_trucks, optimal, cp_time, status = solve_cpsat(
-        shipments, req.capacity, TIME_LIMIT_SECONDS, hint=ffd_trucks
-    )
-    if cp_trucks is None:
+    # ---- FFD, then CP-SAT warm-started with the FFD answer ---------------
+    try:
+        result, status = solve_units(units, Capacity(weight_kg=req.capacity), TIME_LIMIT_SECONDS)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if result.ortools is None:
         raise HTTPException(500, f"Solver did not find a solution (status: {status}).")
+    lb = result.lower_bound
+    ffd_trucks = [load.unit_ids for load in result.ffd.loads]
+    cp_trucks = [load.unit_ids for load in result.ortools.loads]
 
     return {
         "capacity": req.capacity,
@@ -81,19 +90,19 @@ def solve(req: SolveRequest):
         "ffd": {
             "num_trucks": len(ffd_trucks),
             "trucks": build_result(ffd_trucks, shipments, req.capacity),
-            "solve_time_ms": round(ffd_time * 1000, 3),
+            "solve_time_ms": round(result.ffd.solve_time_ms, 3),
             # FFD can't prove anything by itself, but if it hits the lower
             # bound, nobody can do better -> it is optimal.
             "hits_lower_bound": len(ffd_trucks) == lb,
             # Order FFD actually loaded shipments (heaviest first) -> animation.
-            "drop_order": ffd_order,
+            "drop_order": result.ffd.drop_order,
         },
         "ortools": {
             "num_trucks": len(cp_trucks),
             "trucks": build_result(cp_trucks, shipments, req.capacity),
-            "solve_time_ms": round(cp_time * 1000, 1),
-            "optimal": optimal,
-            "status": status,
+            "solve_time_ms": round(result.ortools.solve_time_ms, 1),
+            "optimal": result.ortools.optimal,
+            "status": result.ortools.status,
             "time_limit_s": TIME_LIMIT_SECONDS,
             "drop_order": [i for truck in cp_trucks for i in truck],
         },
