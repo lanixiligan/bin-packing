@@ -59,3 +59,7 @@ build: ## Production build of the web app
 api-types: ## Regenerate frontend/src/api/schema.d.ts from the FastAPI schema
 	cd backend && $(BIN)/python -m scripts.export_openapi
 	cd frontend && npm run api:types
+
+e2e: ## End-to-end walkthrough against a running stack (E2E_API_URL, E2E_WEB_URL)
+	cd e2e && (test -d node_modules || npm install)
+	cd e2e && npx playwright test
