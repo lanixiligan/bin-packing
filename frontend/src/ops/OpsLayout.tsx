@@ -8,8 +8,8 @@ const NAV: NavItem[] = [
   { to: "/ops/fleet", label: "Fleet" },
   { to: "/ops/zones", label: "Zones" },
   { to: "/ops/invoices", label: "Invoices" },
-    ];
+];
 
-    export default function OpsLayout() {
-      return <AppShell area="Dispatch" nav={NAV} variant="wide" />;
-    }
+export default function OpsLayout() {
+  return <AppShell area="Dispatch" nav={NAV} variant="wide" />;
+}
