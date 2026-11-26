@@ -14,7 +14,13 @@ import ViewToggle, { type TruckView } from "./ViewToggle";
 
 type Method = "ffd" | "ortools";
 
-export default function SolveComparison({ plan, result }: { plan: Schemas["PlanRead"]; result: Schemas["SolveResult"] }) {
+export default function SolveComparison({ plan, result, replacing = false, onSaved }: {
+  plan: Schemas["PlanRead"];
+  result: Schemas["SolveResult"];
+  /** The plan already has loads: saving replaces them (and any moves made since). */
+  replacing?: boolean;
+  onSaved?: () => void;
+}) {
   const qc = useQueryClient();
   const narrow = useMediaQuery(NARROW_SCREEN);
   const [view, setView] = useState<TruckView>("2d");
@@ -35,6 +41,7 @@ export default function SolveComparison({ plan, result }: { plan: Schemas["PlanR
     onSuccess: (p) => {
       qc.setQueryData(["ops", "plan", plan.id], p);
       void qc.invalidateQueries({ queryKey: ["ops"] });
+      onSaved?.();
     },
   });
 
@@ -47,7 +54,11 @@ export default function SolveComparison({ plan, result }: { plan: Schemas["PlanR
 
       <section className="card save-draft" aria-labelledby="save-h">
         <h2 id="save-h">Save a draft</h2>
-        <p className="muted small">The draft's loads can still be edited: move lines between loads, assign vehicles and drivers, then lock the plan.</p>
+        {replacing ? (
+          <p className="warn-text small">Saving replaces the draft's current loads, including any lines you moved and the vehicles and drivers you assigned.</p>
+        ) : (
+          <p className="muted small">The draft's loads can still be edited: move lines between loads, assign vehicles and drivers, then lock the plan.</p>
+        )}
         <fieldset className="method-choice">
           <legend>Which plan?</legend>
           {(["ortools", "ffd"] as const).map((m) => {

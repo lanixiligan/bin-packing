@@ -2,7 +2,7 @@
 // views (components/ResultPanel.jsx, Summary.jsx), which speak the demo's
 // shape: { num_trucks, drop_order, trucks: [{ truck, shipments }] }.
 import type { Schemas } from "../../api/client";
-import { limitedDims, limitOf, type CapacityLimits } from "../../components/capacity";
+import { limitedDims, limitOf, type CapacityLimits } from "../../components/capacity.ts";
 
 type SolveResult = Schemas["SolveResult"];
 type MethodResult = Schemas["MethodResult"];
