@@ -7,7 +7,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models import Driver as DriverRow
-from app.models import Order, ProofOfDelivery, User
+from app.models import Order, ProofOfDelivery, User, UserRole
 from app.schemas import (
     AddressRead,
     OrderEventRead,
@@ -66,8 +66,11 @@ async def pods_for(session: AsyncSession, order_id: int) -> list[PodRead]:
     ]
 
 
-async def order_read(session: AsyncSession, order: Order) -> OrderRead:
-    """Full order detail. Looks up event actors' names and the PODs."""
+async def order_read(session: AsyncSession, order: Order, *, for_customer: bool = False) -> OrderRead:
+    """Full order detail. Looks up event actors' names and the PODs.
+
+    `for_customer` hides staff identities: dispatcher and driver events keep their
+    role and display name, but not the user id or the e-mail address."""
     actor_ids = {e.actor_id for e in order.events if e.actor_id is not None}
     actors: dict = {}
     if actor_ids:
@@ -76,9 +79,14 @@ async def order_read(session: AsyncSession, order: Order) -> OrderRead:
     events = []
     for e in order.events:
         ev = OrderEventRead.model_validate(e)
-        if e.actor_id in actors:
-            ev.actor_name = actors[e.actor_id].full_name or actors[e.actor_id].email
-            ev.actor_role = actors[e.actor_id].role
+        actor = actors.get(e.actor_id)
+        if actor is not None:
+            ev.actor_role = actor.role
+            if for_customer and actor.role != UserRole.customer:
+                ev.actor_id = None
+                ev.actor_name = actor.full_name or None
+            else:
+                ev.actor_name = actor.full_name or actor.email
         events.append(ev)
     return OrderRead(
         **order_summary(order).model_dump(),

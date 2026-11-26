@@ -28,7 +28,12 @@ async def lifespan(app: FastAPI):
     await workers.close_pool()
 
 
-app = FastAPI(title="Freight Operations Platform", version="0.1.0", lifespan=lifespan)
+# Every request body is capped while it streams in (413 past the limit). The POD
+# upload route raises its own limit to fit a photo (app/routers/driver.py).
+MAX_BODY_BYTES = 1024 * 1024
+
+app = FastAPI(title="Freight Operations Platform", version="0.1.0", lifespan=lifespan,
+              max_body_size=MAX_BODY_BYTES)
 
 app.add_middleware(
     CORSMiddleware,

@@ -36,8 +36,9 @@ class Settings(BaseSettings):
 
     SOLVER_TIME_LIMIT_S: float = 10.0
 
-    # "dev" allows the default JWT secret; anything else refuses to start with it.
-    APP_ENV: str = "dev"
+    # Only "dev" (set in .env for local work and by the tests) allows the default
+    # JWT secret. Anything else, including leaving it unset, needs a real secret.
+    APP_ENV: str = "prod"
     # Business timezone: the driver's "today" and invoice months use it.
     BUSINESS_TZ: str = "Australia/Sydney"
 
@@ -63,5 +64,14 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-if settings.APP_ENV != "dev" and settings.JWT_SECRET == "dev-only-change-me":
-    raise RuntimeError("Set JWT_SECRET: the default secret is only allowed when APP_ENV=dev.")
+DEV_JWT_SECRET = "dev-only-change-me"
+MIN_JWT_SECRET_LENGTH = 32
+
+if settings.APP_ENV != "dev" and (
+    settings.JWT_SECRET == DEV_JWT_SECRET or len(settings.JWT_SECRET) < MIN_JWT_SECRET_LENGTH
+):
+    raise RuntimeError(
+        f"Set JWT_SECRET to a random value of at least {MIN_JWT_SECRET_LENGTH} characters "
+        "(python3 -c \"import secrets; print(secrets.token_urlsafe(48))\"), "
+        "or set APP_ENV=dev for local development."
+    )

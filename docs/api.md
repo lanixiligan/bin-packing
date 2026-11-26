@@ -30,6 +30,12 @@ roles and the schemas in `schemas.py` and `models.py` only change through the or
 * **Updates.** PATCH bodies only change the fields that are sent. Sending `null` clears a nullable field.
 * **Lists.** Plain JSON arrays. Order lists accept `limit` (≤ 500, default 200) and `offset`.
   `status` can be repeated: `?status=submitted&status=accepted`.
+* **Body size.** Request bodies over 1 MiB get **413** while they stream in, before auth runs. The POD
+  upload allows `MAX_UPLOAD_BYTES` plus 64 KiB for the form.
+* **Staff identities.** In customer responses, timeline events by dispatchers and drivers have
+  `actor_id: null` and show only the display name and role.
+* **Addresses.** Changing an address's location (line1, line2, suburb, state, postcode, country) clears
+  its zone, and gives **409** while an order past draft (other than rejected or cancelled) uses it.
 * **Business timezone.** `BUSINESS_TZ` (default `Australia/Sydney`) defines the driver's "today" and
   invoice months.
 
@@ -217,4 +223,4 @@ own 401/403/422 responses are not repeated in every row.
 
 | Method | Path | Role | Request | Response |
 |---|---|---|---|---|
-| POST | `/api/solve` | public | SolveRequest | 200 (unchanged demo response) |
+| POST | `/api/solve` | public | SolveRequest | 200 (unchanged demo response); 429 while 2 solves are already running |

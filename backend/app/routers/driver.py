@@ -184,7 +184,12 @@ async def update_status(order_id: int, body: DriverStatusUpdate, driver: Current
     return await _driver_order(session, order, load)
 
 
-@router.post("/orders/{order_id}/pod", response_model=DriverOrder)
+# The photo limit plus room for the multipart framing and the text fields. The
+# body is cut off while it streams in, before auth runs (FastAPI reads it first).
+POD_MAX_BODY_BYTES = settings.MAX_UPLOAD_BYTES + 64 * 1024
+
+
+@router.post("/orders/{order_id}/pod", response_model=DriverOrder, max_body_size=POD_MAX_BODY_BYTES)
 async def upload_pod(
     order_id: int,
     driver: CurrentDriver,
@@ -283,5 +288,10 @@ async def get_pod_photo(pod_id: int, user: CurrentUser, session: Session):
     path = (root / pod.photo_path).resolve()
     if not path.is_relative_to(root) or not await asyncio.to_thread(path.is_file):
         raise not_found
-    return FileResponse(path, media_type=pod.photo_content_type)
+    ext = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}.get(pod.photo_content_type, "bin")
+    return FileResponse(path, media_type=pod.photo_content_type, headers={
+        "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": f'inline; filename="pod-{pod.id}.{ext}"',
+        "Cache-Control": "private, no-store",
+    })
 

@@ -181,6 +181,15 @@ def _num(value: float) -> str:
     return f"{value:.4f}".rstrip("0").rstrip(".") or "0"
 
 
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def csv_text(value: str) -> str:
+    """Customer-entered text for a CSV cell. A leading = + - @ tab or CR would make
+    Excel or LibreOffice treat it as a formula, so it gets a leading apostrophe."""
+    return "'" + value if value.startswith(_FORMULA_PREFIXES) else value
+
+
 def invoice_csv(invoice: Invoice) -> str:
     """The invoice as CSV: one row per order, then a TOTAL row. Delivery times are
     shown in the business timezone."""
@@ -190,9 +199,9 @@ def invoice_csv(invoice: Invoice) -> str:
     for ln in invoice.lines:
         writer.writerow([
             ln.reference,
-            ln.customer_reference or "",
+            csv_text(ln.customer_reference or ""),
             ln.delivered_at.astimezone(settings.tz).isoformat(timespec="seconds"),
-            ln.delivery_suburb,
+            csv_text(ln.delivery_suburb),
             ln.zone_code or "",
             _num(ln.total_weight_kg),
             _num(ln.total_volume_m3),

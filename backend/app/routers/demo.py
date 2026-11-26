@@ -6,6 +6,8 @@ It runs on the multi-dimension solver (app/solver/multi.py) with weight as
 the only limited dimension, so the demo and load planning share one model.
 """
 
+import threading
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -14,6 +16,10 @@ from app.solver.multi import solve as solve_units
 
 TIME_LIMIT_SECONDS = 10.0
 MAX_SHIPMENTS = 200
+# The endpoint is public and each solve can use 8 solver threads for up to
+# TIME_LIMIT_SECONDS, so only this many run at once; the rest get 429.
+MAX_CONCURRENT_SOLVES = 2
+_solve_slots = threading.BoundedSemaphore(MAX_CONCURRENT_SOLVES)
 
 router = APIRouter()
 
@@ -73,10 +79,14 @@ def solve(req: SolveRequest):
     ]
 
     # ---- FFD, then CP-SAT warm-started with the FFD answer ---------------
+    if not _solve_slots.acquire(blocking=False):
+        raise HTTPException(429, "The solver is busy with other requests. Try again in a few seconds.")
     try:
         result, status = solve_units(units, Capacity(weight_kg=req.capacity), TIME_LIMIT_SECONDS)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    finally:
+        _solve_slots.release()
     if result.ortools is None:
         raise HTTPException(500, f"Solver did not find a solution (status: {status}).")
     lb = result.lower_bound

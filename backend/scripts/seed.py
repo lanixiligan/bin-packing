@@ -555,6 +555,9 @@ async def run() -> dict[str, int]:
 
 
 def main() -> None:
+    if settings.APP_ENV != "dev":
+        raise SystemExit("The seed wipes every table and creates users with a known password, "
+                         "so it only runs with APP_ENV=dev.")
     async def _main() -> dict[str, int]:
         try:
             return await run()

@@ -234,16 +234,41 @@ async def get_address(address_id: int, user: CustomerUser, session: Session):
 
 @router.patch("/addresses/{address_id}", response_model=AddressRead)
 async def update_address(address_id: int, body: AddressUpdate, user: CustomerUser, session: Session):
-    """Customers cannot set `zone` (dispatchers do)."""
+    """Customers cannot set `zone` (dispatchers do).
+
+    Moving the address (any location field) clears its zone, so the dispatcher
+    re-zones it and quotes use the right rate. It is refused with 409 while an order
+    past draft uses the address: those orders were priced, planned or invoiced for
+    the old location. The customer adds a new address instead."""
     addr = await _owned(session, Address, address_id, user, "Address")
     changes = body.model_dump(exclude_unset=True)  # AddressUpdate has no `zone` field
     _no_nulls(changes, ("label", "line1", "suburb", "state", "postcode", "country"))
     if "country" in changes:
         changes["country"] = changes["country"].upper()
+    moved = any(getattr(addr, key) != changes[key] for key in _LOCATION_FIELDS if key in changes)
+    if moved:
+        in_use = (await session.exec(
+            select(Order.id).where(
+                (Order.pickup_address_id == addr.id) | (Order.delivery_address_id == addr.id),
+                col(Order.status).not_in(_ADDRESS_EDITABLE_STATUSES),
+            ).limit(1)
+        )).first()
+        if in_use is not None:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "This address is used by orders that are already submitted, so its location "
+                "can't change. Add a new address instead.",
+            )
+        addr.zone = None
     for key, value in changes.items():
         setattr(addr, key, value)
     await session.commit()
     return addr
+
+
+_LOCATION_FIELDS = ("line1", "line2", "suburb", "state", "postcode", "country")
+# Orders in these statuses don't hold on to their address's location.
+_ADDRESS_EDITABLE_STATUSES = (OrderStatus.draft, OrderStatus.rejected, OrderStatus.cancelled)
 
 
 @router.delete("/addresses/{address_id}", status_code=status.HTTP_204_NO_CONTENT,
@@ -311,12 +336,12 @@ async def create_order(body: OrderCreate, user: CustomerUser, session: Session):
     await session.flush()
     session.add(lifecycle.record_created(order, user, now=now))
     await session.commit()
-    return await order_read(session, await _reload_order(session, order.id))
+    return await order_read(session, await _reload_order(session, order.id), for_customer=True)
 
 
 @router.get("/orders/{order_id}", response_model=OrderRead)
 async def get_order(order_id: int, user: CustomerUser, session: Session):
-    return await order_read(session, await _own_order(session, order_id, user))
+    return await order_read(session, await _own_order(session, order_id, user), for_customer=True)
 
 
 @router.patch("/orders/{order_id}", response_model=OrderRead)
@@ -354,7 +379,7 @@ async def update_order(order_id: int, body: OrderUpdate, user: CustomerUser, ses
         setattr(order, key, value)
     order.updated_at = utcnow()
     await session.commit()
-    return await order_read(session, await _reload_order(session, order.id))
+    return await order_read(session, await _reload_order(session, order.id), for_customer=True)
 
 
 @router.post("/orders/{order_id}/submit", response_model=OrderRead)
@@ -380,7 +405,7 @@ async def submit_order(order_id: int, user: CustomerUser, session: Session,
     order.quote_id = quote.id
     await lifecycle.transition(session, order, OrderStatus.submitted, user, body.note if body else None)
     await session.commit()
-    return await order_read(session, await _reload_order(session, order.id))
+    return await order_read(session, await _reload_order(session, order.id), for_customer=True)
 
 
 @router.post("/orders/{order_id}/cancel", response_model=OrderRead)
@@ -390,4 +415,4 @@ async def cancel_order(order_id: int, user: CustomerUser, session: Session,
     order = await _own_order(session, order_id, user)
     await lifecycle.transition(session, order, OrderStatus.cancelled, user, body.note if body else None)
     await session.commit()
-    return await order_read(session, await _reload_order(session, order.id))
+    return await order_read(session, await _reload_order(session, order.id), for_customer=True)
