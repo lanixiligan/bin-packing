@@ -22,8 +22,9 @@ roles and the schemas in `schemas.py` and `models.py` only change through the or
 * **Errors.** `{"detail": "readable message"}` with 400/403/404/409/413/415/422. Validation errors are
   FastAPI's 422 `{"detail": [{"loc", "msg", "type"}]}`. Two special cases:
   * Invalid order status changes give **409** with the message from `app/lifecycle.py`.
-  * `POST /api/ops/plans` with units bigger than the vehicle gives **422** with
-    `detail` = `InfeasibleDetail` `{message, misfits: [UnitMisfit]}`.
+  * `POST /api/ops/plans` with units bigger than the vehicle (or, for a Northline plan, goods Northline
+    won't accept) gives **422** with `detail` = `InfeasibleDetail` `{message, misfits: [UnitMisfit],
+    dg_issues: [DgIssue]}`.
 * **Status codes.** Create = 201, async start = 202, delete/archive = 204, otherwise 200.
 * **Formats.** Dates are `YYYY-MM-DD`, times `HH:MM[:SS]`, timestamps ISO 8601 UTC. **Money is a
   decimal string** (`"123.45"`). Weight is in kg, volume in m³ and pallets in pallet spaces (all floats).
@@ -36,6 +37,8 @@ roles and the schemas in `schemas.py` and `models.py` only change through the or
   `actor_id: null` and show only the display name and role.
 * **Addresses.** Changing an address's location (line1, line2, suburb, state, postcode, country) clears
   its zone, and gives **409** while an order past draft (other than rejected or cancelled) uses it.
+* **Dangerous goods.** Items carry `dg` (a `DgInfo`, or `null` for general freight), copied onto order
+  lines like weights. See [Dangerous goods](#dangerous-goods).
 * **Business timezone.** `BUSINESS_TZ` (default `Australia/Sydney`) defines the driver's "today" and
   invoice months.
 
@@ -81,13 +84,66 @@ created. `OrderRead.events` is the timeline, oldest first. `rejected`, `cancelle
 5. **Save a draft.** `POST /api/ops/plans/{id}/draft {method}` writes the loads (`Load` +
    `LoadAssignment` = units of an order line on a load). A line's units may be split over loads.
 6. **Edit.** `POST /api/ops/plans/{id}/moves {order_line_id, from_load_id, to_load_id|null, quantity?}`.
-   The server re-checks the capacity (422 if the target would be over capacity) and removes loads that
+   The server re-checks the capacity (422 if the target would be over capacity) and the dangerous goods
+   segregation (422 if the target carries goods the moved units can't travel with), and removes loads that
    end up empty.
-7. **Lock.** `POST /api/ops/plans/{id}/lock` freezes the loads and moves every order to `planned`.
+7. **Lock.** `POST /api/ops/plans/{id}/lock` freezes the loads and moves every order to `planned`. 409 if
+   a load is over capacity, carries incompatible dangerous goods, or (Northline plans) has lines that still
+   need an HSEQ approval reference.
 8. **Assign.** `PATCH /api/ops/loads/{id} {vehicle_id, driver_id}`, before or after locking. Changing the
    vehicle re-checks the load against that vehicle's capacity.
 
 `DELETE /api/ops/plans/{id}` discards a draft plan and releases its orders.
+
+## Dangerous goods
+
+Rules live in [`backend/app/dg.py`](../backend/app/dg.py), ported to `frontend/src/dg/rules.ts`;
+`backend/tests/data/dg_cases.json` is checked by both test suites. Source: ADG Code Table 9.1 and
+Table 9.2 as published in Edition 7.8. **Edition 7.9 is mandatory from 1 October 2025: verify the matrix
+against it.** Northline rules: GDE-56 Rev 5.0 (26/09/25).
+
+**`DgInfo`** (on `ItemCreate/ItemUpdate/ItemRead.dg`, `OrderLineRead.dg`, `PackUnit.dg`):
+
+| Field | Meaning |
+|---|---|
+| `dg_class` | `"1"`, `"2.1"` … `"9"` (6.1 and 6.2 separate), or `null` = not DG |
+| `subsidiary` | subsidiary hazards: `2.1, 2.3, 3, 4.1, 4.2, 4.3, 5.1, 6.1, 8` |
+| `packing_group` | `I`, `II`, `III` (not for 1, 2.x, 5.2, 7) |
+| `un_number` | 4 digits |
+| `explosive_code` | Class 1 only, required: division + compatibility group, e.g. `1.4S` |
+| `container` | `package`, `drum`, `ibc`, `cylinder`, `aerosol`, `tank_over_500l` (exceptions 2–4, Northline) |
+| `t92` | Table 9.2 specific goods tags, or `null` = not checked (gives a *check* warning) |
+| `carrier_tags` | `fuel`, `unodourised_lpg`, `peroxide_over_60`, `env_hazardous`, `lithium_battery` |
+| `food`, `fire_risk` | non-DG food / fire-risk goods (Table 9.1 columns F and R); `fire_risk` on Class 6/9 = exception 5 |
+
+**Segregation (always on).** Two lines are checked by pairing every hazard of one (primary and
+subsidiary) with every hazard of the other in Table 9.1, refined by the exceptions (1 explosives,
+2 2.1 × 3 in receptacles over 500 L, 3/4 oxidising 2.2 gas, 5 fire-risk Class 6/9, 6 Table 9.2, 8 food).
+The result is `ok`, `incompatible` (a hard rule) or `check` (Table 9.2 not recorded: a warning only).
+Identical DG data never conflicts with itself.
+
+* The solver (FFD and CP-SAT) never puts incompatible units on the same load; the lower bound ignores
+  segregation, so it may be below the true minimum.
+* `OrderRead.dg_conflicts` lists the incompatible and *check* pairs of an order's lines (the order will
+  travel on more than one vehicle).
+* `LoadRead.dg_conflicts` (incompatible pairs on that load, block locking), `dg_warnings` (checks and
+  carrier notes), `approvals_missing`. Moves into a conflicting load are refused (422).
+
+**Rule sets.** `PlanCreate.rule_set` is `adg` (default) or `northline` (ADG plus Northline acceptance):
+
+* Prohibited (422 at plan creation, in `InfeasibleDetail.dg_issues`): Packing Group I, Divisions 1.1,
+  1.2, 1.3 (except 1.3C), 1.4 B/D/E/F, 1.5, 1.6, 4.2, 4.3, 6.2, fuels, unodourised LPG, peroxide over 60%,
+  Class 7 other than UN 2910/2911, 1.4C other than UN 0509.
+* Limits per order (422): 4.1 and 1.3C at most 50 kg, 1.4G and 1.4C at most 250 kg.
+* Needs approval: 2.3, 5.2, 7, 6.1 in drums, IBCs or tanks (or not PG II/III), Class 9 environmentally
+  hazardous. Such lines show `LoadLineRead.dg_approval_required`; record the HSEQ approval with
+  `PATCH /api/ops/order-lines/{id} {dg_approval_ref}` before locking.
+* Notes (warnings): steel cage for gas cylinders, GDE-55 for lithium batteries, 1.4G NT only, 1.4S for
+  manufacturers only.
+
+The demo (`POST /api/solve`) accepts an optional `dg_class` per shipment (a class, `food` or
+`fire_risk`) and `rule_set`; its response adds `dg_class` to each shipment and `segregated`. The ops page
+`/ops/dg` is the interactive checker with the full Table 9.1 matrix.
 
 ## Driver flow
 
@@ -202,6 +258,7 @@ own 401/403/422 responses are not repeated in every row.
 | POST | `/api/ops/plans/{plan_id}/moves` | dispatcher | LineMove | 200 PlanRead |
 | POST | `/api/ops/plans/{plan_id}/lock` | dispatcher | — | 200 PlanRead |
 | PATCH | `/api/ops/loads/{load_id}` | dispatcher | LoadUpdate | 200 LoadRead |
+| PATCH | `/api/ops/order-lines/{line_id}` | dispatcher | OrderLineApproval | 200 OrderLineRead; 409 unless the order is accepted or planned |
 | GET | `/api/ops/invoices` | dispatcher | query: `month` | 200 list[InvoiceSummary] |
 | GET | `/api/ops/invoices/{company_id}` | dispatcher | query: `month` | 200 Invoice |
 | GET | `/api/ops/invoices/{company_id}/csv` | dispatcher | query: `month` | 200 text/csv |
@@ -227,4 +284,4 @@ own 401/403/422 responses are not repeated in every row.
 
 | Method | Path | Role | Request | Response |
 |---|---|---|---|---|
-| POST | `/api/solve` | public | SolveRequest | 200 (unchanged demo response); 429 while 2 solves are already running |
+| POST | `/api/solve` | public | SolveRequest (optional `dg_class` per shipment, `rule_set`) | 200 demo response (+ `segregated`, shipment `dg_class`); 400 Northline-prohibited shipments; 429 while 2 solves are already running |

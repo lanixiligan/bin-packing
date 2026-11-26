@@ -6,8 +6,8 @@ into truck loads with an optimiser, and drivers deliver them with proof of deliv
 
 | Role | What they do | Pages |
 |---|---|---|
-| **Customer** | Keep an item catalogue and address book, build and submit orders with a price quote, track status and the full history | `/portal/*` |
-| **Dispatcher** | Accept or reject orders, zone addresses, run the optimiser per delivery date + zone, edit and lock load plans, assign vehicles and drivers, manage the fleet, export monthly invoices | `/ops/*` |
+| **Customer** | Keep an item catalogue (with dangerous goods classes) and address book, build and submit orders with a price quote, track status and the full history | `/portal/*` |
+| **Dispatcher** | Accept or reject orders, zone addresses, run the optimiser per delivery date + zone (ADG or ADG + Northline dangerous goods rules), edit and lock load plans, check DG segregation at `/ops/dg`, assign vehicles and drivers, manage the fleet, export monthly invoices | `/ops/*` |
 | **Driver** | See today's run on a phone, mark pickups, deliver with a signature name and photo, report problems | `/driver/*` |
 
 ---
@@ -24,6 +24,7 @@ bin-packing/
 │   │   ├── auth.py           fastapi-users, JWT, role dependencies
 │   │   ├── lifecycle.py      the ONLY place that changes Order.status (+ writes OrderEvent)
 │   │   ├── pricing.py        quotes (cubic weight × zone rate) and monthly invoices / CSV
+│   │   ├── dg.py             dangerous goods: ADG Table 9.1/9.2 segregation, Northline acceptance
 │   │   ├── solver/           1D demo solver + multi-dimension FFD and CP-SAT (weight, m³, pallets)
 │   │   ├── workers.py        arq worker: runs solver jobs in the background
 │   │   └── routers/          portal (customer), ops (dispatcher), driver, jobs, demo
@@ -52,6 +53,13 @@ expands order lines into units and packs them twice: **FFD** (fast rule of thumb
 (optimiser, warm-started from FFD, 10 s limit, one capacity constraint per limited dimension). The UI
 polls `GET /api/jobs/{id}` and shows both answers side by side in the truck views, with the lower bound
 (the maximum over dimensions of `ceil(total / capacity)`).
+
+**Dangerous goods.** Items can carry an ADG class, subsidiary hazards, packing group, UN number and
+Table 9.2 details. Both methods keep incompatible goods (ADG Code Table 9.1 / 9.2) on separate loads,
+moves onto a conflicting load are refused, and a plan with a conflict can't be locked. A plan can also
+use the Northline rule set (prohibited goods, quantity limits, HSEQ approvals). The matrix comes from
+ADG Edition 7.8: check it against Edition 7.9 (mandatory from 1 October 2025). See
+[Dangerous goods](docs/api.md#dangerous-goods).
 
 See [`docs/api.md`](docs/api.md) for the full API, and `/docs` on a running backend for Swagger.
 
@@ -226,7 +234,8 @@ After changing an endpoint or schema, run `make api-types` to regenerate `fronte
 The original demo is still there: shipments (items with a weight) go into trucks (bins with the same
 capacity) using the fewest trucks. It solves the same input with **FFD** (sort heaviest first, put each
 in the first truck with room) and **OR-Tools CP-SAT** (searches for the fewest trucks and can prove it's
-optimal), and animates both in 2D bars or 3D trucks. `POST /api/solve` is its API.
+optimal), and animates both in 2D bars or 3D trucks. `POST /api/solve` is its API. Shipments can be
+given a dangerous goods class (or food / fire-risk); incompatible ones never share a truck.
 
 **A case where FFD loses:** capacity 1000, shipments `560, 490, 440, 370, 360, 340, 190, 150` kg. The
 lower bound is 3. FFD needs 4 trucks (560+440, 490+370, 360+340+190, then 150 fits nowhere); CP-SAT
