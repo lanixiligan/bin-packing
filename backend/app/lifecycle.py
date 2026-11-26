@@ -8,13 +8,15 @@ Order lifecycle: the ONLY place that changes Order.status.
 Every change writes one OrderEvent (timestamp, actor, optional note).
 Callers commit the session; `transition()` only stages the changes.
 
-Owner: Agent A. Other modules call `transition()`, `can_transition()` and
-`next_statuses()`; they never assign `order.status` directly.
+Owner: Agent A. Other modules call `transition()`, `can_transition()`,
+`check_transition()` and `next_statuses()`; they never assign `order.status`
+directly.
 """
 
 from datetime import datetime
 
 from sqlalchemy import update
+from sqlalchemy.orm.attributes import set_committed_value
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.models import Order, OrderEvent, OrderStatus, User, UserRole, utcnow
@@ -65,6 +67,22 @@ def _label(s: OrderStatus) -> str:
     return s.value.replace("_", " ")
 
 
+def check_transition(from_status: OrderStatus, to_status: OrderStatus, role: UserRole) -> None:
+    """Raise TransitionError (with a readable message) unless `role` may move an
+    order from `from_status` to `to_status`. Lets callers fail before doing other work."""
+    if (from_status, to_status) not in TRANSITIONS:
+        raise TransitionError(
+            f"An order that is {_label(from_status)} cannot become {_label(to_status)}.",
+            from_status=from_status, to_status=to_status,
+        )
+    if role not in TRANSITIONS[(from_status, to_status)]:
+        raise TransitionError(
+            f"A {role.value} cannot change an order from {_label(from_status)} "
+            f"to {_label(to_status)}.",
+            from_status=from_status, to_status=to_status,
+        )
+
+
 async def transition(
     session: AsyncSession,
     order: Order,
@@ -81,18 +99,10 @@ async def transition(
     status we checked>), so two concurrent requests can't both succeed: the
     loser gets a TransitionError. Does not commit.
     """
+    if order.id is None:
+        raise ValueError("transition() needs a saved order (flush it first).")
     from_status = order.status
-    if (from_status, to_status) not in TRANSITIONS:
-        raise TransitionError(
-            f"An order that is {_label(from_status)} cannot become {_label(to_status)}.",
-            from_status=from_status, to_status=to_status,
-        )
-    if actor.role not in TRANSITIONS[(from_status, to_status)]:
-        raise TransitionError(
-            f"A {actor.role.value} cannot change an order from {_label(from_status)} "
-            f"to {_label(to_status)}.",
-            from_status=from_status, to_status=to_status,
-        )
+    check_transition(from_status, to_status, actor.role)
 
     now = now or utcnow()
     values: dict = {"status": to_status, "updated_at": now}
@@ -101,7 +111,7 @@ async def transition(
     if to_status == S.delivered:
         values["delivered_at"] = now
 
-    result = await session.execute(
+    result = await session.exec(
         update(Order)
         .where(Order.id == order.id, Order.status == from_status)
         .values(**values)
@@ -112,8 +122,9 @@ async def transition(
             "The order was changed by someone else just now. Reload and try again.",
             from_status=from_status, to_status=to_status,
         )
+    # Mirror the UPDATE on the object without marking it dirty (no second UPDATE).
     for key, value in values.items():
-        setattr(order, key, value)
+        set_committed_value(order, key, value)
 
     event = OrderEvent(
         order_id=order.id, from_status=from_status, to_status=to_status,
