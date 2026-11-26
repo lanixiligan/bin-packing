@@ -10,7 +10,8 @@
     "api:types": "openapi-typescript src/api/openapi.json -o src/api/schema.d.ts",
     "lint": "eslint . && tsc --noEmit -p .",
     "typecheck": "tsc --noEmit -p .",
-    "dev:mock": "VITE_MOCK_API=1 vite"
+    "dev:mock": "VITE_MOCK_API=1 vite",
+    "test": "node --test src/portal/tests/ src/components/capacity.test.mjs src/ops/mocks.test.mjs src/ops/plan/solveView.test.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",

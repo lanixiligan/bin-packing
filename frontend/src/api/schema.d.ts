@@ -168,6 +168,11 @@ export interface paths {
         /**
          * Update Address
          * @description Customers cannot set `zone` (dispatchers do).
+         *
+         *     Moving the address (any location field) clears its zone, so the dispatcher
+         *     re-zones it and quotes use the right rate. It is refused with 409 while an order
+         *     past draft uses the address: those orders were priced, planned or invoiced for
+         *     the old location. The customer adds a new address instead.
          */
         patch: operations["update_address_api_portal_addresses__address_id__patch"];
         trace?: never;
@@ -776,8 +781,8 @@ export interface paths {
         /**
          * Update Status
          * @description planned → picked_up → in_transit, or → exception (note required).
-         *     If an order is split over several loads and another driver already made
-         *     this change, returns 200 without writing a second event.
+         *     If an order is split over several loads and another driver already moved it
+         *     to this step or further, returns 200 without writing a second event.
          */
         post: operations["update_status_api_driver_orders__order_id__status_post"];
         delete?: never;
@@ -802,8 +807,9 @@ export interface paths {
          *     stored under UPLOAD_DIR with a server-generated name. 413 if too large,
          *     415 if not an allowed image.
          *
-         *     If the order is split over several loads and another driver already
-         *     delivered it, this driver's POD is stored without a second status change.
+         *     If the order is split over several drivers' loads, each driver records a POD
+         *     for their part, and the order becomes delivered with the last one. 409 if
+         *     this driver already recorded one.
          */
         post: operations["upload_pod_api_driver_orders__order_id__pod_post"];
         delete?: never;

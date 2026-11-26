@@ -605,7 +605,7 @@
           "portal"
         ],
         "summary": "Update Address",
-        "description": "Customers cannot set `zone` (dispatchers do).",
+        "description": "Customers cannot set `zone` (dispatchers do).\n\nMoving the address (any location field) clears its zone, so the dispatcher\nre-zones it and quotes use the right rate. It is refused with 409 while an order\npast draft uses the address: those orders were priced, planned or invoiced for\nthe old location. The customer adds a new address instead.",
         "operationId": "update_address_api_portal_addresses__address_id__patch",
         "security": [
           {
@@ -2816,7 +2816,7 @@
           "driver"
         ],
         "summary": "Update Status",
-        "description": "planned \u2192 picked_up \u2192 in_transit, or \u2192 exception (note required).\nIf an order is split over several loads and another driver already made\nthis change, returns 200 without writing a second event.",
+        "description": "planned \u2192 picked_up \u2192 in_transit, or \u2192 exception (note required).\nIf an order is split over several loads and another driver already moved it\nto this step or further, returns 200 without writing a second event.",
         "operationId": "update_status_api_driver_orders__order_id__status_post",
         "security": [
           {
@@ -2874,7 +2874,7 @@
           "driver"
         ],
         "summary": "Upload Pod",
-        "description": "Record proof of delivery and move in_transit \u2192 delivered. The photo is\nchecked by content (magic bytes), not by its name or declared type, and\nstored under UPLOAD_DIR with a server-generated name. 413 if too large,\n415 if not an allowed image.\n\nIf the order is split over several loads and another driver already\ndelivered it, this driver's POD is stored without a second status change.",
+        "description": "Record proof of delivery and move in_transit \u2192 delivered. The photo is\nchecked by content (magic bytes), not by its name or declared type, and\nstored under UPLOAD_DIR with a server-generated name. 413 if too large,\n415 if not an allowed image.\n\nIf the order is split over several drivers' loads, each driver records a POD\nfor their part, and the order becomes delivered with the last one. 409 if\nthis driver already recorded one.",
         "operationId": "upload_pod_api_driver_orders__order_id__pod_post",
         "security": [
           {
@@ -4409,7 +4409,7 @@
           "weight_kg": {
             "type": "number",
             "maximum": 100000.0,
-            "exclusiveMinimum": 0.0,
+            "minimum": 0.001,
             "title": "Weight Kg"
           },
           "volume_m3": {
@@ -4545,8 +4545,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 100000.0,
-                "exclusiveMinimum": 0.0
+                "ge": 0.001,
+                "le": 100000
               },
               {
                 "type": "null"
@@ -4558,8 +4558,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 1000.0,
-                "minimum": 0.0
+                "ge": 0,
+                "le": 1000
               },
               {
                 "type": "null"
@@ -4571,8 +4571,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 100.0,
-                "minimum": 0.0
+                "ge": 0,
+                "le": 100
               },
               {
                 "type": "null"
@@ -6462,6 +6462,7 @@
           },
           "weight": {
             "type": "integer",
+            "maximum": 1000000.0,
             "exclusiveMinimum": 0.0,
             "title": "Weight",
             "description": "Weight in kg (whole number)"
@@ -6478,6 +6479,7 @@
         "properties": {
           "capacity": {
             "type": "integer",
+            "maximum": 1000000.0,
             "exclusiveMinimum": 0.0,
             "title": "Capacity",
             "description": "Truck max capacity in kg"
@@ -6795,8 +6797,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 100000.0,
-                "exclusiveMinimum": 0.0
+                "ge": 0.001,
+                "le": 100000
               },
               {
                 "type": "null"
@@ -6808,8 +6810,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 1000.0,
-                "exclusiveMinimum": 0.0
+                "ge": 1e-06,
+                "le": 1000
               },
               {
                 "type": "null"
@@ -6945,8 +6947,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 100000.0,
-                "exclusiveMinimum": 0.0
+                "ge": 0.001,
+                "le": 100000
               },
               {
                 "type": "null"
@@ -6958,8 +6960,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 1000.0,
-                "exclusiveMinimum": 0.0
+                "ge": 1e-06,
+                "le": 1000
               },
               {
                 "type": "null"
