@@ -1450,7 +1450,7 @@
           "ops"
         ],
         "summary": "List Batches",
-        "description": "Accepted + planned orders grouped by delivery_date and zone.",
+        "description": "Accepted + planned orders grouped by delivery_date and zone.\n\nUnplanned orders are grouped by their delivery address's zone; orders\nreserved by a plan are counted in that plan's date + zone (so re-zoning an\naddress later doesn't move them).",
         "operationId": "list_batches_api_ops_batches_get",
         "security": [
           {
@@ -1736,7 +1736,7 @@
           "ops"
         ],
         "summary": "Set Address Zone",
-        "description": "422 if the zone doesn't exist or is inactive.",
+        "description": "422 if the zone doesn't exist or is inactive. Orders already reserved by a\nplan keep their plan.",
         "operationId": "set_address_zone_api_ops_addresses__address_id__patch",
         "security": [
           {
@@ -2277,7 +2277,7 @@
           "ops"
         ],
         "summary": "Discard Plan",
-        "description": "Draft plans only: deletes its loads and releases its orders.",
+        "description": "Draft plans only: deletes its loads and releases its orders. The solve Job\nis kept (a worker may still be running it); its payload's plan_id then\npoints at nothing.",
         "operationId": "discard_plan_api_ops_plans__plan_id__delete",
         "security": [
           {
@@ -2482,7 +2482,7 @@
           "ops"
         ],
         "summary": "Update Load",
-        "description": "Assign/clear the vehicle and driver (allowed on draft and locked plans).\n422 if the load doesn't fit the new vehicle or the vehicle/driver is inactive.",
+        "description": "Assign/clear the vehicle and driver (allowed on draft and locked plans).\n422 if the load doesn't fit the new vehicle or the vehicle/driver is inactive.\nClearing the vehicle re-checks the load against the plan's capacity profile.",
         "operationId": "update_load_api_ops_loads__load_id__patch",
         "security": [
           {
@@ -2688,11 +2688,6 @@
           "200": {
             "description": "Invoice as CSV",
             "content": {
-              "text/plain": {
-                "schema": {
-                  "type": "string"
-                }
-              },
               "text/csv": {}
             }
           },
@@ -2773,7 +2768,7 @@
           "driver"
         ],
         "summary": "Get Order",
-        "description": "404 unless the order is on one of this driver's loads in a locked plan.",
+        "description": "404 unless the order is on one of this driver's loads in a locked plan.\nIf several of the driver's loads carry it, the first one is shown.",
         "operationId": "get_order_api_driver_orders__order_id__get",
         "security": [
           {
@@ -2879,7 +2874,7 @@
           "driver"
         ],
         "summary": "Upload Pod",
-        "description": "Record proof of delivery and move in_transit \u2192 delivered. The photo is\nchecked by content (magic bytes), not by its name or declared type, and\nstored under UPLOAD_DIR with a server-generated name. 413 if too large,\n415 if not an allowed image.",
+        "description": "Record proof of delivery and move in_transit \u2192 delivered. The photo is\nchecked by content (magic bytes), not by its name or declared type, and\nstored under UPLOAD_DIR with a server-generated name. 413 if too large,\n415 if not an allowed image.\n\nIf the order is split over several loads and another driver already\ndelivered it, this driver's POD is stored without a second status change.",
         "operationId": "upload_pod_api_driver_orders__order_id__pod_post",
         "security": [
           {
@@ -2937,7 +2932,7 @@
           "driver"
         ],
         "summary": "Get Pod Photo",
-        "description": "Customers of the order's company, dispatchers, and the driver who recorded it.\n404 for anyone else.",
+        "description": "Customers of the order's company, dispatchers, and the driver who recorded it\n(or who carries the order). 404 for anyone else.",
         "operationId": "get_pod_photo_api_pods__pod_id__photo_get",
         "security": [
           {

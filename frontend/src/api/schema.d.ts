@@ -362,6 +362,10 @@ export interface paths {
         /**
          * List Batches
          * @description Accepted + planned orders grouped by delivery_date and zone.
+         *
+         *     Unplanned orders are grouped by their delivery address's zone; orders
+         *     reserved by a plan are counted in that plan's date + zone (so re-zoning an
+         *     address later doesn't move them).
          */
         get: operations["list_batches_api_ops_batches_get"];
         put?: never;
@@ -445,7 +449,8 @@ export interface paths {
         head?: never;
         /**
          * Set Address Zone
-         * @description 422 if the zone doesn't exist or is inactive.
+         * @description 422 if the zone doesn't exist or is inactive. Orders already reserved by a
+         *     plan keep their plan.
          */
         patch: operations["set_address_zone_api_ops_addresses__address_id__patch"];
         trace?: never;
@@ -566,7 +571,9 @@ export interface paths {
         post?: never;
         /**
          * Discard Plan
-         * @description Draft plans only: deletes its loads and releases its orders.
+         * @description Draft plans only: deletes its loads and releases its orders. The solve Job
+         *     is kept (a worker may still be running it); its payload's plan_id then
+         *     points at nothing.
          */
         delete: operations["discard_plan_api_ops_plans__plan_id__delete"];
         options?: never;
@@ -654,6 +661,7 @@ export interface paths {
          * Update Load
          * @description Assign/clear the vehicle and driver (allowed on draft and locked plans).
          *     422 if the load doesn't fit the new vehicle or the vehicle/driver is inactive.
+         *     Clearing the vehicle re-checks the load against the plan's capacity profile.
          */
         patch: operations["update_load_api_ops_loads__load_id__patch"];
         trace?: never;
@@ -745,6 +753,7 @@ export interface paths {
         /**
          * Get Order
          * @description 404 unless the order is on one of this driver's loads in a locked plan.
+         *     If several of the driver's loads carry it, the first one is shown.
          */
         get: operations["get_order_api_driver_orders__order_id__get"];
         put?: never;
@@ -792,6 +801,9 @@ export interface paths {
          *     checked by content (magic bytes), not by its name or declared type, and
          *     stored under UPLOAD_DIR with a server-generated name. 413 if too large,
          *     415 if not an allowed image.
+         *
+         *     If the order is split over several loads and another driver already
+         *     delivered it, this driver's POD is stored without a second status change.
          */
         post: operations["upload_pod_api_driver_orders__order_id__pod_post"];
         delete?: never;
@@ -809,8 +821,8 @@ export interface paths {
         };
         /**
          * Get Pod Photo
-         * @description Customers of the order's company, dispatchers, and the driver who recorded it.
-         *     404 for anyone else.
+         * @description Customers of the order's company, dispatchers, and the driver who recorded it
+         *     (or who carries the order). 404 for anyone else.
          */
         get: operations["get_pod_photo_api_pods__pod_id__photo_get"];
         put?: never;
@@ -3864,7 +3876,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "text/plain": string;
                     "text/csv": unknown;
                 };
             };
