@@ -4,8 +4,8 @@ import "./driver.css";
 
 const NAV: NavItem[] = [
   { to: "/driver/run", label: "Today's run" },
-    ];
+];
 
-    export default function DriverLayout() {
-      return <AppShell area="Driver" nav={NAV} variant="narrow" />;
-    }
+export default function DriverLayout() {
+  return <AppShell area="Driver" nav={NAV} variant="narrow" />;
+}

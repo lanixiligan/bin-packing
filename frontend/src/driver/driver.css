@@ -1,1 +1,82 @@
-/* Styles for the driver area. Use the tokens from App.css and the blocks in shell/shell.css. */
+/* Styles for the driver area: phone-first (360 px wide and up), tap targets
+   at least 44 px. Tokens from App.css and the blocks in shell/shell.css. */
+@import "../ops/common.css";
+
+.shell-narrow .page-header { margin-bottom: 10px; }
+.shell-narrow .card { padding: 14px; margin-bottom: 12px; }
+.shell-narrow .card h2 { margin: 0 0 8px; font-size: 1.1rem; }
+
+.tap-button, a.tap-button, button.tap-button {
+  min-height: 44px; min-width: 44px; padding: 10px 16px; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border-radius: 10px; font-size: 1rem;
+}
+label.tap-button { border: 1px solid var(--border); background: var(--card); }
+.tap-button.big { width: 100%; min-height: 52px; font-size: 1.1rem; }
+.tap-button.link-like { background: none; border: none; color: var(--primary); text-decoration: underline; }
+.tap-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.tap-row .tap-button { flex: 1 1 140px; }
+.back-link { display: inline-flex; align-items: center; min-height: 44px; padding-right: 12px; }
+
+/* Day navigation */
+.day-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
+.day-input { flex: 1 1 140px; min-width: 0; max-width: 220px; }
+.day-input input { width: 100%; min-height: 44px; box-sizing: border-box; font-size: 1rem; }
+
+/* Run */
+.run-load { margin-bottom: 22px; }
+.run-load-head h2 { margin: 0; font-size: 1.25rem; }
+.run-load-head p { margin: 2px 0 10px; }
+.zone-pill { font-size: 0.85rem; padding: 2px 8px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); vertical-align: middle; }
+.stop-group { margin-bottom: 14px; }
+.stop-group h3, .stop-group-title { margin: 0 0 6px; font-size: 1rem; font-weight: 700; }
+.stop-group .count { color: var(--muted); font-weight: 400; }
+.done-group summary { min-height: 44px; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.done-group summary::before { content: "▸"; margin-right: 2px; color: var(--muted); }
+.done-group[open] summary::before { content: "▾"; }
+.done-group summary::-webkit-details-marker { display: none; }
+.done-group summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 6px; }
+.stops { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.stop { border: 1px solid var(--border); border-radius: 12px; background: var(--card); overflow: hidden; }
+.stop-delivered, .stop-exception { opacity: 0.85; }
+.stop-exception { border-color: var(--bad); }
+.stop-main {
+  position: relative; display: flex; flex-direction: column; gap: 6px;
+  padding: 12px 40px 10px 14px; min-height: 44px; color: var(--text); text-decoration: none;
+}
+.stop-main:hover { background: var(--surface-2); }
+.stop-main:focus-visible, .stop-map:focus-visible { outline: 3px solid var(--primary); outline-offset: -3px; }
+.stop-title { overflow-wrap: anywhere; }
+.stop-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 0.9rem; }
+.stop-chevron { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 1.6rem; color: var(--muted); }
+.stop-map {
+  display: flex; align-items: center; min-height: 44px; padding: 6px 14px; box-sizing: border-box;
+  border-top: 1px solid var(--border); color: var(--primary); font-size: 0.9rem; overflow-wrap: anywhere;
+}
+
+/* Stop detail */
+.stop-actions { display: flex; flex-direction: column; gap: 10px; }
+.stop-actions .error { margin-top: 0; }
+.addr-block + .addr-block { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.addr-block h3 { margin: 0 0 4px; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.addr-label { margin: 0 0 2px; }
+.addr-link { display: inline-flex; align-items: center; min-height: 44px; color: var(--primary); overflow-wrap: anywhere; }
+.addr-contact { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 4px 0; }
+.item-list { list-style: none; margin: 0; padding: 0; }
+.item-list li { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.item-list li:last-child { border-bottom: 0; }
+.item-qty { font-weight: 700; min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; }
+.order-notes { white-space: pre-wrap; margin: 0; }
+.problem-form textarea { width: 100%; box-sizing: border-box; font-size: 1rem; }
+
+/* POD form */
+.pod-form { display: flex; flex-direction: column; gap: 10px; }
+.pod-form input:not([type="file"]), .pod-form textarea { min-height: 44px; box-sizing: border-box; font-size: 1rem; }
+.pod-form .field-error { max-width: none; margin: 0; }
+.photo-input {
+  position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden;
+}
+.photo-input:focus-visible + .photo-pick { outline: 3px solid var(--primary); outline-offset: 2px; }
+.photo-input[aria-invalid="true"] + .photo-pick { border-color: var(--bad); }
+.photo-pick { cursor: pointer; align-self: flex-start; font-weight: 600; }
+.pod-preview { max-width: 100%; max-height: 50vh; object-fit: contain; border-radius: 10px; border: 1px solid var(--border); align-self: flex-start; }
