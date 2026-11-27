@@ -26,16 +26,22 @@ describe("LoadPlanView", () => {
       <LoadPlanView result={planMultidrop.result} reference={reference} request={planMultidrop.request} />,
     );
     const zoom = () => screen.getByLabelText("Zoom level").textContent;
+    // The drawings open fitted to their box (100 % of its width, whatever that is): no sideways scroll.
+    const widths = () => [".deck-view", ".elevation-view"].map((sel) => container.querySelector<SVGElement>(sel)!.style.width);
     expect(zoom()).toBe("100 %");
+    expect(widths()).toEqual(["100%", "100%"]);
     expect(screen.getByRole("button", { name: "Zoom out" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Fit to width" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Zoom in" }));
     await user.click(screen.getByRole("button", { name: "Zoom in" }));
     expect(zoom()).toBe("200 %");
+    expect(widths()).toEqual(["200%", "200%"]); // zoomed in: wider than the box, which then scrolls
     await user.click(screen.getByRole("button", { name: "Zoom out" }));
     expect(zoom()).toBe("150 %");
     await user.click(screen.getByRole("button", { name: "Fit to width" }));
     expect(zoom()).toBe("100 %");
+    expect(widths()).toEqual(["100%", "100%"]);
+    expect(screen.getByRole("button", { name: "Fit to width" })).toBeDisabled();
     // Both drawings share the x scale: same viewBox x range.
     const [deck, elev] = [container.querySelector(".deck-view")!, container.querySelector(".elevation-view")!];
     const xRange = (svg: Element) => svg.getAttribute("viewBox")!.split(" ").filter((_, i) => i % 2 === 0);

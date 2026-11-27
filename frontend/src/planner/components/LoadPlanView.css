@@ -1,4 +1,4 @@
-/* The load plan: toolbar, the two drawings (horizontally scrollable below their minimum scale),
+/* The load plan: toolbar, the two drawings (fitted to their box; they scroll sideways only when zoomed in),
    legend, unplaced units and the table. The details popover is positioned against .lp. */
 
 .lp { position: relative; display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
