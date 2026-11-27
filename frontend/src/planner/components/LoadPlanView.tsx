@@ -158,7 +158,7 @@ function dgText(dg: DgInfo): string {
 
 /** Each distinct DG class in the plan (by placard code) gets the next categorical colour, in order of
  *  first appearance in the placements. General freight has none (it takes --cat-none). */
-export function dgClassColours(placements: Placement[], dg: Map<string, DgInfo>): Map<string, DgClassColour> {
+function dgClassColours(placements: Placement[], dg: Map<string, DgInfo>): Map<string, DgClassColour> {
   const out = new Map<string, DgClassColour>();
   for (const p of placements) {
     const info = dg.get(p.item_id);
