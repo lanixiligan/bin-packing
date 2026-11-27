@@ -86,12 +86,12 @@ a { color: var(--color-accent); text-underline-offset: 2px; }
   font: inherit; font-size: var(--text-sm); color: var(--color-text);
   background: var(--color-surface); border: 1px solid var(--color-border-strong); border-radius: var(--radius-sm);
 }
-.input:focus-visible, .select/* Only on paper (styles/print.css shows it). */
-.print-only { display: none; }
-
-:focus-visible { outline-offset: 0; border-color: var(--color-focus); }
+.input:focus-visible, .select:focus-visible { outline-offset: 0; border-color: var(--color-focus); }
 .input[aria-invalid="true"], .select[aria-invalid="true"] { border-color: var(--color-error); background: var(--color-error-soft); }
 textarea.input { padding: var(--space-2) var(--space-3); min-height: 96px; resize: vertical; }
+
+/* Only on paper (styles/print.css shows it). */
+.print-only { display: none; }
 
 /* ---- Segmented control (radio group styled as buttons) ---------------------- */
 .segmented { display: inline-flex; padding: 2px; gap: 2px; background: var(--color-surface-2);
