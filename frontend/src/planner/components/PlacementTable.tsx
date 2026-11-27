@@ -2,7 +2,8 @@
 // here with aria-describedby). Collapsed by default; sortable by deck position or stop.
 
 import { useState } from "react";
-import type { Deck, Placement } from "../api/types.ts";
+import type { Deck, DgInfo, Placement } from "../api/types.ts";
+import { dgName, placardCode } from "../lib/dg.ts";
 import { useUnits } from "../lib/units.ts";
 import "./PlacementTable.css";
 
@@ -11,11 +12,13 @@ export interface PlacementTableProps {
   placements: Placement[];
   decks: Deck[];
   typeName(p: Placement): string;
+  /** DG per freight line id (lib/dg.ts dgByItem); lines without an entry are general freight. */
+  dg?: ReadonlyMap<string, DgInfo>;
 }
 
 type SortKey = "position" | "stop";
 
-export default function PlacementTable({ id, placements, decks, typeName }: PlacementTableProps) {
+export default function PlacementTable({ id, placements, decks, typeName, dg }: PlacementTableProps) {
   const units = useUnits();
   const [sort, setSort] = useState<SortKey>("position");
   const deckIndex = new Map(decks.map((d, i) => [d.id, i]));
@@ -52,6 +55,7 @@ export default function PlacementTable({ id, placements, decks, typeName }: Plac
             <tr>
               <th scope="col">Unit</th>
               <th scope="col">Item</th>
+              <th scope="col">DG</th>
               <th scope="col">Type</th>
               {sortHeader("position", "Deck")}
               <th scope="col" className="num">x</th>
@@ -67,6 +71,7 @@ export default function PlacementTable({ id, placements, decks, typeName }: Plac
               <tr key={p.unit_id}>
                 <td className="ptable-unit">{p.unit_id}</td>
                 <td>{p.label || p.item_id}</td>
+                <DgCell dg={dg?.get(p.item_id)} />
                 <td>{typeName(p)}{p.rotated ? <span className="subtle"> (turned)</span> : null}</td>
                 <td>{deckName.get(p.deck_id) ?? p.deck_id}</td>
                 <td className="num">{units.length(p.x_mm)}</td>
@@ -81,5 +86,16 @@ export default function PlacementTable({ id, placements, decks, typeName }: Plac
         </table>
       </div>
     </details>
+  );
+}
+
+/** "5.1 Oxidising substance", "F Food"; a dash for general freight. */
+function DgCell({ dg }: { dg: DgInfo | undefined }) {
+  const code = placardCode(dg);
+  if (!code) return <td className="subtle">–</td>;
+  return (
+    <td>
+      <span className="ptable-dg">{code}</span> <span className="muted">{dgName(dg)}</span>
+    </td>
   );
 }

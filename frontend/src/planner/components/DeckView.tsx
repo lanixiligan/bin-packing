@@ -39,6 +39,10 @@ const CHAR_WIDTH = 0.53; // average glyph width / font size (Inter)
 const PAD = 70;
 const LINE = 270;
 const BADGE_H = 290;
+/** DG placard diamond: its diagonal, a little taller than the badge row it sits in. */
+const DIAMOND = 360;
+/** Conflict warning triangle width. */
+const WARN_W = 250;
 
 type Direction = "left" | "right" | "up" | "down";
 const KEY_DIRECTIONS: Record<string, Direction> = {
@@ -196,11 +200,13 @@ export default function DeckView({ vehicle, stacks, frame, mode, width, describe
                if (el) nodes.current.set(s.key, el);
                else nodes.current.delete(s.key);
              }}
-             className={`deck-stack${highlighted && highlighted.stack.key !== s.key ? " is-dimmed" : ""}`}
+             className={`deck-stack${highlighted && highlighted.stack.key !== s.key ? " is-dimmed" : ""}`
+               + `${s.conflict ? ` has-conflict is-conflict-${s.conflict.severity}` : ""}`}
              style={{ transform: `translate(${x}px, ${y}px)` }}
              tabIndex={0} role="button" aria-label={s.description}
              aria-describedby={detailsId && highlighted?.stack.key === s.key ? detailsId : undefined}
              data-stack={s.key} data-over-limit={s.overLimit || undefined}
+             data-dg={s.dg.map((d) => d.code).join(" ") || undefined} data-conflict={s.conflict?.severity}
              onMouseEnter={(e) => events.onEnter(s.key, e.currentTarget)}
              onMouseLeave={() => events.onLeave(s.key)}
              onFocus={(e) => events.onFocus(s.key, e.currentTarget)}
@@ -233,13 +239,29 @@ function StackShape({ stack: s, mode, prefix, weightText }: {
   const n = s.units.length;
   const inner = L - 2 * PAD;
 
-  // Badges: the colour's meaning (stop / type code) on the left, the stack count on the right.
+  // Badge row, left to right: the DG placard diamond, the conflict warning, the colour's meaning
+  // (stop / type code); the stack count on the right. DG and conflict marks win when room is short.
   const badges: { text: string; x: number; w: number; dark: boolean }[] = [];
+  const codes = [...new Set(s.dg.map((d) => d.code))];
+  const diamonds: { code: string; cx: number }[] = [];
+  let warnX: number | null = null;
+  let x = PAD;
   if (W - 2 * PAD >= BADGE_H) {
     let room = inner;
+    for (const code of codes) {
+      if (DIAMOND > room) break;
+      diamonds.push({ code, cx: x + DIAMOND / 2 });
+      x += DIAMOND + 25;
+      room -= DIAMOND + 25;
+    }
+    if (s.conflict && WARN_W <= room) {
+      warnX = x + WARN_W / 2;
+      x += WARN_W + 30;
+      room -= WARN_W + 30;
+    }
     if (s.paint.badge && badgeWidth(s.paint.badge) <= room) {
       const w = badgeWidth(s.paint.badge);
-      badges.push({ text: s.paint.badge, x: PAD, w, dark: false });
+      badges.push({ text: s.paint.badge, x, w, dark: false });
       room -= w + 60;
     }
     const count = `×${n}`;
@@ -249,7 +271,7 @@ function StackShape({ stack: s, mode, prefix, weightText }: {
     }
   }
 
-  const top = PAD + (badges.length ? BADGE_H + 40 : 0);
+  const top = PAD + (badges.length || diamonds.length || warnX !== null ? BADGE_H + 40 : 0);
   const avail = W - PAD - top;
   const wanted = mode === "weight" ? [weightText, s.label] : [s.label, weightText];
   const lines = wanted
@@ -269,6 +291,17 @@ function StackShape({ stack: s, mode, prefix, weightText }: {
         <rect x={14} y={14} width={L - 28} height={W - 28} rx={50} fill={`url(#${prefix}-corrugation)`} />
       )}
       <rect x={14} y={14} width={L - 28} height={W - 28} rx={50} className="deck-unit-edge" />
+      {s.conflict && (
+        <rect x={40} y={40} width={L - 80} height={W - 80} rx={40}
+              className={`deck-conflict-outline is-${s.conflict.severity}`} />
+      )}
+      {diamonds.map((d) => <DgDiamond key={d.code} code={d.code} cx={d.cx} cy={PAD + BADGE_H / 2} size={DIAMOND} />)}
+      {s.conflict && warnX !== null && (
+        <g className={`deck-conflict-icon is-${s.conflict.severity}`}>
+          <path d={`M ${warnX} ${PAD + 5} L ${warnX + WARN_W / 2} ${PAD + BADGE_H} L ${warnX - WARN_W / 2} ${PAD + BADGE_H} Z`} />
+          <text x={warnX} y={PAD + BADGE_H - 35} textAnchor="middle" fontSize={180}>!</text>
+        </g>
+      )}
       {badges.map((b) => (
         <g key={b.text} className={b.dark ? "deck-badge deck-badge-dark" : "deck-badge"}>
           <rect x={b.x} y={PAD} width={b.w} height={BADGE_H} rx={BADGE_H / 2} />
@@ -280,6 +313,20 @@ function StackShape({ stack: s, mode, prefix, weightText }: {
               className={i === 0 ? "deck-unit-label deck-unit-label-main" : "deck-unit-label"}
               fill={s.paint.text} style={halo}>{t}</text>
       ))}
+    </g>
+  );
+}
+
+/** A placard-style diamond with the DG code ("3", "5.1", "1.4S", "F"), centred on (cx, cy), in mm. */
+export function DgDiamond({ code, cx, cy, size }: { code: string; cx: number; cy: number; size: number }) {
+  const r = size / 2;
+  const font = size * (code.length <= 2 ? 0.4 : code.length === 3 ? 0.33 : 0.27);
+  return (
+    <g className="dg-diamond">
+      <path d={`M ${cx} ${cy - r} L ${cx + r} ${cy} L ${cx} ${cy + r} L ${cx - r} ${cy} Z`} className="dg-diamond-outer" />
+      <path d={`M ${cx} ${cy - r * 0.8} L ${cx + r * 0.8} ${cy} L ${cx} ${cy + r * 0.8} L ${cx - r * 0.8} ${cy} Z`}
+            className="dg-diamond-inner" />
+      <text x={cx} y={cy + font * 0.36} textAnchor="middle" fontSize={font}>{code}</text>
     </g>
   );
 }
