@@ -17,11 +17,11 @@ export default defineConfig({
       input: { main: "index.html", demo: "demo.html" },
     },
   },
-  // Component tests for the load planner (src/planner). The DG rules port and the demo's helpers
-  // run with `node --test`.
+  // Component tests for the load planner (src/planner) and the demo page (src/demo). The DG rules
+  // port and the demo's pure helpers run with `node --test`.
   test: {
     environment: "jsdom",
-    include: ["src/planner/**/*.test.{ts,tsx}"],
+    include: ["src/planner/**/*.test.{ts,tsx}", "src/demo/**/*.test.{jsx,tsx}"],
     setupFiles: ["src/planner/test/setup.ts"],
     css: false,
   },
