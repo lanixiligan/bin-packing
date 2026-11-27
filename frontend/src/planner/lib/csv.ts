@@ -53,7 +53,7 @@ export function parseRecords(text: string): CsvRecord[] {
   let quoted = false;
   let line = 1;
   let start = 1;
-  const src = text.replace(/^﻿/, "");
+  const src = text.replace(/^\uFEFF/, "");
   const endRecord = () => {
     cells.push(cell);
     if (cells.some((c) => c.trim() !== "")) records.push({ line: start, cells });
