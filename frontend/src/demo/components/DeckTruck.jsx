@@ -1,7 +1,6 @@
-import { colorFor, dgCodeOf } from "./capacity.ts";
+import { colorFor } from "./capacity.ts";
 import { rectOf, stackColumns } from "./deck.ts";
 import { columnLabel, metres } from "./sizes.ts";
-import { DgDiamond } from "../../dg/DgBadge.tsx";
 import "./truck.css";
 
 // One truck's cargo decks, drawn top-down to scale (deck.ts), cab at the top: each footprint
@@ -14,15 +13,11 @@ import "./truck.css";
 /** px rounded to 0.1, so a style value is stable to read back. */
 const px = (v) => Math.round(v * 10) / 10;
 
-/** The DG placard shown on a column: the first one among its levels. */
-const codeOf = (items) => items.map(dgCodeOf).find(Boolean) ?? null;
-
 function Column({ column, items, plan, truck, numTrucks, activeIds, onHover, onFocusBlock }) {
   const r = rectOf(column.base, plan.scale);
   const ids = column.items.map((s) => s.id);
   const top = items[items.length - 1];
   const active = activeIds != null && ids.some((id) => activeIds.includes(id));
-  const code = codeOf(items);
   const topMm = Math.max(...items.map((s) => s.placement.z_mm + s.placement.height_mm));
   const label = columnLabel(items, topMm, truck, numTrucks);
   const loose = column.items[0].kind === "loose";
@@ -40,9 +35,6 @@ function Column({ column, items, plan, truck, numTrucks, activeIds, onHover, onF
       onFocus={() => onFocusBlock(ids)}
       onBlur={() => onFocusBlock(null)}
     >
-      {code && Math.min(r.width, r.height) >= 14 && (
-        <span className="deck-dia" aria-hidden="true"><DgDiamond code={code} size="sm" /></span>
-      )}
       {items.length > 1 && <span className="deck-count" aria-hidden="true">×{items.length}</span>}
     </div>
   );

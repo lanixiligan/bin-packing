@@ -36,10 +36,6 @@ describe("Demo page", { timeout: 20_000 }, () => {
     const [body] = solveBodies(fetchMock);
     expect(body.vehicle_id).toBe("RIGID_MEDIUM");
     expect(body.body_type).toBeNull();
-    // Always ADG + Northline: there is no rule set toggle any more.
-    expect(body.rule_set).toBe("northline");
-    expect(screen.getByText("ADG Code + Northline")).toBeInTheDocument();
-    expect(screen.queryByRole("radio", { name: /ADG/ })).not.toBeInTheDocument();
     expect(body.shipments).toHaveLength(20);
     for (const s of body.shipments) {
       if (s.kind === "pallet") expect(s).not.toHaveProperty("length_mm");

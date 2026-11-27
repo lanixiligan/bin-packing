@@ -5,14 +5,14 @@ import { useState } from "react";
 import ShipmentTable from "./ShipmentTable.jsx";
 import { MAX_SHIPMENTS } from "../shipments.js";
 
-const pallet = (uid, name, weight, palletType = "AU_STD", heightMm = 1200, stackable = false, dgClass = null) =>
-  ({ uid, name, weight, kind: "pallet", palletType, heightMm, stackable, dgClass, subsidiary: [] });
+const pallet = (uid, name, weight, palletType = "AU_STD", heightMm = 1200, stackable = false) =>
+  ({ uid, name, weight, kind: "pallet", palletType, heightMm, stackable });
 const loose = (uid, name, weight, lengthMm, widthMm, heightMm) =>
-  ({ uid, name, weight, kind: "loose", lengthMm, widthMm, heightMm, stackable: false, dgClass: null, subsidiary: [] });
+  ({ uid, name, weight, kind: "loose", lengthMm, widthMm, heightMm, stackable: false });
 const list = [
   pallet(101, "Steel 01", 534),
-  pallet(102, "Paint 02", 422, "AU_STD", 1200, true, "3"),
-  pallet(103, "Glass 03", 600, "EURO", 1600, false, "food"),
+  pallet(102, "Paint 02", 422, "AU_STD", 1200, true),
+  pallet(103, "Glass 03", 600, "EURO", 1600, false),
   loose(104, "Pipes 04", 250, 4600, 400, 300),
 ];
 const RIGID = { payloadKg: 8000, decks: [{ id: "body", name: "Body", length_mm: 4800, width_mm: 2400, height_mm: 2700 }] };
@@ -25,10 +25,10 @@ function Harness({ initial = list, ...props }) {
 const bodyRows = () => within(screen.getByRole("table")).getAllByRole("row").slice(1);
 
 describe("ShipmentTable", () => {
-  it("shows one read-only line per shipment: size, kg, whether it stacks, DG", () => {
+  it("shows one read-only line per shipment: size, kg, whether it stacks", () => {
     render(<Harness />);
     expect(screen.getAllByRole("columnheader").map((h) => h.textContent))
-      .toEqual(["Shipment", "kg", "Stack", "DG", "Remove"]);
+      .toEqual(["Shipment", "kg", "Stack", "Remove"]);
     const rows = bodyRows();
     expect(rows).toHaveLength(4);
     const cells = (r) => within(r).getAllByRole("cell");
@@ -105,17 +105,16 @@ describe("ShipmentTable", () => {
     expect(screen.getByRole("button", { name: "Edit Pipes 01" })).not.toHaveAttribute("aria-describedby");
   });
 
-  it("adds a shipment, filling in the DG class and size of a catalogue item", async () => {
+  it("adds a shipment, filling in the size of a catalogue item", async () => {
     const user = userEvent.setup();
     render(<Harness />);
-    await user.type(screen.getByRole("combobox", { name: "New shipment name" }), "Methanol");
+    await user.type(screen.getByRole("combobox", { name: "New shipment name" }), "Tyres");
     expect(screen.getByRole("combobox", { name: "New shipment pallet type, or loose" })).toHaveValue("AU_STD");
-    expect(screen.getByRole("spinbutton", { name: "New shipment height in mm" })).toHaveValue(1300);
+    expect(screen.getByRole("spinbutton", { name: "New shipment height in mm" })).toHaveValue(1800);
     await user.type(screen.getByRole("spinbutton", { name: "New shipment weight in kg" }), "150");
     await user.click(screen.getByRole("button", { name: "Add" }));
-    expect(screen.getByRole("button", { name: "Edit Methanol" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Dangerous goods for Methanol: Class 3 \(sub 6\.1\)/ })).toBeInTheDocument();
-    expect(bodyRows()[4]).toHaveTextContent("AU · 1.3 m");
+    expect(screen.getByRole("button", { name: "Edit Tyres" })).toBeInTheDocument();
+    expect(bodyRows()[4]).toHaveTextContent("AU · 1.8 m");
   });
 
   it("adds a loose catalogue item at a length that fits the deck", async () => {

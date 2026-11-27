@@ -1,29 +1,25 @@
 import { Fragment, useEffect, useId, useRef, useState } from "react";
-import { northlineIssues } from "../../dg/rules.ts";
 import {
-  DEFAULT_PALLET, demoDg, ITEMS, itemByName, MAX_SHIPMENTS, nextUid, parseWeights, shipmentsFromWeights, typicalSize,
+  DEFAULT_PALLET, ITEMS, itemByName, MAX_SHIPMENTS, nextUid, parseWeights, shipmentsFromWeights, typicalSize,
 } from "../shipments.js";
-import { colorFor, dgClassText } from "./capacity.ts";
+import { colorFor } from "./capacity.ts";
 import { fitProblems, footprintOf, inputProblem, KNOWN_PALLETS, palletShort, sizeLabel, sizeSpoken } from "./sizes.ts";
-import HazardPicker from "./HazardPicker.jsx";
 
 // The shipment list as a compact table: one line per shipment (name, size, kg, whether it
-// stacks, DG class and, after Solve, its truck). Click a name, or press Enter on it, to edit
-// that row in place; the DG chip opens its own picker. Below the table: a row to add a
-// shipment and "Paste a list of weights…".
+// stacks and, after Solve, its truck). Click a name, or press Enter on it, to edit that row in
+// place. Below the table: a row to add a shipment and "Paste a list of weights…".
 //
 // `fit` is the chosen vehicle's decks and payload (null until the reference data is in): rows
 // that can never go on it are flagged, as the server would refuse them. `pallets` is the
-// reference's pallet types (KNOWN_PALLETS until then). With `ruleSet === "northline"`, rows
-// Northline won't accept are flagged too. `placement` maps a shipment's position in the list
+// reference's pallet types (KNOWN_PALLETS until then). `placement` maps a shipment's position in the list
 // to { truck } once solved. Row index = the solver's shipment id.
 export default function ShipmentTable({
-  shipments, fit = null, pallets = KNOWN_PALLETS, onChange, ruleSet = "northline",
+  shipments, fit = null, pallets = KNOWN_PALLETS, onChange,
   placement = null, activeIds = null, activeTruck = null, onHover = () => {},
 }) {
   const [editing, setEditing] = useState(null); // uid of the row being edited
   const solved = placement != null;
-  const cols = solved ? 7 : 6;
+  const cols = solved ? 6 : 5;
 
   function update(uid, patch) {
     onChange(shipments.map((s) => (s.uid === uid ? { ...s, ...patch } : s)));
@@ -51,7 +47,6 @@ export default function ShipmentTable({
               <th scope="col" className="col-name">Shipment</th>
               <th scope="col" className="n col-kg">kg</th>
               <th scope="col" className="col-stack"><abbr title="Stackable">Stack</abbr></th>
-              <th scope="col" className="col-dg">DG</th>
               {solved && <th scope="col" className="n col-truck">Truck</th>}
               <th scope="col" className="col-remove"><span className="sr-only">Remove</span></th>
             </tr>
@@ -60,28 +55,13 @@ export default function ShipmentTable({
             {shipments.map((s, i) => {
               const checks = fitProblems(s, fit, pallets);
               const missing = inputProblem(s);
-              const refused = ruleSet === "northline"
-                ? northlineIssues(demoDg(s.dgClass, s.subsidiary)).find((x) => x.kind === "prohibited")
-                : null;
               const problems = [
                 missing && `${missing[0].toUpperCase()}${missing.slice(1)}.`,
                 ...checks.messages,
-                refused && refused.message,
               ].filter(Boolean);
               const errId = `row-err-${s.uid}`;
               const truck = placement?.[i]?.truck;
               const lit = activeIds?.includes(i) || (activeTruck != null && truck === activeTruck);
-              const hazard = (
-                <HazardPicker
-                  value={s}
-                  onChange={(h) => update(s.uid, h)}
-                  name={s.name}
-                  others={shipments.filter((o) => o.uid !== s.uid)}
-                  ruleSet={ruleSet}
-                  describedBy={refused ? errId : undefined}
-                  invalid={Boolean(refused)}
-                />
-              );
               const removeBtn = (
                 <button
                   type="button"
@@ -111,7 +91,6 @@ export default function ShipmentTable({
                           onDone={() => finishEdit(s.uid)}
                           checks={checks}
                           errId={errId}
-                          hazard={hazard}
                           removeBtn={removeBtn}
                         />
                       </td>
@@ -143,7 +122,6 @@ export default function ShipmentTable({
                       </td>
                       <td className={`n${checks.tooHeavy ? " bad" : ""}`}>{Number(s.weight).toLocaleString()}</td>
                       <td className="stack-cell"><StackMark on={s.stackable} /></td>
-                      <td className="dg-cell">{hazard}</td>
                       {solved && <td className="n truck-cell">{truck ?? "–"}</td>}
                       <td className="remove-cell">{removeBtn}</td>
                     </tr>
@@ -160,7 +138,7 @@ export default function ShipmentTable({
         </table>
       )}
 
-      <AddRow shipments={shipments} onChange={onChange} ruleSet={ruleSet} pallets={pallets} fit={fit} />
+      <AddRow shipments={shipments} onChange={onChange} pallets={pallets} fit={fit} />
       <PasteWeights shipments={shipments} onChange={onChange} />
     </div>
   );
@@ -221,8 +199,8 @@ function NumField({ value, onChange, label, unit, className, invalid, describedB
   );
 }
 
-/** One row in edit mode: name, pallet or loose, sizes, kg, stacks, the DG chip, Done. Escape or Enter closes it. */
-function EditRow({ s, pallets, onUpdate, onDone, checks, errId, hazard, removeBtn }) {
+/** One row in edit mode: name, pallet or loose, sizes, kg, stacks, Done. Escape or Enter closes it. */
+function EditRow({ s, pallets, onUpdate, onDone, checks, errId, removeBtn }) {
   const nameRef = useRef(null);
   useEffect(() => {
     nameRef.current?.focus();
@@ -267,7 +245,6 @@ function EditRow({ s, pallets, onUpdate, onDone, checks, errId, hazard, removeBt
           aria-label={`${who} stacks`} />
         Stacks
       </label>
-      {hazard}
       <button type="submit" className="btn btn-sm">Done</button>
       {removeBtn}
     </form>
@@ -278,11 +255,10 @@ const EMPTY_ADD = { name: "", kind: "pallet", palletType: DEFAULT_PALLET, length
 
 /**
  * The "add a shipment" row under the table (it wraps to two lines). Typing a catalogue item
- * ("Methanol", "Pipes") fills in its DG data and typical size. Disabled at MAX_SHIPMENTS.
+ * ("Paint", "Pipes") fills in its typical size. Disabled at MAX_SHIPMENTS.
  */
-function AddRow({ shipments, onChange, ruleSet, pallets, fit }) {
+function AddRow({ shipments, onChange, pallets, fit }) {
   const [draft, setDraft] = useState(EMPTY_ADD);
-  const [hazard, setHazard] = useState({ dgClass: null, subsidiary: [] });
   const itemsId = useId();
   const full = shipments.length >= MAX_SHIPMENTS;
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
@@ -297,7 +273,6 @@ function AddRow({ shipments, onChange, ruleSet, pallets, fit }) {
     const longest = fit ? Math.max(...fit.decks.map((d) => d.length_mm)) : Infinity;
     const size = typicalSize(it, longest);
     setDraft((d) => ({ ...d, ...size, name: value, heightMm: String(size.heightMm) }));
-    setHazard({ dgClass: it.dgClass, subsidiary: [...it.subsidiary] });
   }
 
   function add(e) {
@@ -313,12 +288,10 @@ function AddRow({ shipments, onChange, ruleSet, pallets, fit }) {
         : { palletType: draft.palletType }),
       heightMm: Math.round(Number(draft.heightMm)),
       stackable: draft.stackable,
-      ...hazard,
     };
     if (inputProblem(s)) return;
     onChange([...shipments, s]);
     setDraft(EMPTY_ADD);
-    setHazard({ dgClass: null, subsidiary: [] });
   }
 
   return (
@@ -334,7 +307,7 @@ function AddRow({ shipments, onChange, ruleSet, pallets, fit }) {
         />
         <datalist id={itemsId}>
           {ITEMS.map((it) => (
-            <option key={it.name} value={it.name}>{dgClassText(it.dgClass, it.subsidiary) || "General freight"}</option>
+            <option key={it.name} value={it.name} />
           ))}
         </datalist>
         <KindSelect
@@ -360,7 +333,6 @@ function AddRow({ shipments, onChange, ruleSet, pallets, fit }) {
             aria-label="New shipment stacks" />
           Stacks
         </label>
-        <HazardPicker value={hazard} onChange={setHazard} name={draft.name.trim() || "new shipment"} others={shipments} ruleSet={ruleSet} />
         <button type="submit" className="btn btn-sm">Add</button>
       </fieldset>
       {full && (

@@ -1,4 +1,4 @@
-# Truck load planner. Run `make help` for the targets.
+# Bin packing demo. Run `make help` for the targets.
 SHELL := /bin/bash
 VENV := backend/.venv
 PY := $(VENV)/bin/python
@@ -35,5 +35,5 @@ lint: ## Lint backend and frontend
 build: ## Production build of the web app
 	cd frontend && npm run build
 
-fixtures: ## Regenerate the frontend's sample API responses from the real planner
+fixtures: ## Regenerate the reference data the frontend tests use
 	cd backend && $(BIN)/python -m scripts.export_fixtures

@@ -7,7 +7,6 @@ from ortools.sat.python import cp_model
 
 from app import solver as solver_mod
 from app.demo_models import SolveResponse
-from app.dg import DgInfo
 from app.routers import demo
 from app.solver import DeckSpec, Item, Solution, Truck, pallet_key, solve
 
@@ -18,11 +17,10 @@ RIGID = Truck(8000, (BODY,), "Medium rigid")
 TINY = Truck(5000, (DeckSpec("body", "Body", 1200, 1200, 2700),), "Tiny")
 
 
-def pallet(i: int, height: int = 1200, weight: int = 100, stackable: bool = False, kind: str = "AU_STD",
-           dg: str | None = None) -> Item:
+def pallet(i: int, height: int = 1200, weight: int = 100, stackable: bool = False,
+           kind: str = "AU_STD") -> Item:
     length, width = {"AU_STD": AU, "EURO": EURO, "AU_TWIN": AU}[kind]
-    info = DgInfo(dg_class=dg, t92=[]) if dg else None
-    return Item(i, f"P{i}", weight, length, width, height, stackable, pallet_key(kind), info)
+    return Item(i, f"P{i}", weight, length, width, height, stackable, pallet_key(kind))
 
 
 def loose(i: int, length: int, width: int, height: int = 500, weight: int = 100,
@@ -32,8 +30,7 @@ def loose(i: int, length: int, width: int, height: int = 500, weight: int = 100,
 
 def check(result: Solution, items: list[Item], truck: Truck) -> None:
     """Re-run the solver's own geometric check and the bound."""
-    group, conflicts = solver_mod._dg_groups(items)
-    solver_mod._check(items, truck, result.trucks, group, conflicts)
+    solver_mod._check(items, truck, result.trucks)
     assert len(result.trucks) >= result.lower_bound == max(1, *result.lower_bounds.values())
 
 
@@ -144,13 +141,6 @@ def test_payload_binds():
     check(result, items, RIGID)
 
 
-def test_incompatible_goods_get_separate_trucks():
-    items = [pallet(0, dg="3"), pallet(1, dg="2.3"), pallet(2), pallet(3, dg="3")]
-    result = solve(items, RIGID, 3)
-    assert result.lower_bound == 1 and len(result.trucks) == 2
-    check(result, items, RIGID)
-
-
 def test_lower_bounds():
     items = [pallet(0, 1000, stackable=True), pallet(1, 2000), loose(2, 4000, 2000, 1000)]
     bounds = solver_mod.lower_bounds(items, RIGID)
@@ -172,11 +162,10 @@ def test_no_cpsat_answer_returns_the_greedy_packing(monkeypatch):
 @pytest.mark.parametrize("items, truck, expected", [
     ([pallet(i, 1200, stackable=True) for i in range(9)], RIGID, 1),                    # must stack
     ([loose(i, 2400, 1000) for i in range(4)], Truck(8000, (DeckSpec("b", "B", 4000, 2400, 2700),)), 1),
-    ([pallet(0, dg="3"), pallet(1, dg="2.3"), pallet(2), pallet(3, dg="3")], RIGID, 2),  # segregate
 ])
 def test_cpsat_improves_on_a_poor_start(monkeypatch, items, truck, expected):
     """With one truck per item as the start, the answer must come from the CP-SAT model itself."""
-    def one_each(items, truck, order, group, conflicts):
+    def one_each(items, truck, order):
         return [solver_mod._Column(t, 0, 0, 0, items[i].length, items[i].width, [i], items[i].height)
                 for t, i in enumerate(order)]
     monkeypatch.setattr(solver_mod, "_greedy", one_each)
@@ -194,20 +183,17 @@ def test_floor_items_come_first():
 
 
 def _random_items(rng: random.Random, n: int) -> list[Item]:
-    classes = [None] * 5 + ["3", "5.1", "8", "2.3"]
     out = []
     for i in range(n):
-        dg = rng.choice(classes)
-        info = DgInfo(dg_class=dg, t92=[]) if dg else None
         if rng.random() < 0.7:
             kind = rng.choice(["AU_STD", "EURO"])
             length, width = {"AU_STD": AU, "EURO": EURO}[kind]
             out.append(Item(i, f"S{i}", rng.randint(100, 1500), length, width, rng.randint(500, 1500),
-                            rng.random() < 0.5, pallet_key(kind), info))
+                            rng.random() < 0.5, pallet_key(kind)))
         else:
             out.append(Item(i, f"S{i}", rng.randint(50, 500), rng.choice([1500, 3000, 4500]),
                             rng.choice([300, 600, 1000]), rng.randint(200, 900), rng.random() < 0.3,
-                            "", info))
+                            ""))
     return out
 
 
@@ -235,12 +221,12 @@ def ship(name: str, weight: int = 100, height_mm: int = 1200, **kw) -> dict:
 
 
 async def test_demo_endpoint_response(client):
-    shipments = [ship("Paint 01", 420, dg_class="3", stackable=True),
-                 ship("Paint 02", 400, dg_class="3", stackable=True),
+    shipments = [ship("Paint 01", 420, stackable=True),
+                 ship("Paint 02", 400, stackable=True),
                  ship("Pipes 03", 250, 300, kind="loose", length_mm=4600, width_mm=400),
                  ship("Glass 04", 300, 1600, pallet_type="EURO"),
-                 ship("Acid 05", 300, 1400, dg_class="8", subsidiary=["6.1"]),
-                 ship("Rice 06", 400, 1000, pallet_type="EURO", dg_class="food")]
+                 ship("Acid 05", 300, 1400),
+                 ship("Rice 06", 400, 1000, pallet_type="EURO")]
     r = await client.post("/api/solve", json=body(*shipments))
     assert r.status_code == 200, r.text
     data = SolveResponse.model_validate(r.json()).model_dump()
@@ -252,7 +238,7 @@ async def test_demo_endpoint_response(client):
     assert cap["decks"] == [{"id": "body", "name": "Body", "length_mm": 4800, "width_mm": 2400,
                              "height_mm": 2700}]
     assert data["total_weight"] == 2070
-    assert data["segregated"] is True and data["num_trucks"] == 2 and data["lower_bound"] == 1
+    assert data["num_trucks"] == 1 and data["lower_bound"] == 1
     assert set(data["lower_bounds"]) == {"weight", "volume", "floor"}
     assert data["time_limit_s"] == 10.0 and data["status"] == "OPTIMAL" and data["optimal"]
     assert data["drop_order"] == [s["id"] for t in data["trucks"] for s in t["shipments"]]
@@ -270,10 +256,6 @@ async def test_demo_endpoint_response(client):
     assert out["Paint 01"]["pallet_type"] == "AU_STD" and out["Paint 01"]["length_mm"] == 1165
     assert out["Glass 04"]["length_mm"] == 1200 and out["Glass 04"]["width_mm"] == 800
     assert out["Pipes 03"]["pallet_type"] is None and out["Pipes 03"]["kind"] == "loose"
-    assert out["Acid 05"]["subsidiary"] == ["6.1"]
-    # Food and Class 8 never share a truck.
-    truck_of = {s["name"]: t["truck"] for t in data["trucks"] for s in t["shipments"]}
-    assert truck_of["Rice 06"] != truck_of["Acid 05"]
 
 
 async def test_demo_endpoint_names_items_that_never_fit(client):
@@ -311,16 +293,6 @@ async def test_demo_endpoint_b_double_uses_both_decks(client):
     assert {s["placement"]["deck_id"] for s in data["trucks"][0]["shipments"]} == {"lead", "rear"}
 
 
-async def test_demo_endpoint_segregates_dg_classes(client):
-    r = await client.post("/api/solve", json=body(ship("Thinners", dg_class="3"),
-                                                  ship("Chlorine gas", dg_class="2.3"), ship("Bricks")))
-    assert r.status_code == 200, r.text
-    data = r.json()
-    assert data["segregated"] is True and data["lower_bound"] == 1 and data["num_trucks"] == 2
-    for t in data["trucks"]:
-        assert not {"3", "2.3"} <= {s["dg_class"] for s in t["shipments"]}
-
-
 async def test_demo_endpoint_payload_binds(client):
     r = await client.post("/api/solve", json=body(*[ship(f"Steel {i}", 3000) for i in range(3)]))
     data = r.json()
@@ -356,21 +328,11 @@ async def test_demo_endpoint_validation(client):
     assert r.status_code == 400 and r.json()["detail"] == "Add at least one shipment."
     for bad in [ship("A", kind="loose"), ship("A", length_mm=100, width_mm=100),
                 ship("A", kind="loose", length_mm=100, width_mm=100, pallet_type="EURO"),
-                ship("A", weight=0), ship("A", dg_class="3", subsidiary=["3"])]:
+                ship("A", weight=0)]:
         r = await client.post("/api/solve", json=body(bad))
         assert r.status_code == 422, bad
     r = await client.post("/api/solve", json=body(*[ship(f"S{i}") for i in range(41)]))
     assert r.status_code == 422
-
-
-async def test_demo_endpoint_northline_rule_set(client):
-    shipments = [ship("Matches", dg_class="4.3"), ship("Paint", dg_class="3")]
-    # ADG + Northline is the default; the ADG Code alone accepts Class 4.3.
-    r = await client.post("/api/solve", json=body(*shipments))
-    assert r.status_code == 400 and "'Matches' (Class 4.3)" in r.json()["detail"]
-    assert "Paint" not in r.json()["detail"]
-    r = await client.post("/api/solve", json=body(*shipments, rule_set="adg"))
-    assert r.status_code == 200
 
 
 async def test_demo_solve_is_capped(client):

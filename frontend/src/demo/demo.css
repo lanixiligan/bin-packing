@@ -1,10 +1,9 @@
 /* The bin-packing demo page. Colours, type, spacing and the shared building blocks
-   (.card, .btn, .input, .segmented, .badge) come from the planner's tokens.css and
-   base.css; this file only lays out the demo. Two demo-only colours: --block-text, the
+   (.card, .btn, .input, .segmented, .badge) come from src/shared/styles
+   (tokens.css and base.css); this file only lays out the demo. Two demo-only colours: --block-text, the
    label on the pastel shipment blocks (6:1 or better on every hue, see colorFor in
    capacity.ts), and --block-sep, the hairline between stacked blocks. */
 
-/* CSS @import, not a JS import: the planner bundle keeps its own copy and its CSS order. */
 @import "../shared/styles/tokens.css";
 @import "../shared/styles/base.css";
 
@@ -100,18 +99,12 @@
   font-size: var(--text-xs); color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
 .answer-facts li { padding: 2px var(--space-2); border-radius: var(--radius-pill); background: var(--color-surface-2); }
 .answer-facts b { color: var(--color-text); font-weight: var(--weight-semibold); }
-.answer-dg { font-size: var(--text-sm); color: var(--color-warning); }
-.answer-dg summary { cursor: pointer; width: fit-content; }
-.answer-dg summary::marker { color: var(--color-warning); }
-.answer-dg p { margin-top: var(--space-1); max-width: 72ch; color: var(--color-text-muted); }
 
 /* ---------- Shipments ---------- */
 .shipments { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); }
 .shipments-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
 .shipments-head h2 { font-size: var(--text-lg); }
 .shipments-stats { font-size: var(--text-sm); color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
-.dg-quick { width: fit-content; padding: 2px var(--space-3); border-radius: var(--radius-pill);
-  background: var(--color-warning-soft); color: var(--color-warning); font-size: var(--text-xs); }
 .empty-list { padding: var(--space-4) 0; }
 
 .shipment-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
@@ -120,7 +113,6 @@
 .shipment-table th abbr { text-decoration: none; }
 .shipment-table .col-kg { width: 3rem; }
 .shipment-table .col-stack { width: 2rem; text-align: center; }
-.shipment-table .col-dg { width: 5.25rem; padding-left: var(--space-2); }
 .shipment-table .col-truck { width: 2.75rem; }
 .shipment-table .col-remove { width: 2rem; }
 /* A loose size ("4.6 × 0.4 × 0.3 m") may wrap to two short lines. */
@@ -149,8 +141,6 @@
 }
 .name-button:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
 .swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; box-shadow: inset 0 0 0 1px rgb(15 23 42 / 0.15); }
-.dg-cell { padding-left: var(--space-2) !important; }
-.dg-cell .hz-chip { min-width: 0; max-width: 100%; min-height: 28px; overflow: hidden; }
 .truck-cell { color: var(--color-text-muted); }
 .shipment-table tr.lit .truck-cell { color: var(--color-text); font-weight: var(--weight-semibold); }
 .remove-cell { text-align: right; }
@@ -273,17 +263,12 @@
   .toolbar-actions { width: 100%; }
   .toolbar-actions .btn-primary { flex: 1; }
   .answer-count { font-size: var(--text-xl); }
-  /* Narrow table: tighter numeric columns, and the DG chip shows only the diamond and class
-     (the chip's label and tooltip still give the full text). */
+  /* Narrow table: tighter numeric columns. */
   .shipment-table .col-kg { width: 2.75rem; }
   .shipment-table .col-stack, .shipment-table .stack-cell { display: none; }
   .name-stack { display: inline; }
-  .shipment-table .col-dg { width: 4.25rem; }
   .shipment-table .col-truck { width: 2.5rem; }
   .shipment-table .col-remove { width: 2rem; }
-  .dg-cell .hz-chip { gap: 4px; padding: 2px 6px; }
-  .dg-cell .hz-chip-subs, .dg-cell .hz-chip.general .hz-chip-text,
-  .dg-cell .hz-chip:has(.dg-dia.sq) .hz-chip-text { display: none; } /* food and fire-risk have their own icons */
 }
 
 @media (prefers-reduced-motion: reduce) {

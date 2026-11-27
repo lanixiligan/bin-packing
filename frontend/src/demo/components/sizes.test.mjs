@@ -59,14 +59,14 @@ test("no fit checks without a vehicle", () => {
 });
 
 test("labels for what is drawn on a deck", () => {
-  const paint = (id, name, weight) => ({ id, name, weight, kind: "pallet", pallet_type: "AU_STD", height_mm: 1200, dg_class: "3", subsidiary: [] });
+  const paint = (id, name, weight) => ({ id, name, weight, kind: "pallet", pallet_type: "AU_STD", height_mm: 1200 });
   const pipes = { id: 2, name: "Pipes 03", weight: 250, kind: "loose", length_mm: 4600, width_mm: 400, height_mm: 300 };
   assert.equal(columnLabel([pipes], 300, 1, 2), "Pipes 03, 4.6 × 0.4 × 0.3 m loose, 250 kg, truck 1 of 2");
-  assert.equal(describeItem(paint(0, "Paint 01", 1420)), "Paint 01, AU pallet, 1.2 m high, 1,420 kg, Class 3");
+  assert.equal(describeItem(paint(0, "Paint 01", 1420)), "Paint 01, AU pallet, 1.2 m high, 1,420 kg");
   assert.equal(
     columnLabel([paint(0, "Paint 01", 420), paint(1, "Paint 02", 380)], 2400, 1, 2),
-    "Stack of 2, 2.4 m high: level 1, Paint 01, AU pallet, 1.2 m high, 420 kg, Class 3; " +
-      "level 2, Paint 02, AU pallet, 1.2 m high, 380 kg, Class 3; truck 1 of 2",
+    "Stack of 2, 2.4 m high: level 1, Paint 01, AU pallet, 1.2 m high, 420 kg; " +
+      "level 2, Paint 02, AU pallet, 1.2 m high, 380 kg; truck 1 of 2",
   );
 });
 

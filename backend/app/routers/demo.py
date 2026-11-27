@@ -11,12 +11,6 @@ deck, stackable shipments with the same footprint may form columns, and the
 fewest trucks of that vehicle are used. The request and response models, with
 the coordinate conventions, are in app/demo_models.py.
 
-Dangerous goods: a shipment may carry a `dg_class` (or "food" / "fire_risk")
-and, with a class, up to 4 `subsidiary` hazards; incompatible shipments (ADG
-Table 9.1, app/dg.py, which also pairs subsidiary hazards) never share a truck.
-With the default `rule_set: "northline"`, classes Northline never accepts are
-rejected (400); `rule_set: "adg"` applies the ADG Code only.
-
 It packs with Google OR-Tools CP-SAT (app/solver.py) and returns the fewest
 trucks it finds, with whether that is proven optimal.
 """
@@ -25,7 +19,6 @@ import threading
 
 from fastapi import APIRouter, HTTPException
 
-from app import dg as dgrules
 from app.demo_models import (
     DeckOut,
     Placement,
@@ -45,27 +38,12 @@ TIME_LIMIT_SECONDS = 10.0
 MAX_CONCURRENT_SOLVES = 2
 _solve_slots = threading.BoundedSemaphore(MAX_CONCURRENT_SOLVES)
 
-# Class 1 in the demo means small arms ammunition (1.4S), the only explosive with wide acceptance.
-DEMO_EXPLOSIVE = "1.4S"
-
 router = APIRouter()
 
 
 @router.get("/reference", response_model=ReferenceData, tags=["demo"])
 def reference() -> ReferenceData:
     return load_reference()
-
-
-def demo_dg(value: str | None, subsidiary: list[str] | tuple[str, ...] = ()) -> dgrules.DgInfo | None:
-    """DgInfo for a demo shipment's class and subsidiary hazards (Table 9.2 answered 'none of these')."""
-    if value is None:
-        return None
-    if value == "food":
-        return dgrules.DgInfo(food=True)
-    if value == "fire_risk":
-        return dgrules.DgInfo(fire_risk=True)
-    return dgrules.DgInfo(dg_class=value, subsidiary=list(subsidiary), t92=[],
-                          explosive_code=DEMO_EXPLOSIVE if value == "1" else None)
 
 
 def _truck(req: SolveRequest):
@@ -107,17 +85,10 @@ def solve(req: SolveRequest) -> SolveResponse:
     if unknown:
         raise HTTPException(400, "Unknown pallet type: " + ", ".join(f"'{p}'" for p in unknown) + ".")
 
-    dgs = [demo_dg(s.dg_class, s.subsidiary) for s in req.shipments]
-    if req.rule_set == "northline":
-        refused = [f"'{s.name}' ({dgrules.label(d)})" for s, d in zip(req.shipments, dgs, strict=True)
-                   if dgrules.northline_prohibited(d)]
-        if refused:
-            raise HTTPException(400, "Northline does not accept these shipments: " + ", ".join(refused))
-
     # Each shipment's id is its position in the request, so the frontend can track it.
     items: list[Item] = []
     pallet_types: list[str | None] = []
-    for i, (s, d) in enumerate(zip(req.shipments, dgs, strict=True)):
+    for i, s in enumerate(req.shipments):
         if s.kind == "pallet":
             pid = s.pallet_type or ref.pallet_defaults.default_pallet
             pallet = ref.pallets[pid]
@@ -127,9 +98,7 @@ def solve(req: SolveRequest) -> SolveResponse:
             length, width, key = s.length_mm, s.width_mm, loose_key(s.length_mm, s.width_mm)
         pallet_types.append(pid)
         items.append(Item(id=i, name=s.name, weight=s.weight, length=length, width=width, height=s.height_mm,
-                          stackable=s.stackable, footprint=key, dg=d))
-    segregated = any(c.status == "incompatible" for c in dgrules.check_all(list({
-        d.key(): d for d in dgs if not dgrules.is_general(d)}.values())))
+                          stackable=s.stackable, footprint=key))
 
     # ---- OR-Tools CP-SAT ------------------------------------------------
     if not _solve_slots.acquire(blocking=False):
@@ -153,7 +122,6 @@ def solve(req: SolveRequest) -> SolveResponse:
             shipments.append(ShipmentOut(
                 id=p.id, name=s.name, weight=s.weight, kind=s.kind, pallet_type=pallet_types[p.id],
                 length_mm=it.length, width_mm=it.width, height_mm=it.height, stackable=s.stackable,
-                dg_class=s.dg_class, subsidiary=s.subsidiary,
                 placement=Placement(
                     deck_id=truck.decks[p.deck].id, x_mm=p.x, y_mm=p.y, z_mm=p.z, length_mm=p.length,
                     width_mm=p.width, height_mm=p.height, rotated=p.rotated, stack_base=p.base,
@@ -180,7 +148,6 @@ def solve(req: SolveRequest) -> SolveResponse:
         total_volume_m3=round(sum(it.area * it.height for it in items) / 1e9, 2),
         lower_bound=result.lower_bound,
         lower_bounds=result.lower_bounds,
-        segregated=segregated,
         num_trucks=len(result.trucks),
         trucks=trucks,
         solve_time_ms=result.solve_time_ms,

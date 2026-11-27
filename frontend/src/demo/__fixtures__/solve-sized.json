@@ -24,7 +24,6 @@
     "volume": 1,
     "floor": 1
   },
-  "segregated": true,
   "num_trucks": 2,
   "trucks": [
     {
@@ -40,8 +39,6 @@
           "width_mm": 1165,
           "height_mm": 1200,
           "stackable": true,
-          "dg_class": "3",
-          "subsidiary": [],
           "placement": {
             "deck_id": "body",
             "x_mm": 0,
@@ -65,8 +62,6 @@
           "width_mm": 800,
           "height_mm": 1600,
           "stackable": false,
-          "dg_class": null,
-          "subsidiary": [],
           "placement": {
             "deck_id": "body",
             "x_mm": 0,
@@ -90,8 +85,6 @@
           "width_mm": 400,
           "height_mm": 300,
           "stackable": false,
-          "dg_class": null,
-          "subsidiary": [],
           "placement": {
             "deck_id": "body",
             "x_mm": 0,
@@ -115,8 +108,6 @@
           "width_mm": 1165,
           "height_mm": 1800,
           "stackable": false,
-          "dg_class": null,
-          "subsidiary": [],
           "placement": {
             "deck_id": "body",
             "x_mm": 1165,
@@ -140,8 +131,6 @@
           "width_mm": 800,
           "height_mm": 1000,
           "stackable": false,
-          "dg_class": "food",
-          "subsidiary": [],
           "placement": {
             "deck_id": "body",
             "x_mm": 2330,
@@ -165,8 +154,6 @@
           "width_mm": 1165,
           "height_mm": 1200,
           "stackable": true,
-          "dg_class": "3",
-          "subsidiary": [],
           "placement": {
             "deck_id": "body",
             "x_mm": 0,
@@ -201,10 +188,6 @@
           "width_mm": 1165,
           "height_mm": 1400,
           "stackable": false,
-          "dg_class": "2.3",
-          "subsidiary": [
-            "8"
-          ],
           "placement": {
             "deck_id": "body",
             "x_mm": 0,
@@ -228,8 +211,6 @@
           "width_mm": 600,
           "height_mm": 500,
           "stackable": false,
-          "dg_class": null,
-          "subsidiary": [],
           "placement": {
             "deck_id": "body",
             "x_mm": 0,

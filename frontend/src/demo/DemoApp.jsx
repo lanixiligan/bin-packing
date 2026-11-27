@@ -4,8 +4,7 @@ import ResultPanel from "./components/ResultPanel.jsx";
 import Summary from "./components/Summary.jsx";
 import VehiclePicker from "../shared/VehiclePicker.tsx";
 import { fetchReference } from "../shared/api/client.ts";
-import { checkAll } from "../dg/rules.ts";
-import { demoDg, MAX_SHIPMENTS, RANDOM_COUNT, randomShipments, toRequest } from "./shipments.js";
+import { MAX_SHIPMENTS, RANDOM_COUNT, randomShipments, toRequest } from "./shipments.js";
 import { fitProblems, inputProblem, KNOWN_PALLETS, volumeOf } from "./components/sizes.ts";
 import { DEFAULT_VEHICLE, demoReference, vehicleFit, vehicleLine } from "./components/vehicle.ts";
 import { NARROW_SCREEN, REDUCED_MOTION, useMediaQuery } from "./useMediaQuery.js";
@@ -15,8 +14,6 @@ import "./demo.css";
 
 const DROP_INTERVAL_MS = 150; // time between each shipment dropping in
 const SOLVER_TIME_LIMIT_S = 10; // matches TIME_LIMIT_SECONDS in backend/app/routers/demo.py
-// Dangerous goods are always checked against the ADG Code plus Northline's acceptance rules.
-const RULE_SET = "northline";
 
 /** "'Pipes 04' (too long or wide), 'Tiles 07' (too heavy)" for the Solve error. */
 function listProblems(rows) {
@@ -60,12 +57,6 @@ export default function App() {
   const totalVolume = shipments.reduce((s, x) => s + volumeOf(x, pallets), 0);
   const weightBound = fit ? Math.ceil(totalWeight / fit.payloadKg) : null;
   const activeIds = hoverIds ?? focusIds; // shipments highlighted in the table and the trucks
-  const dgCount = shipments.filter((s) => s.dgClass).length;
-  // Pairs of shipments that must travel apart (the server decides on Solve).
-  const dgConflicts = useMemo(
-    () => (dgCount ? checkAll(shipments, (s) => demoDg(s.dgClass, s.subsidiary)).filter((p) => p.status === "incompatible").length : 0),
-    [shipments, dgCount]
-  );
 
   // ---- Reference data: the vehicles and pallet types -----------------------
   function loadReference() {
@@ -174,7 +165,7 @@ export default function App() {
       const res = await fetch("/api/solve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(toRequest({ vehicleId, bodyType, ruleSet: RULE_SET, shipments })),
+        body: JSON.stringify(toRequest({ vehicleId, bodyType, shipments })),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -269,10 +260,6 @@ export default function App() {
                   Change<span className="sr-only"> truck</span>
                 </button>
               </div>
-            </div>
-            <div className="field">
-              <span className="field-label">Dangerous goods rules</span>
-              <span className="rule-set-value">ADG Code + Northline</span>
             </div>
           </div>
           <div className="toolbar-actions">
@@ -387,8 +374,7 @@ export default function App() {
                 </p>
                 <p className="muted small">
                   Google OR-Tools (CP-SAT) places every shipment on the decks of the fewest identical trucks,
-                  stacking where it can, and proves when no better loading exists. Incompatible dangerous goods
-                  (ADG Code Table 9.1) never share a truck.
+                  stacking where it can, and proves when no better loading exists.
                 </p>
               </div>
             )}
@@ -402,18 +388,11 @@ export default function App() {
                 · <span className="num">{totalVolume.toLocaleString(undefined, { maximumFractionDigits: 1 })}</span> m³
               </p>
             </div>
-            {dgCount > 0 && (
-              <p className="dg-quick">
-                <b className="num">{dgCount}</b> dangerous goods · <b className="num">{dgConflicts}</b> incompatible
-                pair{dgConflicts === 1 ? "" : "s"}
-              </p>
-            )}
             <ShipmentTable
               shipments={shipments}
               fit={fit}
               pallets={pallets}
               onChange={changeShipments}
-              ruleSet={RULE_SET}
               placement={result ? placement : null}
               activeIds={activeIds}
               activeTruck={hoverTruck}

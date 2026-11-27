@@ -37,7 +37,7 @@
   --color-info: #1d4ed8;
   --color-info-soft: #dbeafe;
 
-  /* Categorical palette (DG classes): Okabe-Ito based, colour-blind safe; dark text (#0f172a) passes AA on all. */
+  /* Categorical palette (shipment categories): Okabe-Ito based, colour-blind safe; dark text (#0f172a) passes AA on all. */
   --cat-1: #e69f00;
   --cat-2: #56b4e9;
   --cat-3: #2fbf8f;

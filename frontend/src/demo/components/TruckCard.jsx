@@ -1,8 +1,7 @@
-import { colorFor, dgCodeOf } from "./capacity.ts";
+import { colorFor } from "./capacity.ts";
 import { floorUsedM2 } from "./deck.ts";
 import { metres } from "./sizes.ts";
 import DeckTruck from "./DeckTruck.jsx";
-import { DgDiamond } from "../../dg/DgBadge.tsx";
 import "./truck.css";
 
 // One truck in the 2D grid: its name and payload left, a bar each for weight and floor used,
@@ -74,9 +73,7 @@ export default function TruckCard({
       </div>
       {shown.length > 0 && (
         <ul className="truck-card-items" aria-hidden="true">
-          {shown.map((s) => {
-            const code = dgCodeOf(s);
-            return (
+          {shown.map((s) => (
               <li
                 key={s.id}
                 className={activeIds?.includes(s.id) ? "active" : undefined}
@@ -85,10 +82,8 @@ export default function TruckCard({
               >
                 <span className="swatch" style={{ background: colorFor(s.id) }} />
                 <span className="truck-card-item-name">{s.name}</span>
-                {code && <DgDiamond code={code} size="sm" />}
               </li>
-            );
-          })}
+          ))}
         </ul>
       )}
     </article>

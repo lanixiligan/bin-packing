@@ -5,7 +5,6 @@
 // Works on the browser's shipments (camelCase: kind, palletType, lengthMm, …) and on the solve
 // response's (snake_case: pallet_type, length_mm, …).
 // Pure functions only (no React, no DOM), so they can be unit-tested with node.
-import { dgTextOf, type DgLike } from "./capacity.ts";
 import type { DemoDeck, VehicleFit } from "./vehicle.ts";
 
 /** Footprint of a pallet type (the reference's pallets, or the built-in fallback below). */
@@ -155,12 +154,11 @@ export function inputProblem(s: SizedLike & { name?: string }): string {
 // ---- Labels for the truck views ---------------------------------------------------------
 
 /** A placed shipment from the solve response. */
-export type PlacedShipment = SizedLike & DgLike & { id: number; name: string; weight: number };
+export type PlacedShipment = SizedLike & { id: number; name: string; weight: number };
 
-/** "Paint 01, AU pallet, 1.2 m high, 420 kg, Class 3" */
+/** "Paint 01, AU pallet, 1.2 m high, 420 kg" */
 export function describeItem(s: PlacedShipment): string {
-  const dg = dgTextOf(s);
-  return `${s.name}, ${sizeSpoken(s)}, ${s.weight.toLocaleString("en-AU")} kg${dg ? `, ${dg}` : ""}`;
+  return `${s.name}, ${sizeSpoken(s)}, ${s.weight.toLocaleString("en-AU")} kg`;
 }
 
 /**

@@ -28,19 +28,16 @@ function boundLines(result) {
 
 // The answer in a few lines, from the /api/solve response: how many trucks, whether that is
 // proven optimal, why (the lower bounds: weight, volume and the floor that unstackable
-// shipments need), and a one-line dangerous goods note. `children` go on the right of the
-// headline (the view toggle).
+// shipments need). `children` go on the right of the headline (the view toggle).
 export default function Summary({ result, children }) {
-  const { num_trucks: n, lower_bound: lb, optimal, segregated } = result;
+  const { num_trucks: n, lower_bound: lb, optimal } = result;
   const count = result.trucks.reduce((sum, t) => sum + t.shipments.length, 0);
 
   let note;
   if (n === lb) {
     note = `No packing can use fewer than ${trucks(lb)}, so this is the best possible.`;
   } else if (optimal) {
-    note = segregated
-      ? `The lower bound is ${lb}, but ${n} is proven to be the fewest: some dangerous goods must travel apart, or the shipments don't fit together on fewer decks.`
-      : `The lower bound is ${lb}, but ${n} is proven to be the fewest: the shipments don't fit together on fewer decks.`;
+    note = `The lower bound is ${lb}, but ${n} is proven to be the fewest: the shipments don't fit together on fewer decks.`;
   } else {
     note = `The best possible is between ${lb} and ${n}; OR-Tools couldn't prove which in ${result.time_limit_s} s.`;
   }
@@ -69,15 +66,6 @@ export default function Summary({ result, children }) {
         ))}
         <li>Solved in {(result.solve_time_ms / 1000).toFixed(2)} s</li>
       </ul>
-      {segregated && (
-        <details className="answer-dg">
-          <summary>Incompatible dangerous goods travel in separate trucks.</summary>
-          <p>
-            ADG Code Table 9.1 keeps some classes apart. The lower bounds only count weight, volume and
-            floor space, so with segregation the best packing can need more trucks than the bounds.
-          </p>
-        </details>
-      )}
     </div>
   );
 }

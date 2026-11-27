@@ -3,8 +3,7 @@ Bin packing demo API.
 
     cd backend && uvicorn app.main:app --reload --port 8000
 
-Routes are under /api: GET /api/health, GET /api/reference and POST /api/solve (OR-Tools,
-ADG segregation from app/dg.py). Docs: /docs.
+Routes are under /api: GET /api/health, GET /api/reference and POST /api/solve (OR-Tools). Docs: /docs.
 CORS_ORIGINS (comma-separated) lists the browser origins allowed to call it.
 """
 

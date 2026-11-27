@@ -1,7 +1,7 @@
 """
 Request and response models for the bin packing demo, POST /api/solve.
 
-Shipments have real sizes and the trucks are a vehicle from the reference data's
+Shipments have real sizes and the trucks are a vehicle from the
 reference data (app/reference), so the solver packs footprints on each deck
 instead of counting pallet spaces.
 
@@ -22,17 +22,13 @@ more than two high. Non-stackable shipments stand on the floor with nothing on t
 
 Every footprint may be turned 90 degrees on the deck. Footprints on one deck never
 overlap, and each stays within the deck. Weight per truck stays within the
-vehicle's payload, and incompatible dangerous goods never share a truck.
+vehicle's payload.
 """
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
-from app import dg as dgrules
-
-DemoDg = Literal["1", "2.1", "2.2", "2.3", "3", "4.1", "4.2", "4.3", "5.1", "5.2", "6.1", "6.2",
-                 "7", "8", "9", "food", "fire_risk"]
 ShipmentKind = Literal["pallet", "loose"]
 
 MAX_SHIPMENTS = 40          # keeps the 10 s solve realistic with 2D placement and stacking
@@ -51,23 +47,9 @@ class Shipment(BaseModel):
     width_mm: int | None = Field(default=None, gt=0, le=MAX_DIMENSION_MM, description="Loose only")
     height_mm: int = Field(gt=0, le=MAX_DIMENSION_MM, description="Total height, pallet included")
     stackable: bool = False
-    dg_class: DemoDg | None = Field(default=None, description="DG class, 'food', 'fire_risk', or null")
-    subsidiary: list[dgrules.Subsidiary] = Field(
-        default_factory=list, max_length=4,
-        description="Subsidiary hazards (only with a DG class, never the class itself)")
-
-    @field_validator("subsidiary")
-    @classmethod
-    def _sorted_unique(cls, v: list[str]) -> list[str]:
-        return sorted(set(v))
 
     @model_validator(mode="after")
     def _consistent(self) -> "Shipment":
-        if self.subsidiary:
-            if self.dg_class in (None, "food", "fire_risk"):
-                raise ValueError("Subsidiary hazards need a DG class.")
-            if self.dg_class in self.subsidiary:
-                raise ValueError(f"A subsidiary hazard can't be the same as the class ({self.dg_class}).")
         if self.kind == "loose":
             if self.length_mm is None or self.width_mm is None:
                 raise ValueError("A loose shipment needs a length and a width.")
@@ -82,9 +64,6 @@ class SolveRequest(BaseModel):
     vehicle_id: str = Field(default=DEFAULT_VEHICLE, description="A vehicle id from GET /api/reference")
     body_type: str | None = Field(default=None, description="A body id, or null for the vehicle's default")
     shipments: list[Shipment] = Field(max_length=MAX_SHIPMENTS)
-    rule_set: dgrules.RuleSet = Field(
-        default="northline", description="'northline' (default: ADG Code plus Northline's acceptance "
-                                         "rules) or 'adg' (ADG Code only)")
 
 
 # ---- Response ---------------------------------------------------------------
@@ -129,8 +108,6 @@ class ShipmentOut(BaseModel):
     width_mm: int
     height_mm: int
     stackable: bool
-    dg_class: DemoDg | None
-    subsidiary: list[str]
     placement: Placement
 
 
@@ -156,7 +133,6 @@ class SolveResponse(BaseModel):
     lower_bounds: dict[str, int] = Field(
         description="weight: ceil(total kg / payload); volume: ceil(total m3 / truck m3); "
                     "floor: ceil(floor area of non-stackable items / truck floor area)")
-    segregated: bool = Field(description="Some dangerous goods must travel apart (the bounds ignore it)")
     num_trucks: int
     trucks: list[TruckOut]
     solve_time_ms: float

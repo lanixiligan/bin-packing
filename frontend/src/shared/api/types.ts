@@ -1,8 +1,6 @@
-// Types for GET /api/reference. They mirror backend/app/reference/schemas.py, the source of truth. Units are mm, kg and m³ everywhere; convert only for display .
+// Types for GET /api/reference. They mirror backend/app/reference/schemas.py, the source of truth.
+// Units are mm, kg and m³ everywhere; convert only for display.
 
-import type { DgInfo, RuleSet } from "../../dg/rules.ts";
-
-export type { DgInfo, RuleSet };
 export type SizeClass = "20" | "40" | "45" | "48";
 export type MassScheme = "GML" | "HML";
 

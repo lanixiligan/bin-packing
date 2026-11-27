@@ -16,8 +16,6 @@ The CP-SAT model (all integers: mm and kg):
     column (base plus everything on it) fits under that deck's inside height
   - floor items are rectangles (x, y, optional 90 degree turn) inside their deck;
     on one deck they never overlap (NoOverlap2D with optional intervals per deck)
-  - dangerous goods: z[g][t] = "DG group g is in truck t", and
-    z[g][t] + z[h][t] <= 1 for every incompatible pair (ADG Table 9.1/9.2)
   Minimise sum(y).
 
 Symmetry breaking: the k-th item (largest footprint first) only goes in trucks
@@ -37,8 +35,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from ortools.sat.python import cp_model
-
-from app import dg as dgrules
 
 NUM_WORKERS = 8
 
@@ -85,7 +81,6 @@ class Item:
     height: int
     stackable: bool = False
     footprint: str = ""                 # stacking key (pallet_key / loose_key); "" = loose_key(L, W)
-    dg: dgrules.DgInfo | None = None    # incompatible items never share a truck
 
     @property
     def key(self) -> str:
@@ -185,29 +180,12 @@ def never_fit(items: Sequence[Item], truck: Truck) -> list[str]:
 
 
 def lower_bounds(items: Sequence[Item], truck: Truck) -> dict[str, int]:
-    """No packing can use fewer trucks than any of these (DG segregation and geometry ignored)."""
+    """No packing can use fewer trucks than any of these (geometry ignored)."""
     return {
         "weight": _ceil(sum(it.weight for it in items), truck.payload_kg),
         "volume": _ceil(sum(it.area * it.height for it in items), truck.volume_mm3),
         "floor": _ceil(sum(it.area for it in items if not it.stackable), truck.floor_mm2),
     }
-
-
-def _dg_groups(items: Sequence[Item]) -> tuple[list[int], set[tuple[int, int]]]:
-    """(group of each item, incompatible group pairs g < h). Items with the same DG
-    data share a group; general freight is one group."""
-    keys: dict[str, int] = {}
-    profiles: list[dgrules.DgInfo | None] = []
-    group: list[int] = []
-    for it in items:
-        k = "" if dgrules.is_general(it.dg) else it.dg.key()
-        if k not in keys:
-            keys[k] = len(profiles)
-            profiles.append(None if k == "" else it.dg)
-        group.append(keys[k])
-    pairs = {(g, h) for g in range(len(profiles)) for h in range(g + 1, len(profiles))
-             if dgrules.conflicts(profiles[g], profiles[h])}
-    return group, pairs
 
 
 # ---------------------------------------------------------------------------
@@ -245,23 +223,18 @@ def _floor_spot(cols: list[_Column], item: Item, deck: DeckSpec) -> tuple[int, i
     return x, y, lx, ly
 
 
-def _greedy(items: Sequence[Item], truck: Truck, order: list[int], group: list[int],
-            conflicts: set[tuple[int, int]]) -> list[_Column]:
+def _greedy(items: Sequence[Item], truck: Truck, order: list[int]) -> list[_Column]:
     """Largest footprint first: into an existing column if it can stack there, else the
     front-most free floor spot of the first truck that takes it, else a new truck."""
     cols: list[_Column] = []
     on_deck: dict[tuple[int, int], list[_Column]] = {}
     load: list[int] = []
-    groups: list[set[int]] = []
 
     def takes(t: int, i: int) -> bool:
-        g = group[i]
-        return (load[t] + items[i].weight <= truck.payload_kg
-                and not any((min(g, h), max(g, h)) in conflicts for h in groups[t]))
+        return load[t] + items[i].weight <= truck.payload_kg
 
     def add(t: int, i: int) -> None:
         load[t] += items[i].weight
-        groups[t].add(group[i])
 
     for i in order:
         it = items[i]
@@ -276,7 +249,6 @@ def _greedy(items: Sequence[Item], truck: Truck, order: list[int], group: list[i
         while True:
             if t == len(load):
                 load.append(0)
-                groups.append(set())
             if takes(t, i):
                 spot = None
                 for d, deck in enumerate(truck.decks):
@@ -296,8 +268,8 @@ def _greedy(items: Sequence[Item], truck: Truck, order: list[int], group: list[i
     return cols
 
 
-def _signature(it: Item, g: int) -> tuple:
-    return (it.length, it.width, it.height, it.weight, it.stackable, it.key, g)
+def _signature(it: Item) -> tuple:
+    return (it.length, it.width, it.height, it.weight, it.stackable, it.key)
 
 
 def _canonical(cols: list[_Column], order: list[int], rank: list[int], sig: list[tuple]) -> None:
@@ -351,21 +323,20 @@ def solve(items: Sequence[Item], truck: Truck, time_limit_s: float = 10.0) -> So
     per_bound = lower_bounds(items, truck)
     lb = max(1, *per_bound.values())
     n = len(items)
-    group, conflicts = _dg_groups(items)
     order = sorted(range(n), key=lambda i: (-items[i].area, -items[i].height, -items[i].weight,
-                                            items[i].key, group[i]))
+                                            items[i].key))
     rank = [0] * n
     for k, i in enumerate(order):
         rank[i] = k
-    sig = [_signature(items[i], group[i]) for i in range(n)]
+    sig = [_signature(items[i]) for i in range(n)]
 
     start = time.perf_counter()
-    hint = _greedy(items, truck, order, group, conflicts)
+    hint = _greedy(items, truck, order)
     _canonical(hint, order, rank, sig)
-    _check(items, truck, _finish(items, hint, rank), group, conflicts)  # a greedy bug shows up here
+    _check(items, truck, _finish(items, hint, rank))  # a greedy bug shows up here
     num_trucks = 1 + max(c.truck for c in hint)
 
-    model, var = _build_model(items, truck, num_trucks, lb, order, rank, sig, group, conflicts)
+    model, var = _build_model(items, truck, num_trucks, lb, order, rank, sig)
     _add_hints(model, var, items, hint, num_trucks)
 
     solver = cp_model.CpSolver()
@@ -377,7 +348,7 @@ def solve(items: Sequence[Item], truck: Truck, time_limit_s: float = 10.0) -> So
     elapsed = time.perf_counter() - start
 
     trucks = _finish(items, cols, rank)
-    _check(items, truck, trucks, group, conflicts)
+    _check(items, truck, trucks)
     return Solution(
         trucks=trucks,
         lower_bound=lb,
@@ -401,7 +372,7 @@ class _Vars:
     used: list[cp_model.IntVar]
 
 
-def _build_model(items, truck, num_trucks, lb, order, rank, sig, group, conflicts):
+def _build_model(items, truck, num_trucks, lb, order, rank, sig):
     n = len(items)
     decks = truck.decks
     model = cp_model.CpModel()
@@ -512,17 +483,6 @@ def _build_model(items, truck, num_trucks, lb, order, rank, sig, group, conflict
         model.add(sum(items[i].area * f[i, t, d] for i in range(n) if (i, t, d) in f)
                   <= decks[d].length * decks[d].width)
 
-    # Dangerous goods.
-    if conflicts:
-        involved = sorted({g for pair in conflicts for g in pair})
-        z = {g: [model.new_bool_var(f"z_{g}_{t}") for t in range(num_trucks)] for g in involved}
-        for (i, t, _d), v in a.items():
-            if group[i] in z:
-                model.add_implication(v, z[group[i]][t])
-        for g, h in conflicts:
-            for t in range(num_trucks):
-                model.add_at_most_one(z[g][t], z[h][t])
-
     # Identical neighbours in `order`: truck(a) <= truck(b).
     for k in range(n - 1):
         i, j = order[k], order[k + 1]
@@ -596,8 +556,7 @@ def _finish(items: Sequence[Item], cols: list[_Column], rank: list[int]) -> list
     return trucks
 
 
-def _check(items: Sequence[Item], truck: Truck, trucks: list[list[Placed]], group: list[int],
-           conflicts: set[tuple[int, int]]) -> None:
+def _check(items: Sequence[Item], truck: Truck, trucks: list[list[Placed]]) -> None:
     """Re-check a packing from scratch (a failure here is a bug)."""
     def fail(msg: str) -> None:
         raise RuntimeError(f"OR-Tools packing: {msg}")
@@ -610,9 +569,6 @@ def _check(items: Sequence[Item], truck: Truck, trucks: list[list[Placed]], grou
             fail(f"truck {number} is empty.")
         if sum(items[by_id[p.id]].weight for p in load) > truck.payload_kg:
             fail(f"truck {number} is over its payload.")
-        gs = {group[by_id[p.id]] for p in load}
-        if any((g, h) in conflicts for g in gs for h in gs):
-            fail(f"truck {number} carries incompatible dangerous goods.")
         here = {p.id: p for p in load}
         columns: dict[int, list[Placed]] = {}
         for p in load:

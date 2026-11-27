@@ -51,7 +51,7 @@ describe("TruckCard", () => {
     expect(deck.style.height).toBe(px(4800, plan.scale));
     // Rice 08 was turned: 800 along the deck, 1200 across, at x 2330.
     const rice = within(deck).getByRole("listitem", { name: /^Rice 08,/ });
-    expect(rice).toHaveAccessibleName("Rice 08, Euro pallet, 1.0 m high, 400 kg, Food, truck 1 of 2");
+    expect(rice).toHaveAccessibleName("Rice 08, Euro pallet, 1.0 m high, 400 kg, truck 1 of 2");
     expect(rice.style.top).toBe(px(2330, plan.scale));
     expect(rice.style.left).toBe("0px");
     expect(rice.style.width).toBe(px(1200, plan.scale));
@@ -68,8 +68,8 @@ describe("TruckCard", () => {
     const { onHover, onFocusBlock } = renderCard(solved, truck1);
     const stack = screen.getByRole("listitem", { name: /^Stack of 2/ });
     expect(stack).toHaveAccessibleName(
-      "Stack of 2, 2.4 m high: level 1, Paint 01, AU pallet, 1.2 m high, 420 kg, Class 3; " +
-      "level 2, Paint 02, AU pallet, 1.2 m high, 380 kg, Class 3; truck 1 of 2"
+      "Stack of 2, 2.4 m high: level 1, Paint 01, AU pallet, 1.2 m high, 420 kg; " +
+      "level 2, Paint 02, AU pallet, 1.2 m high, 380 kg; truck 1 of 2"
     );
     expect(stack).toHaveTextContent("×2");
     fireEvent.pointerEnter(stack);
@@ -112,7 +112,7 @@ describe("TruckCard", () => {
     });
     const shipment = (id, name, placement, extra = {}) => ({
       id, name, weight: 500, kind: "pallet", pallet_type: "AU_STD", length_mm: 1165, width_mm: 1165, height_mm: 1200,
-      stackable: false, dg_class: null, subsidiary: [], placement: { stack_base: id, ...placement }, ...extra,
+      stackable: false, placement: { stack_base: id, ...placement }, ...extra,
     });
     const data = {
       capacity: { weight_kg: 42500, decks, floor_m2: 52.08, volume_m3: 140.6 },
@@ -154,6 +154,5 @@ describe("Summary", () => {
     expect(screen.getByText(/Volume bound/)).toHaveTextContent("Volume bound ⌈11.9 ÷ 31.1 m³⌉ = 1");
     // Floor bound: the non-stackable footprints (everything but the two paint pallets).
     expect(screen.getByText(/Floor bound/)).toHaveTextContent(/Floor bound ⌈\d+(\.\d)? ÷ 11.5 m²⌉ = 1/);
-    expect(screen.getByText("Incompatible dangerous goods travel in separate trucks.")).toBeInTheDocument();
   });
 });
