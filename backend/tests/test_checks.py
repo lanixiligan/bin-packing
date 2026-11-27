@@ -168,7 +168,7 @@ def test_heavy_rear_puts_the_tri_over_its_limit():
     placements = rows("trailer", 13600, 11, 1800, only_rows=range(5, 11))
     w = one(post(placements), "AXLE_OVER_LIMIT")
     assert w.severity == "error"
-    assert "Trailer tri-axle" in w.message
+    assert "trailer tri-axle" in w.message
     assert "forward" in w.suggestion
     assert "HML" not in w.suggestion  # 23.3 t is over the HML limit as well
 

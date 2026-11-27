@@ -397,7 +397,7 @@ def over_capacity_warning(unplaced_units: list[Unit], placements: list[Placement
     return PlanWarning(
         code="OVER_CAPACITY", severity="error",
         message=(f"Over by {_plural(over, 'pallet')}: {_plural(len(unplaced_units), 'unit')} didn't fit "
-                 f"on the {vehicle.name} ({_plural(vehicle.pallet_spaces, 'pallet space')})."),
+                 f"on the {vehicle.name}, which has {_plural(vehicle.pallet_spaces, 'pallet space')}."),
         suggestion=suggestion, item_ids=item_ids,
     )
 
@@ -589,8 +589,10 @@ class HeuristicPlanner:
 
         total_weight = round(sum(p.weight_kg for p in placements), 1)
         axle_loads = axles.estimate_axle_loads(vehicle, placements, req.mass_scheme)
-        warnings += checks.postcheck(placements, vehicle, body, axle_loads, total_weight, req.mass_scheme,
-                                     ref).warnings
+        # Precheck already reports freight that is too tall on its own: don't repeat it for the stacks.
+        seen = {w.code for w in warnings} & {"OVER_HEIGHT_LIMIT"}
+        warnings += [w for w in checks.postcheck(placements, vehicle, body, axle_loads, total_weight,
+                                                 req.mass_scheme, ref).warnings if w.code not in seen]
         reasons = [w.message for w in warnings if w.severity == "error"]
         return PlanResult(
             fits=not reasons, reasons=reasons, warnings=warnings,

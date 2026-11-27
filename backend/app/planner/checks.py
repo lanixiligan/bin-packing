@@ -296,13 +296,13 @@ def postcheck(placements: list[Placement], vehicle: VehicleConfig, body: BodyTyp
                             "would cover it.")
             out.append(PlanWarning(
                 code="AXLE_OVER_LIMIT", severity="error",
-                message=(f"The {a.name} carries about {_t(a.load_kg)}; its {mass_scheme} limit is "
+                message=(f"The {a.name.lower()} carries about {_t(a.load_kg)}; its {mass_scheme} limit is "
                          f"{_t(a.limit_kg)} (over by {_t(a.load_kg - a.limit_kg)})."),
                 suggestion=" ".join(tips), item_ids=item_ids))
         elif a.status == "near":
             out.append(PlanWarning(
                 code="AXLE_NEAR_LIMIT", severity="warning",
-                message=(f"The {a.name} is at {a.ratio * 100:.0f} % of its {mass_scheme} limit "
+                message=(f"The {a.name.lower()} is at {a.ratio * 100:.0f} % of its {mass_scheme} limit "
                          f"({_t(a.load_kg)} of {_t(a.limit_kg)})."),
                 suggestion=(f"It fits, but this is an estimate: leave margin by moving some weight "
                             f"{_axle_direction(vehicle, a.group_id)}."),
