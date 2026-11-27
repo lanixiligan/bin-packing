@@ -1,4 +1,4 @@
-# Truck loading optimizer demo. Run `make help` for the targets.
+# Truck load planner. Run `make help` for the targets.
 SHELL := /bin/bash
 VENV := backend/.venv
 PY := $(VENV)/bin/python
@@ -24,7 +24,7 @@ api: ## Run only the API with reload
 web: ## Run only the web app dev server
 	cd frontend && npm run dev
 
-test: ## Run the backend and frontend tests
+test: ## Run the backend tests and the frontend component tests
 	cd backend && $(BIN)/python -m pytest -q
 	cd frontend && npm test
 
