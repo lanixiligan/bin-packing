@@ -1,6 +1,6 @@
-// The load planner API: GET /api/reference and POST /api/plan (Vite forwards /api to the backend).
+// The load planner API: GET /api/reference, POST /api/plan and POST /api/plan/fleet (Vite forwards /api to the backend).
 
-import type { PlanRequest, PlanResult, ReferenceData } from "./types.ts";
+import type { FleetResult, PlanRequest, PlanResult, ReferenceData } from "./types.ts";
 
 /** An API error with a message fit to show the user. */
 export class ApiError extends Error {
@@ -42,11 +42,21 @@ export function fetchReference(signal?: AbortSignal): Promise<ReferenceData> {
   return call<ReferenceData>("/api/reference", { signal });
 }
 
-export function postPlan(req: PlanRequest, signal?: AbortSignal): Promise<PlanResult> {
-  return call<PlanResult>("/api/plan", {
+function post<T>(path: string, req: PlanRequest, signal?: AbortSignal): Promise<T> {
+  return call<T>(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
     signal,
   });
+}
+
+/** Plan the load on one vehicle (or vehicle_id "suggest" for the smallest that fits). */
+export function postPlan(req: PlanRequest, signal?: AbortSignal): Promise<PlanResult> {
+  return post<PlanResult>("/api/plan", req, signal);
+}
+
+/** Split the load across the fewest trucks of the request's vehicle (pallets and loose items; not "suggest"). */
+export function postFleet(req: PlanRequest, signal?: AbortSignal): Promise<FleetResult> {
+  return post<FleetResult>("/api/plan/fleet", req, signal);
 }

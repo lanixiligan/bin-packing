@@ -3,10 +3,10 @@
 // dangerous goods show a read-only placard badge, and an early hint above the rows names pairs
 // that can't share a vehicle (the plan result stays the authority).
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import type { ReferenceData } from "../api/types.ts";
+import { LOOSE_TYPE, type ReferenceData } from "../api/types.ts";
 import { checkAll, type DgPairResult } from "../../dg/rules.ts";
 import { dgLabel, dgName, placardCode } from "../lib/dg.ts";
-import { newRow, newRowId, type FreightRow, type RowErrors, type RowField } from "../lib/freight.ts";
+import { LOOSE_DEFAULTS, newRow, newRowId, type FreightRow, type RowErrors, type RowField } from "../lib/freight.ts";
 import { randomFreight } from "../lib/randomFreight.ts";
 import { useUnits } from "../lib/units.ts";
 import { AlertIcon, InfoIcon } from "./icons.tsx";
@@ -40,6 +40,9 @@ const PRESETS: Preset[] = [
     rows: [{ label: "Full semi of AU pallets", kind: "pallet", type_id: "AU_STD", quantity: 22, gross_weight_kg: 1000, height_mm: 1200 }] },
   { label: "6 × Euro pallets, 500 kg",
     rows: [{ label: "Euro pallets", kind: "pallet", type_id: "EURO", quantity: 6, gross_weight_kg: 500, height_mm: 1200 }] },
+  { label: "4 × 6 m pipe bundles, 600 kg",
+    rows: [{ label: "Pipes", kind: "loose", type_id: LOOSE_TYPE, quantity: 4, gross_weight_kg: 600,
+             length_mm: 6000, width_mm: 800, height_mm: 400, stackable: true }] },
   { label: "1 × 40' HC container, 20 t",
     rows: [{ label: "40' HC container", kind: "container", type_id: "HC40", quantity: 1, gross_weight_kg: 20000, height_mm: null }] },
   { label: "2 × 20' GP containers, 12 t",
@@ -47,7 +50,8 @@ const PRESETS: Preset[] = [
 ];
 
 function availablePresets(ref: ReferenceData): Preset[] {
-  return PRESETS.filter((p) => p.rows.every((r) => (r.kind === "container" ? ref.containers : ref.pallets)[r.type_id!]));
+  return PRESETS.filter((p) => p.rows.every((r) =>
+    r.kind === "loose" || (r.kind === "container" ? ref.containers : ref.pallets)[r.type_id!]));
 }
 
 function defaultContainer(ref: ReferenceData): string {
@@ -193,14 +197,21 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
   const update = (id: string, patch: Partial<FreightRow>) =>
     onRowsChange(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
 
-  const switchKind = (row: FreightRow, kind: FreightRow["kind"]) => {
+  /** Switch between pallet, loose and container, keeping what still makes sense and filling the rest. */
+  const switchKind = (row: FreightRow, kind: FreightRow["kind"], typeId?: string) => {
     if (kind === row.kind) return;
     const patch: Partial<FreightRow> = { kind };
     const w = row.gross_weight_kg;
     if (kind === "pallet") {
-      patch.type_id = reference.pallet_defaults.default_pallet;
+      patch.type_id = typeId ?? reference.pallet_defaults.default_pallet;
       patch.height_mm = row.height_mm ?? 1200;
       if (w != null && w > reference.pallet_defaults.max_gross_kg) patch.gross_weight_kg = 500;
+    } else if (kind === "loose") {
+      patch.type_id = LOOSE_TYPE;
+      patch.length_mm = row.length_mm ?? LOOSE_DEFAULTS.length_mm;
+      patch.width_mm = row.width_mm ?? LOOSE_DEFAULTS.width_mm;
+      patch.height_mm = row.height_mm ?? LOOSE_DEFAULTS.height_mm;
+      if (w == null) patch.gross_weight_kg = 500;
     } else {
       patch.type_id = defaultContainer(reference);
       patch.stackable = false;
@@ -259,10 +270,11 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
   const totals = rows.reduce((t, r) => {
     const q = r.quantity ?? 0;
     if (r.kind === "pallet") t.pallets += q;
+    else if (r.kind === "loose") t.loose += q;
     else t.containers += q;
     t.weight += q * (r.gross_weight_kg ?? 0);
     return t;
-  }, { pallets: 0, containers: 0, weight: 0 });
+  }, { pallets: 0, loose: 0, containers: 0, weight: 0 });
 
   const presetsLabelId = `${uid}-presets`;
 
@@ -315,6 +327,26 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
             const err = (f: RowField) => e[f];
             const lineWeight = row.quantity != null && row.gross_weight_kg != null ? row.quantity * row.gross_weight_kg : null;
             const isPallet = row.kind === "pallet";
+            const isLoose = row.kind === "loose";
+            const isContainer = row.kind === "container";
+            const mmHint = (v: number | null) => (units.system === "m-t" && v ? `= ${units.length(v)}` : undefined);
+            /** A size input in mm (length, width or height). */
+            const sizeField = (field: "length_mm" | "width_mm" | "height_mm", label: string) => (
+              <Field id={fid(field.replace("_mm", ""))} label={`${label} (mm)`} error={err(field)} hint={mmHint(row[field])}>
+                {(a) => (
+                  <input {...a} className="input" type="number" inputMode="numeric" min={1} step={1}
+                         value={row[field] ?? ""}
+                         onChange={(ev) => update(row.id, { [field]: toNumber(ev.target.value) })} />
+                )}
+              </Field>
+            );
+            // The type list of a pallet or loose row: pallet types, then "Loose item" (its own size).
+            const onType = (value: string) => {
+              if (isContainer) update(row.id, { type_id: value });
+              else if (value === LOOSE_TYPE) switchKind(row, "loose");
+              else if (isLoose) switchKind(row, "pallet", value);
+              else update(row.id, { type_id: value });
+            };
             return (
               <li key={row.id} className={`ft-row${Object.keys(e).length ? " ft-row-invalid" : ""}`}
                   data-row-id={row.id} tabIndex={-1} aria-labelledby={headingId}>
@@ -348,8 +380,9 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
                     <div className="segmented">
                       {(["pallet", "container"] as const).map((k) => (
                         <label key={k}>
-                          <input type="radio" name={fid("kind")} value={k} checked={row.kind === k}
-                                 onChange={() => switchKind(row, k)} />
+                          {/* A loose item sits with the pallets: its size is picked in the type list. */}
+                          <input type="radio" name={fid("kind")} value={k} checked={(k === "container") === isContainer}
+                                 onChange={() => { if ((k === "container") !== isContainer) switchKind(row, k); }} />
                           <span>{k === "pallet" ? "Pallet" : "Container"}</span>
                         </label>
                       ))}
@@ -359,14 +392,17 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
                   <Field id={fid("type")} label="Type" error={err("type_id")}>
                     {(a) => (
                       <select {...a} className="select" value={row.type_id}
-                              onChange={(ev) => update(row.id, { type_id: ev.target.value })}>
-                        {!(isPallet ? reference.pallets : reference.containers)[row.type_id] && (
+                              onChange={(ev) => onType(ev.target.value)}>
+                        {!isLoose && !(isPallet ? reference.pallets : reference.containers)[row.type_id] && (
                           <option value={row.type_id}>Choose a type…</option>
                         )}
-                        {isPallet ? (
-                          Object.values(reference.pallets).map((p) => (
-                            <option key={p.id} value={p.id}>{p.name} · {units.footprint(p.length_mm, p.width_mm)}</option>
-                          ))
+                        {!isContainer ? (
+                          <>
+                            {Object.values(reference.pallets).map((p) => (
+                              <option key={p.id} value={p.id}>{p.name} · {units.footprint(p.length_mm, p.width_mm)}</option>
+                            ))}
+                            <option value={LOOSE_TYPE}>Loose item (enter size)</option>
+                          </>
                         ) : (
                           <>
                             <optgroup label="Standard">
@@ -401,16 +437,9 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
                     )}
                   </Field>
 
-                  {isPallet ? (
-                    <Field id={fid("height")} label="Height (mm)" error={err("height_mm")}
-                           hint={units.system === "m-t" && row.height_mm ? `= ${units.length(row.height_mm)}` : undefined}>
-                      {(a) => (
-                        <input {...a} className="input" type="number" inputMode="numeric" min={1} step={1}
-                               value={row.height_mm ?? ""}
-                               onChange={(ev) => update(row.id, { height_mm: toNumber(ev.target.value) })} />
-                      )}
-                    </Field>
-                  ) : (
+                  {isLoose && sizeField("length_mm", "Length")}
+                  {isLoose && sizeField("width_mm", "Width")}
+                  {!isContainer ? sizeField("height_mm", "Height") : (
                     <div className="field">
                       <span className="field-label" aria-hidden="true">Height (mm)</span>
                       <span className="ft-na"><span aria-hidden="true">—</span>
@@ -419,7 +448,7 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
                   )}
 
                   <div className="ft-span-2 ft-flags">
-                    {isPallet && (
+                    {!isContainer && (
                       <label className="ft-check">
                         <input type="checkbox" checked={row.stackable}
                                onChange={(ev) => update(row.id, { stackable: ev.target.checked })} />
@@ -444,6 +473,7 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
           <span className="ft-totals-label">Total</span>
           {[
             totals.pallets ? plural(totals.pallets, "pallet") : "",
+            totals.loose ? plural(totals.loose, "loose item") : "",
             totals.containers ? plural(totals.containers, "container") : "",
             units.weight(totals.weight),
           ].filter(Boolean).join(" · ")}

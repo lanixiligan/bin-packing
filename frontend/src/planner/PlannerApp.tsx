@@ -3,11 +3,16 @@
 // Owns the state and the API calls; every panel is driven purely by the planner's response and
 // never recalculates placement. A plan is requested automatically (debounced) whenever the inputs
 // are valid, so a first result appears in seconds from the defaults (AU pallets on a semi-trailer).
+//
+// Split mode: when one truck isn't enough, "Split across trucks" switches the auto-planning to
+// POST /api/plan/fleet, so every edit re-splits. Each truck of the answer is a full single-truck
+// plan, shown one at a time behind tabs with the same panels; "Back to one truck" switches back.
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ApiError, fetchReference, postPlan } from "./api/client.ts";
-import type { MassScheme, PlanRequest, PlanResult, ReferenceData, RuleSet } from "./api/types.ts";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { ApiError, fetchReference, postFleet, postPlan } from "./api/client.ts";
+import type { FleetResult, MassScheme, PlanRequest, PlanResult, ReferenceData, RuleSet } from "./api/types.ts";
 import { SUGGEST } from "./api/types.ts";
+import { dgForcesSplit, splitBlocker, truckPanelId, truckTabId } from "./lib/fleet.ts";
 import { sampleRows, validateRows, type FreightRow } from "./lib/freight.ts";
 import { useUnits, type UnitSystem } from "./lib/units.ts";
 import { UnitsProvider } from "./lib/UnitsProvider.tsx";
@@ -15,9 +20,11 @@ import AxleLoadPanel from "./components/AxleLoadPanel.tsx";
 import Disclaimer from "./components/Disclaimer.tsx";
 import EmptyState from "./components/EmptyState.tsx";
 import ExportMenu from "./components/ExportMenu.tsx";
+import FleetSummary from "./components/FleetSummary.tsx";
 import FreightTable from "./components/FreightTable.tsx";
 import LoadPlanView from "./components/LoadPlanView.tsx";
 import PlanStatus from "./components/PlanStatus.tsx";
+import TruckTabs from "./components/TruckTabs.tsx";
 import UtilisationSummary from "./components/UtilisationSummary.tsx";
 import VehiclePicker from "./components/VehiclePicker.tsx";
 import WarningsList from "./components/WarningsList.tsx";
@@ -131,9 +138,16 @@ export function Planner({ initialReference = null }: { initialReference?: Refere
   const [rows, setRows] = useState<FreightRow[]>(() => sampleRows(initialReference));
   const [result, setResult] = useState<PlanResult | null>(null);
   const [resultRequest, setResultRequest] = useState<PlanRequest | null>(null);
+  // Split mode: the freight across several trucks of the chosen vehicle. `result` (the single-truck
+  // answer) is kept while it is on, so there is something to show until the first split arrives.
+  const [split, setSplit] = useState(false);
+  const [fleet, setFleet] = useState<FleetResult | null>(null);
+  const [fleetRequest, setFleetRequest] = useState<PlanRequest | null>(null);
+  const [truckIndex, setTruckIndex] = useState(0);
   const [planError, setPlanError] = useState<string>("");
   const [planning, setPlanning] = useState(false);
   const abort = useRef<AbortController | null>(null);
+  const tabsId = useId();
 
   // Reference data, loaded once (again on "Try again").
   const [refAttempt, setRefAttempt] = useState(0);
@@ -158,7 +172,7 @@ export function Planner({ initialReference = null }: { initialReference?: Refere
     : null), [validation.items, vehicleId, bodyType, massScheme]);
   const requestKey = request ? JSON.stringify(request) : "";
 
-  // Plan whenever the request changes (debounced); the latest request wins.
+  // Plan (or, in split mode, split) whenever the request changes (debounced); the latest request wins.
   useEffect(() => {
     if (!reference || !request) return;
     const timer = setTimeout(() => {
@@ -167,11 +181,17 @@ export function Planner({ initialReference = null }: { initialReference?: Refere
       abort.current = ctrl;
       setPlanning(true);
       setPlanError("");
-      postPlan(request, ctrl.signal)
-        .then((res) => {
+      const call = split
+        ? postFleet(request, ctrl.signal).then((res) => {
+          setFleet(res);
+          setFleetRequest(request);
+          setTruckIndex((i) => Math.min(i, Math.max(0, res.trucks.length - 1)));
+        })
+        : postPlan(request, ctrl.signal).then((res) => {
           setResult(res);
           setResultRequest(request);
-        })
+        });
+      call
         .catch((err) => {
           if (err.name === "AbortError") return;
           setPlanError(err instanceof ApiError ? err.message : String(err));
@@ -183,11 +203,33 @@ export function Planner({ initialReference = null }: { initialReference?: Refere
     return () => clearTimeout(timer);
     // requestKey stands for `request`
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reference, requestKey]);
+  }, [reference, requestKey, split]);
 
   useEffect(() => () => abort.current?.abort(), []);
 
-  const stale = Boolean(result && resultRequest && JSON.stringify(resultRequest) !== requestKey);
+  /** Turn split mode on or off: drop any answer on its way and start from a clean slate. */
+  const switchSplit = (on: boolean) => {
+    abort.current?.abort();
+    setFleet(null);
+    setFleetRequest(null);
+    setTruckIndex(0);
+    setPlanError("");
+    if (request) setPlanning(true); // the new answer is on its way (after the debounce)
+    setSplit(on);
+    document.getElementById("load-plan")?.focus({ preventScroll: true }); // the clicked button is about to go
+  };
+
+  // What step 3 shows: the split once it has arrived, else the single-truck plan.
+  const showFleet = split && fleet !== null && fleetRequest !== null;
+  const shownRequest = showFleet ? fleetRequest : resultRequest;
+  const hasAnswer = showFleet || Boolean(result && resultRequest);
+  const stale = Boolean(hasAnswer && shownRequest && JSON.stringify(shownRequest) !== requestKey);
+  const truck = showFleet ? Math.min(truckIndex, fleet.trucks.length - 1) : 0;
+  const statusText = planning ? (split ? "Splitting across trucks…" : "Planning…")
+    : planError ? ""
+    : stale ? "Fix the freight lines to update the plan."
+    : showFleet ? `Split across ${fleet.num_trucks} × ${fleet.vehicle_name}.`
+    : result ? `Planned on the ${result.vehicle_name}.` : "";
 
   return (
     <div className="app">
@@ -238,19 +280,22 @@ export function Planner({ initialReference = null }: { initialReference?: Refere
                 <span className="step-number" aria-hidden="true">3</span>
                 <div className="step-header-text">
                   <h2 id="step-plan-title" className="step-title"><span className="visually-hidden">Step 3: </span>Review the load plan</h2>
-                  <p className="subtle" role="status" aria-live="polite">
-                    {planning ? "Planning…" : stale ? "Fix the freight lines to update the plan." : result ? `Planned on the ${result.vehicle_name}.` : ""}
-                  </p>
+                  <p className="subtle" role="status" aria-live="polite">{statusText}</p>
                 </div>
-                {result && resultRequest && <ExportMenu result={result} request={resultRequest} reference={reference} />}
+                {showFleet
+                  ? <ExportMenu fleet={fleet} request={fleetRequest} reference={reference} />
+                  : result && resultRequest && <ExportMenu result={result} request={resultRequest} reference={reference} />}
               </div>
 
               {planError && (
-                <EmptyState title="The planner couldn't make a plan" tone="error">
+                <EmptyState title={split ? "The planner couldn't split the load" : "The planner couldn't make a plan"} tone="error"
+                            action={split && !showFleet
+                              ? <button type="button" className="btn" onClick={() => switchSplit(false)}>Back to one truck</button>
+                              : undefined}>
                   <p>{planError}</p>
                 </EmptyState>
               )}
-              {!result && !planError && (
+              {!hasAnswer && !planError && (
                 validation.items ? (
                   <div className="loading" role="status">Working out the load…</div>
                 ) : (
@@ -260,9 +305,33 @@ export function Planner({ initialReference = null }: { initialReference?: Refere
                   </EmptyState>
                 )
               )}
-              {result && resultRequest && (
+              {showFleet ? (
+                <div className={`plan fleet ${stale || planning ? "plan-stale" : ""}`}>
+                  <FleetSummary fleet={fleet} request={fleetRequest} onBack={() => switchSplit(false)}
+                                dgSeparated={dgForcesSplit(fleetRequest, result, resultRequest)} />
+                  {fleet.trucks.length > 0 && (
+                    <TruckTabs trucks={fleet.trucks} selected={truck} onSelect={setTruckIndex} idBase={tabsId} />
+                  )}
+                  {/* Every truck is rendered so print shows them all; on screen only the selected one. */}
+                  {fleet.trucks.map((t, i) => (
+                    <div key={i} className="plan fleet-panel" role="tabpanel" id={truckPanelId(tabsId, i)}
+                         aria-labelledby={truckTabId(tabsId, i)} hidden={i !== truck}>
+                      <h3 className="print-only fleet-panel-title">Truck {i + 1} of {fleet.trucks.length}</h3>
+                      <PlanStatus result={t} reference={reference} />
+                      <LoadPlanView result={t} reference={reference} request={fleetRequest} />
+                      <div className="plan-panels">
+                        <UtilisationSummary utilisation={t.utilisation} />
+                        <AxleLoadPanel axleLoads={t.axle_loads} massScheme={t.mass_scheme} />
+                      </div>
+                      <WarningsList warnings={t.warnings} request={fleetRequest} />
+                    </div>
+                  ))}
+                </div>
+              ) : result && resultRequest && (
                 <div className={`plan ${stale || planning ? "plan-stale" : ""}`}>
-                  <PlanStatus result={result} reference={reference} />
+                  <PlanStatus result={result} reference={reference}
+                              onSplit={split ? undefined : () => switchSplit(true)}
+                              splitNote={split ? null : splitBlocker(resultRequest)} />
                   <LoadPlanView result={result} reference={reference} request={resultRequest} />
                   <div className="plan-panels">
                     <UtilisationSummary utilisation={result.utilisation} />

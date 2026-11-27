@@ -1,6 +1,6 @@
 // Types for the load planner API. They mirror the backend models, which are the source of truth:
 // backend/app/reference/schemas.py (GET /api/reference) and backend/app/planner/models.py
-// (POST /api/plan). Units are mm, kg and m³ everywhere; convert only for display (lib/units.tsx).
+// (POST /api/plan and POST /api/plan/fleet). Units are mm, kg and m³ everywhere; convert only for display (lib/units.tsx).
 // The UI draws placements exactly as returned and never recalculates them.
 
 import type { DgInfo, RuleSet } from "../../dg/rules.ts";
@@ -137,15 +137,28 @@ export interface ReferenceData {
 export const SUGGEST = "suggest";
 export const MAX_UNITS = 500; // backend/app/planner/models.py MAX_UNITS
 
+/** Pallets and loose items may share a plan; containers can't mix with either. */
+export type FreightKind = "pallet" | "container" | "loose";
+/** type_id of a loose item: it has its own length × width × height. */
+export const LOOSE_TYPE = "LOOSE";
+/** backend/app/planner/models.py FreightItem: the largest sizes it accepts. */
+export const MAX_LOOSE_SIDE_MM = 20_000;
+export const MAX_HEIGHT_MM = 5000;
+export const MAX_UNIT_WEIGHT_KG = 60_000;
+
 export interface FreightItem {
   id: string;
   label?: string;
-  kind: "pallet" | "container";
+  kind: FreightKind;
+  /** PalletType.id or ContainerType.id; "LOOSE" for a loose item. */
   type_id: string;
+  /** Loose items only (the backend rejects them on pallets and containers). */
+  length_mm?: number | null;
+  width_mm?: number | null;
   quantity: number;
   /** Per unit, including pallet tare. */
   gross_weight_kg: number;
-  /** Pallets: total height incl. the pallet. Ignored for containers. */
+  /** Pallets: total height incl. the pallet. Loose: its height (required). Ignored for containers. */
   height_mm?: number | null;
   stackable?: boolean;
   temp_controlled?: boolean;
@@ -189,7 +202,7 @@ export interface Placement {
   unit_id: string;
   item_id: string;
   label: string;
-  kind: "pallet" | "container";
+  kind: FreightKind;
   type_id: string;
   deck_id: string;
   /** From the front of the deck to the unit's front edge. */
@@ -257,4 +270,37 @@ export interface PlanResult {
   planner: string;
   /** Set when the request asked for vehicle_id="suggest": every vehicle tried, smallest first. */
   tried: VehicleTried[] | null;
+}
+
+// ---- Fleet result (POST /api/plan/fleet) --------------------------------------
+
+export type FleetMethod = "exact" | "heuristic";
+
+/** The freight split across the fewest trucks of one vehicle type (pallets and loose items only). */
+export interface FleetResult {
+  vehicle_id: string;
+  vehicle_name: string;
+  body_type: string;
+  mass_scheme: MassScheme;
+  /** True when every unit is in a truck and every truck fits. */
+  fits: boolean;
+  /** Why not, in plain language (e.g. units no truck can take). */
+  reasons: string[];
+  num_trucks: number;
+  /** Truck 1 first; each is a full single-vehicle plan. */
+  trucks: PlanResult[];
+  /** unit_ids no truck of this type can ever take (see reasons). */
+  unplaced: string[];
+  /** No split can use fewer trucks: the max of lower_bounds. */
+  lower_bound: number;
+  /** weight: ceil(kg / payload); floor: ceil(non-stackable floor area / deck area); volume: ceil(m³ / load volume). */
+  lower_bounds: Record<string, number>;
+  /** Proven fewest trucks (or equal to the lower bound). */
+  optimal: boolean;
+  /** "exact": CP-SAT (small loads); "heuristic": truck by truck (big loads, never proven). */
+  method: FleetMethod;
+  /** CP-SAT status (OPTIMAL, FEASIBLE, UNKNOWN) or HEURISTIC. */
+  status: string;
+  solve_time_ms: number;
+  planner: string;
 }

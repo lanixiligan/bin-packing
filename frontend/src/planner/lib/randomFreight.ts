@@ -1,12 +1,13 @@
 // Random freight for trying the planner: 6–10 lines of AU pallets drawn from a small catalogue
 // where each item carries its own dangerous goods data (as on its safety data sheet), so "Paint"
-// is always Class 3 and "Rice" is always food. Based on the old demo's catalogue.
+// is always Class 3 and "Rice" is always food. Based on the old demo's catalogue. Pipes and timber
+// sometimes come as loose items with their own size (long bundles up to 6 m) instead of on pallets.
 //
 // Pass a seeded `random` (see `seededRandom`) for repeatable lists, e.g. in tests.
 
 import type { DgInfo, ReferenceData } from "../api/types.ts";
 import { normalise, type DgClass, type Subsidiary } from "../../dg/rules.ts";
-import { newRow, type FreightRow } from "./freight.ts";
+import { newLooseRow, newRow, type FreightRow } from "./freight.ts";
 
 export interface CatalogueItem {
   label: string;
@@ -33,6 +34,19 @@ export const DG_ITEMS: CatalogueItem[] = [
   hazard("Lithium batteries", "9"),
 ];
 export const CATALOGUE: CatalogueItem[] = [...GENERAL_ITEMS, ...FOOD_ITEMS, ...DG_ITEMS];
+
+/** Size and weight ranges (mm, kg; [min, max, step]) of a catalogue item that can travel loose. */
+export interface LooseSpec {
+  length: [number, number, number];
+  width: [number, number, number];
+  height: [number, number, number];
+  weight: [number, number, number];
+}
+/** Long freight by label: when one of these is drawn, half the time it is a loose line. */
+export const LOOSE_ITEMS: Record<string, LooseSpec> = {
+  Pipes: { length: [3000, 6000, 500], width: [600, 1200, 100], height: [300, 600, 50], weight: [300, 900, 10] },
+  Timber: { length: [2400, 6000, 600], width: [900, 1200, 100], height: [400, 900, 50], weight: [400, 1200, 10] },
+};
 
 /** A small, fast seeded random number generator (mulberry32): numbers in [0, 1). */
 export function seededRandom(seed: number): () => number {
@@ -66,7 +80,8 @@ export interface RandomFreightOptions {
 /**
  * 6–10 freight lines of different catalogue items: 2–4 dangerous goods, up to one food line and
  * the rest general freight, in random order. AU standard pallets, 300–1,000 kg and 1.0–1.6 m tall,
- * 1–3 per line, some stackable.
+ * 1–3 per line, some stackable. A Pipes or Timber line is a loose item half the time: a bundle
+ * 2.4–6 m long with its own width and height.
  */
 export function randomFreight(ref: ReferenceData | null, { random = Math.random }: RandomFreightOptions = {}): FreightRow[] {
   const count = between(random, 6, 10);
@@ -78,14 +93,29 @@ export function randomFreight(ref: ReferenceData | null, { random = Math.random 
     ...pick(random, GENERAL_ITEMS, count - nDg - nFood),
   ], count);
   const typeId = ref && !ref.pallets.AU_STD ? ref.pallet_defaults.default_pallet : "AU_STD";
-  return items.map((it) => newRow(ref, {
-    label: it.label,
-    kind: "pallet",
-    type_id: typeId,
-    quantity: between(random, 1, 3),
-    gross_weight_kg: between(random, 300, 1000, 10),
-    height_mm: between(random, 1000, 1600, 50),
-    stackable: random() < 0.4,
-    dg: it.dg,
-  }));
+  return items.map((it) => {
+    const spec = LOOSE_ITEMS[it.label];
+    if (spec && random() < 0.5) {
+      return newLooseRow(ref, {
+        label: it.label,
+        quantity: between(random, 1, 3),
+        gross_weight_kg: between(random, ...spec.weight),
+        length_mm: between(random, ...spec.length),
+        width_mm: between(random, ...spec.width),
+        height_mm: between(random, ...spec.height),
+        stackable: random() < 0.4,
+        dg: it.dg,
+      });
+    }
+    return newRow(ref, {
+      label: it.label,
+      kind: "pallet",
+      type_id: typeId,
+      quantity: between(random, 1, 3),
+      gross_weight_kg: between(random, 300, 1000, 10),
+      height_mm: between(random, 1000, 1600, 50),
+      stackable: random() < 0.4,
+      dg: it.dg,
+    });
+  });
 }
