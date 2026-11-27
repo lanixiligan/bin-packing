@@ -1,0 +1,65 @@
+/* Print view (Print / PDF): the plan only, in light colours, with the full disclaimer.
+   Imported by ExportMenu.tsx; applies only when printing. */
+
+@media print {
+  /* Light colours whatever the screen theme (beats the dark-theme token blocks). */
+  :root {
+    color-scheme: light;
+    --color-bg: #ffffff !important;
+    --color-surface: #ffffff !important;
+    --color-surface-2: #f1f5f9 !important;
+    --color-surface-3: #e2e8f0 !important;
+    --color-border: #cbd5e1 !important;
+    --color-border-strong: #94a3b8 !important;
+    --color-text: #0f172a !important;
+    --color-text-muted: #475569 !important;
+    --color-text-subtle: #64748b !important;
+    --color-accent: #0f766e !important;
+    --color-accent-soft: #ccfbf1 !important;
+    --color-on-accent: #ffffff !important;
+    --color-success: #15803d !important;
+    --color-success-soft: #dcfce7 !important;
+    --color-warning: #b45309 !important;
+    --color-warning-soft: #fef3c7 !important;
+    --color-error: #b91c1c !important;
+    --color-error-soft: #fee2e2 !important;
+    --color-info: #1d4ed8 !important;
+    --color-info-soft: #dbeafe !important;
+    --stop-none: #cbd5e1 !important;
+    --shadow-sm: none !important;
+    --shadow-pop: none !important;
+    --motion-fast: 0ms !important;
+    --motion-base: 0ms !important;
+  }
+
+  body { background: #ffffff; color: var(--color-text); }
+
+  /* Interactive controls are no use on paper. */
+  .app-header, .rail, .skip-link, .no-print, button, .btn, input, select, textarea,
+  .segmented, [role="toolbar"] {
+    display: none !important;
+  }
+
+  .app-main, .workspace { display: block; max-width: none; padding: 0; }
+  .app-disclaimer { padding: 0 0 8px; max-width: none; }
+
+  /* Show the full disclaimer and the vehicles tried even when collapsed on screen. */
+  .disclaimer-more[hidden], .plan-status-tried[hidden] { display: block !important; }
+  .disclaimer { color: var(--color-text); }
+
+  /* Keep each panel, row and warning on one page where possible. */
+  .card, .plan-status, .util, .axle-panel, .warnings, .warning, .util-row, .axle-row, .empty-state {
+    break-inside: avoid;
+  }
+  .card { border: 1px solid var(--color-border) !important; box-shadow: none; }
+  h2, h3, h4 { break-after: avoid; }
+
+  /* Bars, badges and the deck colours are data: print their backgrounds. */
+  .util-bar, .util-fill, .axle-bar, .axle-fill, .axle-overflow, .axle-tick, .badge,
+  .plan-status-headline, .util-over, .axle-status {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  a { color: inherit; text-decoration: none; }
+}
