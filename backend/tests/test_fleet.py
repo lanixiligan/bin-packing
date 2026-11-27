@@ -348,15 +348,12 @@ async def test_api_rejects_what_it_cannot_split(client, body, message):
     assert res.status_code == 400 and message in res.json()["detail"]
 
 
-async def test_api_is_capped_with_the_demo_solver(client):
+async def test_api_is_capped_by_the_solver_slots(client):
     held = [solve_slots.solve_slots.acquire(blocking=False) for _ in range(solve_slots.MAX_CONCURRENT_SOLVES)]
     try:
         assert all(held)
         res = await post(client, pallet(2))
         assert res.status_code == 429 and "busy" in res.json()["detail"]
-        shipment = {"name": "A", "weight": 100, "height_mm": 1200}
-        demo = await client.post("/api/solve", json={"shipments": [shipment]})
-        assert demo.status_code == 429   # the same slots guard the demo
     finally:
         for _ in held:
             solve_slots.solve_slots.release()

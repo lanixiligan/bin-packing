@@ -58,7 +58,8 @@ def plan_fleet(req: PlanRequest) -> FleetResult:
         raise HTTPException(400, f"Unknown body type '{req.body_type}'.")
     if any(i.kind == "container" for i in req.items):
         raise HTTPException(400, "Split mode takes pallets and loose freight, not containers.")
-    # Shares the demo's solver slots: a split can run CP-SAT for up to fleet.EXACT_TIME_LIMIT_S.
+    # Capped by the solver slots (app/solve_slots.py): a split can run CP-SAT for up to
+    # fleet.EXACT_TIME_LIMIT_S.
     if not solve_slots.acquire(blocking=False):
         raise HTTPException(429, "The solver is busy with other requests. Try again in a few seconds.")
     try:
