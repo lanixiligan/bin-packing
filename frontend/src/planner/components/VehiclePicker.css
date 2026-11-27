@@ -1,0 +1,76 @@
+/* Step 1: vehicle cards (native radios styled as cards) and the body type select.
+   Two columns in the 420px rail, one when narrow, three when the rail is wide (stacked layout). */
+
+.vp { container: vehicle-picker / inline-size; display: flex; flex-direction: column; gap: var(--space-4); }
+
+.vp-fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+
+.vp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.vp-option-suggest { grid-column: 1 / -1; }
+
+@container vehicle-picker (max-width: 340px) {
+  .vp-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@container vehicle-picker (min-width: 640px) {
+  .vp-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+.vp-option { position: relative; display: flex; min-width: 0; cursor: pointer; }
+
+/* The radio stays in the accessibility tree and takes focus; the card shows its state. */
+.vp-radio { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+
+.vp-card {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  transition: border-color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease),
+    box-shadow var(--motion-fast) var(--ease);
+}
+.vp-option:hover .vp-card { border-color: var(--color-text-subtle); background: var(--color-surface-2); }
+
+.vp-radio:checked + .vp-card {
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+  background: var(--color-surface);
+}
+.vp-radio:focus-visible + .vp-card { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+.vp-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2);
+  margin-bottom: var(--space-1); }
+
+.vp-icon { width: 56px; height: 20px; flex: none; color: var(--color-text-muted); }
+.vp-icon-suggest { width: 20px; height: 20px; color: var(--color-accent); }
+.vp-radio:checked + .vp-card .vp-icon { color: var(--color-accent); }
+
+/* Selection is shown by the check as well as the border, never by colour alone. */
+.vp-check { width: 18px; height: 18px; flex: none; color: var(--color-accent); opacity: 0;
+  transform: scale(0.6); transition: opacity var(--motion-fast) var(--ease), transform var(--motion-fast) var(--ease); }
+.vp-radio:checked + .vp-card .vp-check { opacity: 1; transform: none; }
+
+.vp-name { font-size: var(--text-sm); font-weight: var(--weight-semibold); line-height: var(--leading-tight);
+  color: var(--color-text); overflow-wrap: anywhere; }
+.vp-meta { font-size: var(--text-xs); color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+
+.vp-badges { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-1); }
+.vp-badges .badge { white-space: normal; }
+.vp-badge-container { font-variant-numeric: tabular-nums; }
+
+.vp-option-suggested .vp-card { border-style: dashed; border-color: var(--color-success); }
+.vp-option-suggested .vp-radio:checked + .vp-card { border-style: solid; }
+
+.vp-suggest-row { display: flex; align-items: center; gap: var(--space-2); }
+.vp-suggest-text { flex: 1; min-width: 0; }
+.vp-option-suggest .vp-meta { font-size: var(--text-sm); }
+
+.vp-details { display: flex; flex-direction: column; gap: var(--space-3); }
+.vp-body-info { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-1); }
+.vp-body-info:empty { display: none; }
+
+.vp-permit { color: var(--color-text-muted); }
+.vp-permit-restricted { padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
+  background: var(--color-warning-soft); color: var(--color-text); }
+.vp-permit-restricted strong { color: var(--color-warning); font-weight: var(--weight-semibold); }
