@@ -1,5 +1,5 @@
-// Shipment colours and dangerous goods text shared by the table and the truck views (2D and 3D).
-// Truck capacity itself comes from the vehicle (vehicle.ts) and the solve response.
+// Unit colours and dangerous goods text for the truck overview and the 3D view. Originally from the
+// bin packing demo; what one truck holds comes from lib/sceneData.ts.
 //
 // Pure functions only (no React, no DOM), so they can be unit-tested with node.
 
@@ -11,6 +11,11 @@ export function colorFor(id: number): string {
   return `hsl(${hue}, 55%, 74%)`;
 }
 
+/** A unit's colour: every unit of a freight line shares its line's colour (its `line` index). */
+export function colorOf(s: { id: number; line?: number }): string {
+  return colorFor(s.line ?? s.id);
+}
+
 /** A shipment's dangerous goods: `dg_class` ("3", "food", "fire_risk", …) and `subsidiary` hazards. */
 export interface DgLike {
   dg_class?: string | null;
@@ -18,8 +23,8 @@ export interface DgLike {
 }
 
 /**
- * Text for a DG class: "Class 3", "Class 3 (sub 6.1, 8)", "Class 1.4S" (the
- * demo's class 1), "Food", "Fire-risk"; "" for none.
+ * Text for a DG class: "Class 3", "Class 3 (sub 6.1, 8)", "Class 1.4S" (class 1
+ * here), "Food", "Fire-risk"; "" for none.
  */
 export function dgClassText(dgClass: string | null | undefined, subsidiary: readonly string[] | null = []): string {
   if (!dgClass) return "";
@@ -32,11 +37,4 @@ export function dgClassText(dgClass: string | null | undefined, subsidiary: read
 /** The DG text shown for a shipment; "" for general freight. */
 export function dgTextOf(s: DgLike): string {
   return dgClassText(s.dg_class, s.subsidiary);
-}
-
-/** Placard code for a shipment ("food" → "F", "fire_risk" → "R"); null for none. */
-export function dgCodeOf(s: Pick<DgLike, "dg_class">): string | null {
-  const c = s.dg_class;
-  if (!c) return null;
-  return c === "food" ? "F" : c === "fire_risk" ? "R" : c;
 }

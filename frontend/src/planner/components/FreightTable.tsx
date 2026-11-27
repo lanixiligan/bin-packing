@@ -1,16 +1,22 @@
 // Step 2: the freight lines. Each line is one compact summary row ("10 × Australian Standard pallet
 // · 800 kg each · 1,200 mm high"); its name button opens the full form in place, one line at a
 // time, closed with Done or Escape. Problems with a line show on its closed row too, so they are
-// never hidden. Also: quick-add presets, random freight, duplicate / delete with undo. Rows with
+// never hidden. Also: quick-add presets, random freight, example shipments, pasted weights,
+// duplicate / delete with undo. Rows with
 // dangerous goods show a read-only placard badge, and an early hint above the rows names pairs
 // that can't share a vehicle (the plan result stays the authority).
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
-import { LOOSE_TYPE, type ReferenceData } from "../api/types.ts";
-import { checkAll, type DgPairResult } from "../../dg/rules.ts";
-import { dgLabel, dgName, placardCode } from "../lib/dg.ts";
-import { LOOSE_DEFAULTS, newRow, newRowId, type FreightRow, type RowErrors, type RowField } from "../lib/freight.ts";
+import { LOOSE_TYPE, MAX_UNITS, type ReferenceData } from "../api/types.ts";
+import { checkAll, dgKey, type DgPairResult } from "../../dg/rules.ts";
+import { dgFromHazard, dgLabel, dgName, hazardOf, placardCode, type Hazard } from "../lib/dg.ts";
+import {
+  exampleRows, LOOSE_DEFAULTS, MAX_LINES, newRow, newRowId, parseWeights, weightRows,
+  type FreightRow, type RowErrors, type RowField,
+} from "../lib/freight.ts";
+import { EXAMPLE_SECTIONS, exampleById, type ShipmentExample } from "../../examples/shipmentExamples.ts";
 import { randomFreight } from "../lib/randomFreight.ts";
 import { useUnits, type Units } from "../lib/units.ts";
+import HazardPicker from "./HazardPicker.jsx";
 import { AlertIcon, InfoIcon } from "./icons.tsx";
 import "./FreightTable.css";
 
@@ -24,6 +30,16 @@ export interface FreightTableProps {
   listErrors: string[];
   /** Random numbers in [0, 1) for "Random freight"; defaults to Math.random (tests pass a seeded one). */
   random?: () => number;
+  /** The example shipment the list was last set to (its caption shows), "" once anything changes it. */
+  exampleId?: string;
+  /** An example was chosen: `rows` (its lines) replace the list. Without it the rows go to onRowsChange. */
+  onExample?(example: ShipmentExample, rows: FreightRow[]): void;
+  /** Line ids lit by the load plan (their units are hovered there): those closed rows are highlighted. */
+  litIds?: readonly string[] | null;
+  /** The pointer enters (a line id) or leaves (null) a closed row: the plan lights that line's units. */
+  onLineHover?(id: string | null): void;
+  /** The same for keyboard focus inside a closed row. */
+  onLineFocus?(id: string | null): void;
 }
 
 const TOAST_MS = 6000;
@@ -186,9 +202,87 @@ interface Toast {
   key: number;
 }
 
+// ---- Paste a list of weights ------------------------------------------------------------
+
+/**
+ * "Paste a list of weights…": each weight becomes a line of 1 AU pallet, 1.2 m high, not stackable,
+ * with a numbered name. Adding keeps within what one plan takes (lines and units).
+ */
+function PasteWeights({ rows, reference, onApply }: {
+  rows: FreightRow[];
+  reference: ReferenceData;
+  onApply(added: FreightRow[], mode: "append" | "replace"): void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const id = useId();
+  const { weights, invalid } = parseWeights(text);
+  const units = rows.reduce((n, r) => n + (r.quantity ?? 0), 0);
+  const room = Math.max(0, Math.min(MAX_LINES - rows.length, MAX_UNITS - units));
+  const replaceRoom = Math.min(MAX_LINES, MAX_UNITS);
+
+  function apply(mode: "append" | "replace") {
+    if (!weights.length) return;
+    const kept = weights.slice(0, mode === "append" ? room : replaceRoom);
+    onApply(weightRows(kept, reference, mode === "append" ? rows.length : 0), mode);
+    setText("");
+    setOpen(false);
+  }
+
+  if (!open) {
+    return (
+      <button type="button" className="btn" onClick={() => setOpen(true)} aria-expanded="false">
+        Paste weights…
+      </button>
+    );
+  }
+
+  return (
+    <div className="ft-paste">
+      <label htmlFor={`${id}-text`} className="field-label">
+        Weights in kg, separated by commas, spaces or new lines. Each becomes an AU pallet 1.2 m high, not
+        stackable; names are added automatically.
+      </label>
+      <textarea id={`${id}-text`} className="input" rows={3} value={text} placeholder={"560, 490, 440 370\n360"}
+                onChange={(e) => setText(e.target.value)} aria-describedby={`${id}-status`} autoFocus />
+      <p id={`${id}-status`} className="small ft-paste-status" aria-live="polite">
+        {weights.length > 0 && <span>{plural(weights.length, "weight")} found. </span>}
+        {weights.length > room && (
+          <span>
+            Adding keeps the first {room}
+            {weights.length > replaceRoom ? `, replacing the first ${replaceRoom}` : ""} (one plan takes at
+            most {MAX_LINES} lines and {MAX_UNITS} units).{" "}
+          </span>
+        )}
+        {invalid.length > 0 && (
+          <span className="ft-paste-invalid">
+            Skipping {invalid.length === 1 ? "this entry" : "these entries"} (not a whole number above 0):{" "}
+            {invalid.slice(0, 5).map((t) => `"${t}"`).join(", ")}
+            {invalid.length > 5 ? ` and ${invalid.length - 5} more` : ""}
+          </span>
+        )}
+      </p>
+      <div className="ft-paste-actions">
+        <button type="button" className="btn btn-sm" disabled={!weights.length || room <= 0} onClick={() => apply("append")}>
+          Add to list
+        </button>
+        <button type="button" className="btn btn-sm" disabled={!weights.length} onClick={() => apply("replace")}>
+          Replace list
+        </button>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={() => { setOpen(false); setText(""); }}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ---- Component -------------------------------------------------------------------------
 
-export default function FreightTable({ reference, rows, onRowsChange, errors, listErrors, random }: FreightTableProps) {
+export default function FreightTable({
+  reference, rows, onRowsChange, errors, listErrors, random, exampleId = "", onExample,
+  litIds, onLineHover, onLineFocus,
+}: FreightTableProps) {
   const units = useUnits();
   const uid = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -200,6 +294,7 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
   const [toast, setToast] = useState<Toast | null>(null);
   const [toastPaused, setToastPaused] = useState(false);
   const presets = useMemo(() => availablePresets(reference), [reference]);
+  const shownExample = exampleById(exampleId);
   const dgPairs = useMemo(() => checkAll(rows.map((row, index) => ({ row, index })), (x) => x.row.dg), [rows]);
   const incompatible = dgPairs.filter((p) => p.status === "incompatible");
   const toCheck = dgPairs.filter((p) => p.status === "check");
@@ -304,6 +399,27 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
     showToast({ message: `Replaced the list with ${plural(added.length, "random line")}.`, undo: () => previous });
   };
 
+  const chooseExample = (id: string) => {
+    const example = exampleById(id);
+    if (!example) return;
+    const previous = rows;
+    const added = exampleRows(example, reference);
+    setOpenId(null);
+    if (onExample) onExample(example, added);
+    else onRowsChange(added);
+    showToast({ message: `Replaced the list with the “${example.title}” example.`, undo: () => previous });
+  };
+
+  const addWeights = (added: FreightRow[], mode: "append" | "replace") => {
+    const previous = rows;
+    const ids = new Set(added.map((r) => r.id));
+    setOpenId(null);
+    onRowsChange(mode === "append" ? [...rows, ...added] : added);
+    showToast(mode === "append"
+      ? { message: `Added ${plural(added.length, "pasted weight")}.`, undo: (current) => current.filter((r) => !ids.has(r.id)) }
+      : { message: `Replaced the list with ${plural(added.length, "pasted weight")}.`, undo: () => previous });
+  };
+
   const undo = () => {
     if (!toast?.undo) return;
     if (toast.focusId) pendingFocus.current = { id: toast.focusId };
@@ -401,10 +517,15 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
             ];
             const panelId = fid("panel");
             const problems = [...new Set(Object.values(e))];
-            const shownProblems = open ? (e.dg ? [e.dg] : []) : problems;
+            const shownProblems = open ? [] : problems;
             return (
-              <li key={row.id} className={`ft-row${open ? " ft-row-open" : ""}${problems.length ? " ft-row-invalid" : ""}`}
-                  data-row-id={row.id} tabIndex={-1} aria-labelledby={headingId}>
+              <li key={row.id} className={`ft-row${open ? " ft-row-open" : ""}${problems.length ? " ft-row-invalid" : ""}`
+                    + `${!open && litIds?.includes(row.id) ? " ft-row-lit" : ""}`}
+                  data-row-id={row.id} tabIndex={-1} aria-labelledby={headingId}
+                  onPointerEnter={open ? undefined : () => onLineHover?.(row.id)}
+                  onPointerLeave={() => onLineHover?.(null)}
+                  onFocus={open ? undefined : () => onLineFocus?.(row.id)}
+                  onBlur={() => onLineFocus?.(null)}>
                 <div className="ft-row-header">
                   <h3 id={headingId} className="ft-row-title">
                     <button type="button" className="ft-row-toggle" data-field="toggle" aria-expanded={open}
@@ -451,8 +572,11 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
                   </ul>
                 )}
 
+                {/* Escape in the DG picker's dialog only closes the dialog, not the line. */}
                 <div id={panelId} className="ft-row-panel" hidden={!open}
-                     onKeyDown={(ev) => { if (ev.key === "Escape") closeRow(row.id); }}>
+                     onKeyDown={(ev) => {
+                       if (ev.key === "Escape" && !(ev.target as HTMLElement).closest("dialog")) closeRow(row.id);
+                     }}>
                 {open && (
                 <>
                 <div className="ft-fields">
@@ -536,6 +660,23 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
                     </div>
                   )}
 
+                  <Field id={fid("dg")} label="Dangerous goods" error={err("dg")} className="ft-span-2">
+                    {(a) => (
+                      // The planner always checks against the ADG Code plus Northline (PlannerApp's
+                      // RULE_SET), so the picker shows Northline's refusals too.
+                      <HazardPicker id={a.id} describedBy={a["aria-describedby"]} invalid={Boolean(err("dg"))}
+                                    name={row.label.trim() || `Line ${i + 1}`} ruleSet="northline"
+                                    value={hazardOf(row.dg)} toDg={(h: Hazard) => dgFromHazard(h, row.dg)}
+                                    others={rows.flatMap((r, n) => (r.id === row.id ? [] : [{
+                                      uid: r.id, name: r.label.trim() || `Line ${n + 1}`, ...hazardOf(r.dg), dg: r.dg,
+                                    }]))}
+                                    onChange={(h: Hazard) => {
+                                      const next = dgFromHazard(h, row.dg);
+                                      if (dgKey(next) !== dgKey(row.dg)) update(row.id, { dg: next });
+                                    }} />
+                    )}
+                  </Field>
+
                   <div className="ft-span-2 ft-flags">
                     {!isContainer && (
                       <label className="ft-check">
@@ -584,7 +725,23 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
         <button type="button" className="btn" onClick={addRandom}>
           <span aria-hidden="true">🎲</span>Random freight
         </button>
+        <select className="select ft-example-select" value={exampleId} aria-label="Example shipments"
+                onChange={(e) => chooseExample(e.target.value)}>
+          <option value="" disabled>Example shipments…</option>
+          {EXAMPLE_SECTIONS.map((section) => (
+            <optgroup key={section.name} label={section.name}>
+              {section.examples.map((ex) => <option key={ex.id} value={ex.id}>{ex.title}</option>)}
+            </optgroup>
+          ))}
+        </select>
+        <PasteWeights rows={rows} reference={reference} onApply={addWeights} />
       </div>
+
+      {shownExample && (
+        <p className="ft-example-note">
+          <b>{shownExample.title}:</b> {shownExample.shows}
+        </p>
+      )}
 
       {presets.length > 0 && (
         <div className="ft-presets" role="group" aria-labelledby={presetsLabelId}>

@@ -23,6 +23,13 @@
   font-size: var(--text-xs); color: var(--color-text-muted); background: var(--color-surface-2);
   border: 1px solid transparent; border-radius: var(--radius-pill); }
 .fleet-bound-value { font-weight: var(--weight-semibold); color: var(--color-text); }
+.fleet-bound-ratio { white-space: nowrap; }
+
+/* While a new split is worked out: the time used against the solver's limit. */
+.fleet-progress { display: flex; flex-direction: column; gap: var(--space-1); }
+.fleet-progress progress { width: 100%; max-width: 480px; height: 8px; accent-color: var(--color-accent); }
+.fleet-progress-time { font-size: var(--text-sm); color: var(--color-text-muted); }
+.fleet-progress-note { font-size: var(--text-xs); color: var(--color-text-muted); }
 /* The bound that sets the minimum: a stronger edge and weight, not colour alone. */
 .fleet-bound--binding { border-color: var(--color-border-strong); }
 .fleet-bound--binding .fleet-bound-name { font-weight: var(--weight-semibold); color: var(--color-text); }

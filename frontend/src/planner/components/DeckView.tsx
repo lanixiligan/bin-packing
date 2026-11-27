@@ -17,7 +17,7 @@ export interface DeckViewProps {
   /** CSS width of the SVG (zoom); the height follows the aspect ratio. */
   width: string;
   /** Id of the placement table, the long description. */
-  describedBy: string;
+  describedBy?: string;
   events: StackEvents;
   /** Id of the details popover while it is open. */
   detailsId?: string;
@@ -200,7 +200,8 @@ export default function DeckView({ vehicle, stacks, frame, mode, width, describe
                if (el) nodes.current.set(s.key, el);
                else nodes.current.delete(s.key);
              }}
-             className={`deck-stack${highlighted && highlighted.stack.key !== s.key ? " is-dimmed" : ""}`
+             className={`deck-stack${(highlighted ? highlighted.stack.key !== s.key : events.lit && !events.lit.includes(s.key)) ? " is-dimmed" : ""}`
+               + `${!highlighted && events.lit?.includes(s.key) ? " is-lit" : ""}`
                + `${s.conflict ? ` has-conflict is-conflict-${s.conflict.severity}` : ""}`}
              style={{ transform: `translate(${x}px, ${y}px)` }}
              tabIndex={0} role="button" aria-label={s.description}

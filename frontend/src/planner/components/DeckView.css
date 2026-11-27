@@ -24,6 +24,8 @@
   transition: transform var(--motion-base) var(--ease), opacity var(--motion-fast) var(--ease); }
 .deck-stack.is-dimmed { opacity: 0.55; }
 .deck-unit-edge { fill: none; stroke: var(--color-text); stroke-opacity: 0.4; stroke-width: 1px; vector-effect: non-scaling-stroke; }
+/* Lit from step 2 (its freight line is hovered): the focus colour round each of its stacks. */
+.deck-stack.is-lit .deck-unit-edge { stroke: var(--color-focus); stroke-opacity: 1; stroke-width: 2.5px; }
 .deck-unit-label { font-weight: var(--weight-regular); }
 .deck-unit-label-main { font-weight: var(--weight-semibold); }
 

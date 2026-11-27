@@ -80,7 +80,7 @@ export default function WarningsList({ warnings, request }: WarningsListProps) {
                         {w.suggestion && <p className="warning-suggestion">{tryText(w.suggestion)}</p>}
                         {names.length > 0 && (
                           <p className="warning-lines">
-                            {names.length === 1 ? "Freight line: " : "Freight lines: "}
+                            {names.length === 1 ? "Line: " : "Lines: "}
                             {names.map((n, j) => (
                               <span key={j}>
                                 {j > 0 && ", "}

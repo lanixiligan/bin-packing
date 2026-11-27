@@ -1,17 +1,18 @@
-// The demo's dangerous goods picker. A compact chip in the shipment row
+// The dangerous goods picker, copied from the demo for the freight line form. A compact chip
 // (placard diamond + class + subsidiary hazards) opens a dialog with:
 //   - Not DG / Food / Fire-risk and a grid of placard tiles for the class
 //     (one radio group, so arrow keys move between tiles),
 //   - subsidiary hazard chips (checkboxes, up to 4, only with a class),
-//   - which shipments in the list it can't share a truck with, and the
+//   - which other lines it can't share a truck with, and the
 //     Northline refusal when that rule set is on.
 // Edits are staged: Done applies them, Cancel / Escape / backdrop discards.
-// A native <dialog> is used so the shipment table can't clip it.
+// A native <dialog> is used so the freight list can't clip it.
+// Unlike the demo, the checks use the line's full DgInfo (toDg, and `dg` on the others), so a
+// UN number or packing group the line already has counts too.
 import { useEffect, useId, useRef, useState } from "react";
 import { DgDiamond } from "../../dg/DgBadge.tsx";
 import { CLASS_NAMES, DG_CLASSES, northlineIssues, pairVerdict, SUBSIDIARIES } from "../../dg/rules.ts";
-import { dgClassText } from "./capacity.ts";
-import { demoDg, isDgClass, MAX_SUBSIDIARY, normaliseHazard } from "../shipments.js";
+import { hazardText as dgClassText, isDgClass, MAX_SUBSIDIARY, normaliseHazard } from "../lib/dg.ts";
 import "./hazard.css";
 
 const NON_DG = [
@@ -28,10 +29,11 @@ const className = (c) => (c === "1" ? "Explosives (1.4S)" : CLASS_NAMES[c]);
 const hazardText = (h) => dgClassText(h.dgClass, h.subsidiary) || "Not dangerous goods";
 
 /**
- * value: { dgClass, subsidiary }; onChange(value); name: the shipment's name
- * (for labels); others: the other shipments in the list (for conflicts).
+ * value: { dgClass, subsidiary }; onChange(value); name: the line's name (for labels);
+ * toDg(value): the DgInfo the line would get; others: the other lines in the list as
+ * { uid, name, dgClass, subsidiary, dg } (for conflicts); id: the chip's id (for a <label>).
  */
-export default function HazardPicker({ value, onChange, name, others = [], ruleSet = "northline", describedBy, invalid = false }) {
+export default function HazardPicker({ id: chipId, value, onChange, name, toDg, others, ruleSet = "northline", describedBy, invalid = false }) {
   const id = useId();
   const dialogRef = useRef(null);
   const triggerRef = useRef(null);
@@ -63,11 +65,12 @@ export default function HazardPicker({ value, onChange, name, others = [], ruleS
     <>
       <button
         ref={triggerRef}
+        id={chipId}
         type="button"
         className={`hz-chip${code ? "" : " general"}${invalid ? " invalid" : ""}`}
         onClick={open}
         aria-haspopup="dialog"
-        aria-label={`Dangerous goods for ${name || "shipment"}: ${fullText}. Change`}
+        aria-label={`Dangerous goods for ${name || "line"}: ${fullText}. Change`}
         aria-describedby={describedBy}
         title={fullText}
       >
@@ -91,7 +94,7 @@ export default function HazardPicker({ value, onChange, name, others = [], ruleS
         onClick={(e) => { if (e.target === dialogRef.current) close(); }}
       >
         {draft && (
-          <HazardForm id={id} name={name} draft={draft} setDraft={setDraft} others={others} ruleSet={ruleSet}
+          <HazardForm id={id} name={name} draft={draft} setDraft={setDraft} toDg={toDg} others={others} ruleSet={ruleSet}
                       onCancel={close} onDone={done} />
         )}
       </dialog>
@@ -99,16 +102,16 @@ export default function HazardPicker({ value, onChange, name, others = [], ruleS
   );
 }
 
-function HazardForm({ id, name, draft, setDraft, others, ruleSet, onCancel, onDone }) {
+function HazardForm({ id, name, draft, setDraft, toDg, others, ruleSet, onCancel, onDone }) {
   const hasClass = isDgClass(draft.dgClass);
   const subsFull = draft.subsidiary.length >= MAX_SUBSIDIARY;
   const pick = (dgClass) => setDraft(normaliseHazard(dgClass, draft.subsidiary));
   const toggleSub = (s, on) =>
     setDraft(normaliseHazard(draft.dgClass, on ? [...draft.subsidiary, s] : draft.subsidiary.filter((x) => x !== s)));
 
-  const dg = demoDg(draft.dgClass, draft.subsidiary);
+  const dg = toDg(draft);
   const conflicts = dg
-    ? others.filter((o) => o.dgClass && pairVerdict(dg, demoDg(o.dgClass, o.subsidiary)).status === "incompatible")
+    ? others.filter((o) => o.dg && pairVerdict(dg, o.dg).status === "incompatible")
     : [];
   const refused = ruleSet === "northline" ? northlineIssues(dg).find((i) => i.kind === "prohibited") : null;
   const code = diamondCode(draft.dgClass);
@@ -118,7 +121,7 @@ function HazardForm({ id, name, draft, setDraft, others, ruleSet, onCancel, onDo
       <header className="hz-head">
         <div>
           <h2 id={`${id}-title`}>Dangerous goods</h2>
-          <p className="muted small">{name || "New shipment"}</p>
+          <p className="muted small">{name || "New line"}</p>
         </div>
         <div className="hz-preview" aria-live="polite">
           {code ? <DgDiamond code={code} size="lg" /> : <span className="hz-empty lg" aria-hidden="true" />}
@@ -175,17 +178,17 @@ function HazardForm({ id, name, draft, setDraft, others, ruleSet, onCancel, onDo
           {!dg ? (
             <p className="muted small">General freight can share a truck with anything.</p>
           ) : conflicts.length === 0 ? (
-            <p className="hz-ok small"><span aria-hidden="true">✓</span> No conflicts with the other shipments in the list.</p>
+            <p className="hz-ok small"><span aria-hidden="true">✓</span> No conflicts with the other lines in the list.</p>
           ) : (
             <>
               <p className="small">
-                <b>Can’t share a truck with {conflicts.length} shipment{conflicts.length === 1 ? "" : "s"}:</b>
+                <b>Can’t share a truck with {conflicts.length} line{conflicts.length === 1 ? "" : "s"}:</b>
               </p>
               <ul className="hz-conflicts">
                 {conflicts.slice(0, SHOW_CONFLICTS).map((o) => (
                   <li key={o.uid}>
                     <DgDiamond code={diamondCode(o.dgClass)} size="sm" />
-                    {o.name || "Shipment"} <span className="muted">({dgClassText(o.dgClass, o.subsidiary)})</span>
+                    {o.name || "Line"} <span className="muted">({dgClassText(o.dgClass, o.subsidiary)})</span>
                   </li>
                 ))}
                 {conflicts.length > SHOW_CONFLICTS && <li className="muted">and {conflicts.length - SHOW_CONFLICTS} more</li>}

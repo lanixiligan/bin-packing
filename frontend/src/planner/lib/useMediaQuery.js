@@ -1,3 +1,5 @@
+// Media query hooks for the truck views (reduced motion, narrow screen, dark theme), originally
+// from the bin packing demo.
 import { useCallback, useSyncExternalStore } from "react";
 
 /** True while the CSS media query matches; updates live when it changes. */

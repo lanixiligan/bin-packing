@@ -110,13 +110,15 @@ describe("DeckView", () => {
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 
-  it("highlights the same stack in the elevation", async () => {
+  it("highlights a hovered stack in the side view and dims the rest", async () => {
     const user = userEvent.setup();
     const { container } = renderPlan(planMultidrop);
-    const target = stacks()[3];
+    const count = stacks().length;
+    await user.click(screen.getByRole("radio", { name: "Driver side" }));
+    const target = container.querySelectorAll(".elev-stack")[3];
     await user.hover(target);
-    const key = target.getAttribute("data-stack");
-    expect(container.querySelector(`.elev-stack[data-stack="${key}"]`)).toHaveClass("is-highlighted");
-    expect(container.querySelectorAll(".elev-stack.is-dimmed").length).toBe(stacks().length - 1);
+    expect(target).toHaveClass("is-highlighted");
+    expect(container.querySelectorAll(".elev-stack.is-dimmed").length).toBe(count - 1);
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
   });
 });

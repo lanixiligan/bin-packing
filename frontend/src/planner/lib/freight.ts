@@ -5,7 +5,8 @@
 // backend still checks everything again (and owns the real rules); this only catches typos early.
 
 import type { DgInfo, FreightItem, FreightKind, ReferenceData } from "../api/types.ts";
-import { isGeneral, normalise, validateDg } from "../../dg/rules.ts";
+import { isGeneral, normalise, validateDg, type DgClass, type DgLike, type Subsidiary } from "../../dg/rules.ts";
+import type { ExampleLine, ShipmentExample } from "../../examples/shipmentExamples.ts";
 import { LOOSE_TYPE, MAX_HEIGHT_MM, MAX_LOOSE_SIDE_MM, MAX_UNIT_WEIGHT_KG, MAX_UNITS } from "../api/types.ts";
 
 export interface FreightRow {
@@ -40,6 +41,9 @@ export interface Validation {
   /** Problems with the list as a whole (empty, too many units). */
   listErrors: string[];
 }
+
+/** Most lines one plan takes (backend/app/planner/models.py PlanRequest.items). */
+export const MAX_LINES = 100;
 
 let counter = 0;
 /** A fresh row id that's unique within this page. */
@@ -81,6 +85,60 @@ export function sampleRows(ref: ReferenceData | null): FreightRow[] {
     newRow(ref, { label: "General freight", quantity: 10, gross_weight_kg: 800, height_mm: 1200 }),
     newRow(ref, { label: "Cartons", quantity: 6, gross_weight_kg: 350, height_mm: 900, stackable: true }),
   ];
+}
+
+/**
+ * The DG data of an example line: "food", "fire_risk", a class ("3", "5.1"…) with its subsidiary
+ * hazards, or null for general freight. t92: [] answers "none of Table 9.2's specific goods apply".
+ */
+function exampleDg(line: ExampleLine): DgInfo | null {
+  if (!line.dgClass) return null;
+  const base: DgLike = { subsidiary: [], t92: [], container: "package", food: false, fire_risk: false };
+  if (line.dgClass === "food") return normalise({ ...base, food: true });
+  if (line.dgClass === "fire_risk") return normalise({ ...base, fire_risk: true });
+  const dgClass = line.dgClass as DgClass;
+  return normalise({ ...base, dg_class: dgClass, subsidiary: line.subsidiary as Subsidiary[],
+    explosive_code: dgClass === "1" ? "1.4S" : null });
+}
+
+/** The rows of an example load (src/examples/shipmentExamples.ts): one row per line, `count` → quantity. */
+export function exampleRows(example: ShipmentExample, ref: ReferenceData | null): FreightRow[] {
+  return example.lines.map((line) => {
+    const common = {
+      label: line.name, quantity: line.count, gross_weight_kg: line.weightKg, height_mm: line.heightMm,
+      stackable: line.stackable, dg: exampleDg(line),
+    };
+    return line.palletType
+      ? newRow(ref, { ...common, kind: "pallet", type_id: line.palletType })
+      : newLooseRow(ref, { ...common, length_mm: line.lengthMm ?? null, width_mm: line.widthMm ?? null });
+  });
+}
+
+/**
+ * Parse pasted text such as "560, 490, 440 370\n360".
+ * Separators: commas, semicolons, spaces, tabs and newlines. `invalid` lists the tokens that are
+ * not whole numbers above 0.
+ */
+export function parseWeights(text: string): { weights: number[]; invalid: string[] } {
+  const weights: number[] = [];
+  const invalid: string[] = [];
+  for (const token of text.split(/[\s,;]+/).filter(Boolean)) {
+    if (/^\d+$/.test(token) && Number(token) > 0) weights.push(Number(token));
+    else invalid.push(token);
+  }
+  return { weights, invalid };
+}
+
+/**
+ * One row per pasted weight: 1 × AU standard pallet, 1.2 m high, not stackable, named
+ * "General freight 01", "General freight 02"… counting on from `start` (the lines already listed).
+ */
+export function weightRows(weights: number[], ref: ReferenceData | null, start = 0): FreightRow[] {
+  const typeId = ref && !ref.pallets.AU_STD ? ref.pallet_defaults.default_pallet : "AU_STD";
+  return weights.map((w, i) => newRow(ref, {
+    label: `General freight ${String(start + i + 1).padStart(2, "0")}`,
+    type_id: typeId, quantity: 1, gross_weight_kg: w, height_mm: 1200, stackable: false,
+  }));
 }
 
 const kg = (n: number) => `${n.toLocaleString("en-AU", { maximumFractionDigits: 0 })} kg`;

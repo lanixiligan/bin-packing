@@ -1,4 +1,4 @@
-/* The demo's dangerous goods picker: row chip + dialog (HazardPicker.jsx).
+/* The dangerous goods picker in the freight line form: chip + dialog (HazardPicker.jsx, copied from the demo).
    Placard fills come from dg/colors.ts and don't change with the theme; everything
    else uses the planner tokens. */
 
@@ -11,6 +11,7 @@
   font: inherit; font-size: var(--text-xs); line-height: 1.2; text-align: left; cursor: pointer;
   transition: background var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease);
 }
+.field > .hz-chip { align-self: flex-start; } /* in a form field (a flex column): its own width, not the row's */
 .hz-chip:hover { background: var(--color-surface-2); }
 .hz-chip.general { color: var(--color-text-muted); border-style: dashed; }
 .hz-chip.invalid { border-color: var(--color-error); background: var(--color-error-soft); }

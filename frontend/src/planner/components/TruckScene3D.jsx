@@ -1,18 +1,23 @@
-// 3D view of the trucks, built from the solve response exactly as returned: each truck is the
-// chosen vehicle, its cargo decks laid end to end behind the cab at their real length and width
-// (a B-double has two), and every shipment is a box at its placement (x along the deck from the
-// cab end, y across from the driver's side, z up) with its real size. Pallet loads stand on a
-// thin wooden base; stacked shipments sit on the one below.
+// 3D view of the trucks (copied from the bin packing demo, fed by lib/sceneData.ts), built from the
+// planner's placements exactly as returned: each truck is the chosen vehicle, its cargo decks laid
+// end to end behind the cab at their real length and width (a B-double has two), and every unit is
+// a box at its placement (x along the deck from the cab end, y across from the driver's side, z up)
+// with its real size. Pallet loads stand on a thin wooden base; stacked units sit on the one below.
+// Clicking a truck (without dragging) calls `onSelectTruck` with its index.
 //
-// Loaded lazily from ResultPanel so three.js is only downloaded when the user switches to 3D.
+// Loaded lazily from FleetOverview and LoadPlanView so three.js is only downloaded when the user
+// switches to 3D.
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Vector3 } from "three";
 import { Edges, OrbitControls } from "@react-three/drei";
-import { colorFor } from "./capacity.ts";
-import { DECK_GAP_MM, stackColumns } from "./deck.ts";
-import { describeItem, metres } from "./sizes.ts";
-import { REDUCED_MOTION, useDarkTheme, useMediaQuery } from "../useMediaQuery.js";
+import { colorOf } from "../lib/capacity.ts";
+import { DECK_GAP_MM, stackColumns } from "../lib/deck.ts";
+import { describeItem, metres } from "../lib/sizes.ts";
+import { REDUCED_MOTION, useDarkTheme, useMediaQuery } from "../lib/useMediaQuery.js";
+
+/** Pointer travel (px) above which a click on a truck was really a drag to rotate the view. */
+const CLICK_SLOP_PX = 4;
 
 // Scene units per metre (a 2.4 m deck is 1.5 units wide).
 const S = 0.625;
@@ -106,21 +111,20 @@ function Crate({ shipment, x, z, bottom, size, base, colors, activeIds, onHover,
       }}
     >
       {base > 0 && (
-        <mesh position={[0, FLOOR + bottom + base / 2, 0]} castShadow={!dim}>
+        <mesh position={[0, FLOOR + bottom + base / 2, 0]}>
           <boxGeometry args={[lx, base, lz]} />
-          <meshStandardMaterial color={colors.pallet} roughness={0.95} transparent depthWrite={!dim} opacity={dim ? 0.25 : 1} />
+          <meshLambertMaterial color={colors.pallet} transparent depthWrite={!dim} opacity={dim ? 0.25 : 1} />
         </mesh>
       )}
-      <mesh position={[0, FLOOR + bottom + base + load / 2, 0]} castShadow={!dim}>
+      <mesh position={[0, FLOOR + bottom + base + load / 2, 0]}>
         <boxGeometry args={[lx, load, lz]} />
-        <meshStandardMaterial
-          color={colorFor(shipment.id)}
-          roughness={0.75}
+        <meshLambertMaterial
+          color={colorOf(shipment)}
           // always transparent: three.js doesn't recompile when this flag flips
           transparent
           depthWrite={!dim}
           opacity={dim ? 0.25 : 1}
-          emissive={active ? colorFor(shipment.id) : "#000000"}
+          emissive={active ? colorOf(shipment) : "#000000"}
           emissiveIntensity={active ? 0.35 : 0}
         />
         <Edges color={active ? colors.active : "#000000"} transparent opacity={active ? 1 : dim ? 0.08 : 0.25} />
@@ -131,9 +135,9 @@ function Crate({ shipment, x, z, bottom, size, base, colors, activeIds, onHover,
 
 function Wheel({ x, z, colors }) {
   return (
-    <mesh position={[x, 0.3, z]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-      <cylinderGeometry args={[0.3, 0.3, 0.22, 20]} />
-      <meshStandardMaterial color={colors.wheel} roughness={0.9} />
+    <mesh position={[x, 0.3, z]} rotation={[Math.PI / 2, 0, 0]}>
+      <cylinderGeometry args={[0.3, 0.3, 0.22, 8]} />
+      <meshLambertMaterial color={colors.wheel} />
     </mesh>
   );
 }
@@ -153,30 +157,36 @@ function boxOf(s, layout) {
   };
 }
 
-function TruckModel({ truck, position, layout, step, dropIndex, colors, activeIds, onHover, animate }) {
+function TruckModel({ truck, position, layout, step, dropIndex, colors, activeIds, onHover, animate, onSelect }) {
   const holdsActive = activeIds != null && truck.shipments.some((s) => activeIds.includes(s.id));
   const frameColor = holdsActive ? colors.active : colors.frame;
   const { len, decks } = layout;
   const first = decks[0];
 
   return (
-    <group position={position}>
+    <group
+      position={position}
+      onClick={onSelect && ((e) => {
+        e.stopPropagation();
+        if (e.delta <= CLICK_SLOP_PX) onSelect();
+      })}
+    >
       {decks.map((d, i) => (
         <group key={d.id}>
           {/* deck floor and see-through load space up to the inside height */}
-          <mesh position={[d.cx, FLOOR - 0.04, 0]} receiveShadow castShadow>
+          <mesh position={[d.cx, FLOOR - 0.04, 0]}>
             <boxGeometry args={[d.len, 0.08, d.w]} />
-            <meshStandardMaterial color={colors.floor} roughness={0.9} />
+            <meshLambertMaterial color={colors.floor} />
           </mesh>
           <mesh position={[d.cx, FLOOR + d.h / 2, 0]}>
             <boxGeometry args={[d.len, d.h, d.w]} />
-            <meshStandardMaterial color={colors.frame} transparent opacity={0.07} depthWrite={false} />
+            <meshLambertMaterial color={colors.frame} transparent opacity={0.07} depthWrite={false} />
             <Edges color={frameColor} />
           </mesh>
           {i > 0 && (
             <mesh position={[d.x0 - mm(DECK_GAP_MM) / 2, FLOOR - 0.1, 0]}>
               <boxGeometry args={[mm(DECK_GAP_MM), 0.06, 0.2]} />
-              <meshStandardMaterial color={colors.wheel} roughness={0.9} />
+              <meshLambertMaterial color={colors.wheel} />
             </mesh>
           )}
           {[d.x0 + d.len - 0.9, d.x0 + d.len - 0.3, ...(i === 0 ? [d.x0 + 0.7] : [])].map((x) => (
@@ -189,13 +199,13 @@ function TruckModel({ truck, position, layout, step, dropIndex, colors, activeId
       ))}
 
       {/* cab */}
-      <mesh position={[-len / 2 - CAB / 2 - 0.08, FLOOR + 0.45, 0]} castShadow>
+      <mesh position={[-len / 2 - CAB / 2 - 0.08, FLOOR + 0.45, 0]}>
         <boxGeometry args={[CAB, 0.9, first.w - 0.1]} />
-        <meshStandardMaterial color={colors.cab} roughness={0.6} />
+        <meshLambertMaterial color={colors.cab} />
       </mesh>
       <mesh position={[-len / 2 - CAB - 0.085, FLOOR + 0.6, 0]}>
         <boxGeometry args={[0.02, 0.35, first.w - 0.3]} />
-        <meshStandardMaterial color="#9fc3e8" roughness={0.2} metalness={0.3} />
+        <meshLambertMaterial color="#9fc3e8" />
       </mesh>
       <group>
         <Wheel x={-len / 2 - CAB / 2} z={first.w / 2 - 0.12} colors={colors} />
@@ -296,7 +306,7 @@ function levelText(columns, s) {
   return col && col.items.length > 1 ? `, level ${s.placement.level + 1} of ${col.items.length}` : "";
 }
 
-export default function TruckScene3D({ data, step, dropIndex, activeIds, onHover, onFocusBlock, height }) {
+export default function TruckScene3D({ data, step, dropIndex, activeIds, onHover, onFocusBlock, height, onSelectTruck }) {
   const dark = useDarkTheme();
   const reducedMotion = useMediaQuery(REDUCED_MOTION);
   const colors = dark ? PALETTE.dark : PALETTE.light;
@@ -308,41 +318,21 @@ export default function TruckScene3D({ data, step, dropIndex, activeIds, onHover
   const insideMm = Math.max(...capacity.decks.map((d) => d.height_mm));
   const spacing = colSpacing(layout.len);
   const positions = useMemo(() => data.trucks.map((_, i) => slot(i, n, spacing)), [data.trucks, n, spacing]);
-  const extent = useMemo(() => {
-    const xs = positions.map((p) => p[0]);
-    const zs = positions.map((p) => p[2]);
-    return {
-      w: Math.max(...xs) - Math.min(...xs) + spacing + 4,
-      d: Math.max(...zs) - Math.min(...zs) + ROW_SPACING + 4,
-    };
-  }, [positions, spacing]);
 
   return (
     <div className="scene3d" style={{ height }}>
       <Canvas
-        shadows
         frameloop="demand"
-        dpr={[1, 2]}
+        dpr={[1, 1.5]}
         camera={{ position: [7, 9, 13], fov: 35 }}
         onPointerMissed={() => onHover(null)}
         aria-hidden="true"
       >
         <ambientLight intensity={dark ? 0.9 : 1.1} />
-        <directionalLight
-          position={[6, 12, 8]}
-          intensity={dark ? 1.6 : 2}
-          castShadow
-          shadow-mapSize={[1024, 1024]}
-          shadow-bias={-0.0005}
-          shadow-normalBias={0.03}
-          shadow-camera-left={-extent.w / 2}
-          shadow-camera-right={extent.w / 2}
-          shadow-camera-top={extent.d / 2}
-          shadow-camera-bottom={-extent.d / 2}
-        />
-        <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <directionalLight position={[6, 12, 8]} intensity={dark ? 1.6 : 2} />
+        <mesh rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[400, 400]} />
-          <meshStandardMaterial color={colors.ground} roughness={1} />
+          <meshLambertMaterial color={colors.ground} />
         </mesh>
 
         {data.trucks.map((t, i) => (
@@ -357,6 +347,7 @@ export default function TruckScene3D({ data, step, dropIndex, activeIds, onHover
             activeIds={activeIds}
             onHover={onHover}
             animate={!reducedMotion}
+            onSelect={onSelectTruck && (() => onSelectTruck(i))}
           />
         ))}
         <CameraRig n={n} spacing={spacing} height={insideH} />

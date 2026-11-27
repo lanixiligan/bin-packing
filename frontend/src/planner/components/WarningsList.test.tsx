@@ -40,23 +40,23 @@ describe("WarningsList", () => {
     expect(within(error).getByText("Try a B-double or split into 2 loads.")).toBeInTheDocument();
     expect(within(screen.getAllByRole("listitem")[1]).getByText("Try: Use a refrigerated pantech (reefer) to keep it cold."))
       .toBeInTheDocument();
-    expect(error).toHaveTextContent("Freight line: Chilled");
+    expect(error).toHaveTextContent("Line: Chilled");
 
     const axle = screen.getAllByRole("listitem")[2];
     // In the order the lines were entered, not the order the planner listed them.
-    expect(axle).toHaveTextContent("Freight lines: General, Chilled");
+    expect(axle).toHaveTextContent("Lines: General, Chilled");
   });
 
   it("falls back to the item id when a line has no label", () => {
     const request = { ...planOverCapacity.request, items: planOverCapacity.request.items.map((it) => ({ ...it, label: "" })) };
     render(<WarningsList warnings={[axleNear]} request={request} />);
-    expect(screen.getByText(/Freight lines:/)).toHaveTextContent("Freight lines: gen, chill");
+    expect(screen.getByText(/^Lines:/)).toHaveTextContent("Lines: gen, chill");
   });
 
   it("leaves out the suggestion when there is none", () => {
     render(<WarningsList warnings={[info]} request={planSuggest.request} />);
     expect(screen.queryByText(/^Try:/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Freight line/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Lines?:/)).not.toBeInTheDocument();
   });
 
   it("says so when there are no warnings", () => {
