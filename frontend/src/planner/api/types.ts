@@ -149,8 +149,6 @@ export interface FreightItem {
   height_mm?: number | null;
   stackable?: boolean;
   temp_controlled?: boolean;
-  /** Delivery stop, 1 = first drop. */
-  stop?: number | null;
   /** Dangerous goods data (ADG class, subsidiary hazards, food / fire-risk); null = general freight. */
   dg?: DgInfo | null;
 }
@@ -170,7 +168,7 @@ export type WarningCode =
   | "UNKNOWN_TYPE" | "MIXED_FREIGHT" | "BODY_INCOMPATIBLE" | "BODY_NOT_ALLOWED" | "OUT_OF_SCOPE_BODY"
   | "REEFER_ON_NON_REEFER" | "STACK_TOO_HIGH" | "OVER_INTERNAL_HEIGHT" | "OVER_HEIGHT_LIMIT"
   | "UNSTACKABLE_FLOOR_SPACE" | "OVER_CAPACITY" | "CONTAINER_COMBO" | "CONTAINER_OVER_MAX_GROSS"
-  | "PALLET_OVER_MAX_GROSS" | "OVERSIZE_FOOTPRINT" | "STOP_ORDER_BLOCKED" | "OVER_PAYLOAD"
+  | "PALLET_OVER_MAX_GROSS" | "OVERSIZE_FOOTPRINT" | "OVER_PAYLOAD"
   | "AXLE_NEAR_LIMIT" | "AXLE_OVER_LIMIT" | "ROUTE_RESTRICTED"
   | "DG_INCOMPATIBLE" | "DG_CHECK" | "DG_ON_BOARD" | "DG_CARRIER_REFUSED" | "DG_CARRIER_NOTE";
 
@@ -209,7 +207,6 @@ export interface Placement {
   /** 0 = on the floor. */
   stack_level: number;
   weight_kg: number;
-  stop: number | null;
   stackable: boolean;
   temp_controlled: boolean;
 }

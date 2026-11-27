@@ -66,7 +66,7 @@ export interface RandomFreightOptions {
 /**
  * 6–10 freight lines of different catalogue items: 2–4 dangerous goods, up to one food line and
  * the rest general freight, in random order. AU standard pallets, 300–1,000 kg and 1.0–1.6 m tall,
- * 1–3 per line, some stackable, each for a random stop from 1 to 3.
+ * 1–3 per line, some stackable.
  */
 export function randomFreight(ref: ReferenceData | null, { random = Math.random }: RandomFreightOptions = {}): FreightRow[] {
   const count = between(random, 6, 10);
@@ -86,7 +86,6 @@ export function randomFreight(ref: ReferenceData | null, { random = Math.random 
     gross_weight_kg: between(random, 300, 1000, 10),
     height_mm: between(random, 1000, 1600, 50),
     stackable: random() < 0.4,
-    stop: between(random, 1, 3),
     dg: it.dg,
   }));
 }
