@@ -1,0 +1,18 @@
+/* The plan as a table, inside a <details>. */
+
+.ptable-summary { cursor: pointer; font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-accent);
+  padding: var(--space-1) 0; width: fit-content; }
+.ptable[open] .ptable-summary { margin-bottom: var(--space-2); }
+.ptable .table-scroll { max-height: 480px; overflow: auto; }
+.ptable thead th { position: sticky; top: 0; z-index: 1; }
+.ptable td { white-space: nowrap; }
+.ptable-unit { font-variant-numeric: tabular-nums; color: var(--color-text-muted); }
+.ptable-sort { display: inline-flex; align-items: center; gap: var(--space-1); padding: 0; border: 0; background: none;
+  font: inherit; color: inherit; cursor: pointer; }
+.ptable-sort:hover { color: var(--color-text); }
+.ptable-sort-mark { font-size: 0.7em; color: var(--color-text-subtle); }
+.ptable th.num .ptable-sort { flex-direction: row-reverse; }
+
+@media print {
+  .ptable .table-scroll { max-height: none; overflow: visible; }
+}
