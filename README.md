@@ -1,12 +1,13 @@
 # 🚚 Truck Loading Optimizer
 
 A small demo of the **bin packing problem**: load every shipment into trucks of the same capacity using
-the fewest trucks. It solves the same input two ways and animates both side by side:
+the fewest trucks. It packs with **Google OR-Tools CP-SAT**, which searches every possible loading for
+the fewest trucks (10 s limit) and proves when no better one exists, then animates the loading in 2D or
+3D. A quick first-fit packing gives CP-SAT its starting point; CP-SAT improves on it.
 
-- **FFD (First-Fit Decreasing):** sort shipments heaviest first, put each one in the first truck with
-  room, open a new truck when none fits. Instant, but not always the best.
-- **OR-Tools CP-SAT:** searches for the fewest trucks (warm-started from FFD, 10 s limit) and can prove
-  the answer is optimal.
+The summary compares the answer with the **lower bound**: no packing can use fewer trucks than
+⌈total ÷ capacity⌉ in any dimension. When CP-SAT reaches the bound, or proves optimality, the answer is
+the best possible.
 
 Extras:
 
@@ -20,8 +21,9 @@ Extras:
 - 🎲 **Random shipments** come from a small catalogue where each item has its own DG data (Paint =
   Class 3, Methanol = 3 + sub 6.1, Rice = food, …).
 
-**A case where FFD loses:** capacity 1000, shipments `560, 490, 440, 370, 360, 340, 190, 150` kg. The
-lower bound is 3. FFD needs 4 trucks; CP-SAT finds 3 (for example 560+440, 490+340+150, 370+360+190).
+**Why not a simple rule?** With capacity 1000 and shipments `560, 490, 440, 370, 360, 340, 190, 150` kg
+(paste them with *Paste a list of weights…*), "heaviest first into the first truck with room" needs 4
+trucks. CP-SAT finds 3 (for example 560+440, 490+340+150, 370+360+190), and 3 is the lower bound.
 
 ---
 
@@ -33,9 +35,8 @@ bin-packing/
 │   ├── app/
 │   │   ├── main.py          the app: GET /api/health, POST /api/solve
 │   │   ├── routers/demo.py  the /api/solve endpoint
-│   │   ├── solver/          FFD and CP-SAT over weight (and pallets), with DG segregation
-│   │   ├── dg.py            dangerous goods: ADG Table 9.1/9.2 segregation, Northline acceptance
-│   │   └── schemas.py       solver input/output models
+│   │   ├── solver.py        the OR-Tools CP-SAT model: weight (and pallets), with DG segregation
+│   │   └── dg.py            dangerous goods: ADG Table 9.1/9.2 segregation, Northline acceptance
 │   └── tests/               pytest
 ├── frontend/                React 19 + Vite, three.js for the 3D view, plain CSS
 │   └── src/
@@ -115,10 +116,19 @@ make build    # production build of the web app
 | `shipments[].dg_class` | Optional: a DG class (`"1"`…`"9"`), `"food"` or `"fire_risk"` |
 | `shipments[].subsidiary` | Optional, with a DG class only: up to 4 subsidiary hazards |
 
-The response has `capacity`, `total_weight`, `lower_bound`, `segregated` (some goods must travel apart)
-and, for `ffd` and `ortools`, `num_trucks`, `trucks` (each with its `shipments`, `load`, `empty` and
-`fill_percent`), `solve_time_ms` and `drop_order` (for the animation). `ortools` also has `optimal`,
-`status` and `time_limit_s`. `max_pallets` and per-shipment `pallets` are echoed only when sent.
+The response:
+
+| Field | Notes |
+|---|---|
+| `num_trucks`, `trucks` | The packing: each truck has its `shipments`, `load`, `empty` (kg) and `fill_percent` |
+| `optimal`, `status` | `true` when proven optimal (or equal to the lower bound); the CP-SAT status: `OPTIMAL`, `FEASIBLE`, or `UNKNOWN` when it found nothing in time and its first-fit starting packing is returned |
+| `lower_bound`, `lower_bounds` | No packing can use fewer trucks; the bound per limited dimension (`weight`, `pallets`) |
+| `segregated` | `true` when some dangerous goods must travel apart (the lower bound ignores that) |
+| `capacity`, `total_weight`, `total_pallets` | The inputs' totals; `max_pallets` is echoed when sent |
+| `solve_time_ms`, `time_limit_s` | How long CP-SAT ran, and its limit |
+| `drop_order` | Shipment ids truck by truck, for the loading animation |
+
+Per-shipment `pallets` is echoed only when sent.
 
 Errors: 400 for shipments that can never fit (too heavy, too many pallets) or that Northline refuses,
 422 for invalid input, 429 while 2 solves are already running.
