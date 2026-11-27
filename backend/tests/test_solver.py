@@ -118,8 +118,8 @@ async def test_demo_endpoint_response(client):
     assert set(truck) == {"truck", "shipments", "load", "empty", "fill_percent"}
     assert truck == {
         "truck": 1,
-        "shipments": [{"id": 0, "name": "S0", "weight": 560, "dg_class": None},
-                      {"id": 2, "name": "S2", "weight": 440, "dg_class": None}],
+        "shipments": [{"id": 0, "name": "S0", "weight": 560, "dg_class": None, "subsidiary": []},
+                      {"id": 2, "name": "S2", "weight": 440, "dg_class": None, "subsidiary": []}],
         "load": 1000, "empty": 0, "fill_percent": 100.0,
     }
     for t in cp["trucks"]:
@@ -344,6 +344,36 @@ async def test_demo_endpoint_segregates_dg_classes(client):
     for truck in data["ortools"]["trucks"]:
         classes = {s["dg_class"] for s in truck["shipments"]}
         assert not {"3", "5.1"} <= classes
+
+
+async def test_demo_endpoint_segregates_on_subsidiary_hazards(client):
+    # 3 x 4.3 is fine, but the 8 subsidiary x 4.3 is not (Table 9.1).
+    shipments = [{"name": "Acid thinners", "weight": 100, "dg_class": "3", "subsidiary": ["8"]},
+                 {"name": "Calcium carbide", "weight": 100, "dg_class": "4.3"}]
+    r = await client.post("/api/solve", json={"capacity": 1000, "shipments": shipments})
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["segregated"] is True and data["ortools"]["num_trucks"] == 2
+    subs = {s["name"]: s["subsidiary"] for t in data["ortools"]["trucks"] for s in t["shipments"]}
+    assert subs == {"Acid thinners": ["8"], "Calcium carbide": []}
+    # Without the subsidiary they can share a truck.
+    shipments[0]["subsidiary"] = []
+    r = await client.post("/api/solve", json={"capacity": 1000, "shipments": shipments})
+    assert r.json()["segregated"] is False and r.json()["ortools"]["num_trucks"] == 1
+
+
+@pytest.mark.parametrize("shipment", [
+    {"dg_class": "food", "subsidiary": ["8"]},
+    {"dg_class": "fire_risk", "subsidiary": ["8"]},
+    {"subsidiary": ["8"]},
+    {"dg_class": "8", "subsidiary": ["8"]},
+    {"dg_class": "3", "subsidiary": ["9"]},
+    {"dg_class": "3", "subsidiary": ["2.1", "4.1", "5.1", "6.1", "8"]},
+])
+async def test_demo_endpoint_rejects_bad_subsidiary(client, shipment):
+    r = await client.post("/api/solve", json={"capacity": 100, "shipments": [
+        {"name": "X", "weight": 10, **shipment}]})
+    assert r.status_code == 422, r.text
 
 
 async def test_demo_endpoint_northline_rule_set(client):

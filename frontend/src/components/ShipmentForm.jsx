@@ -1,7 +1,8 @@
 import { useId, useState } from "react";
-import { DgDiamond } from "../dg/DgBadge.tsx";
 import { northlineIssues } from "../dg/rules.ts";
-import { DG_OPTIONS, demoDg, nextUid, parseWeights, shipmentsFromWeights } from "../shipments.js";
+import { demoDg, ITEMS, itemByName, nextUid, parseWeights, shipmentsFromWeights } from "../shipments.js";
+import { dgClassText } from "./capacity.ts";
+import HazardPicker from "./HazardPicker.jsx";
 
 // `capacity` is null while the capacity field is empty or invalid, so rows are
 // only flagged "heavier than truck" against a real capacity. With
@@ -10,20 +11,28 @@ import { DG_OPTIONS, demoDg, nextUid, parseWeights, shipmentsFromWeights } from 
 export default function ShipmentForm({ shipments, capacity, onChange, ruleSet = "adg" }) {
   const [name, setName] = useState("");
   const [weight, setWeight] = useState("");
-  const [dgClass, setDgClass] = useState("");
+  const [hazard, setHazard] = useState({ dgClass: null, subsidiary: [] });
+  const itemsId = useId();
+
+  // Typing or picking a catalogue item ("Methanol") fills in its DG data.
+  function changeName(value) {
+    setName(value);
+    const it = itemByName(value);
+    if (it) setHazard({ dgClass: it.dgClass, subsidiary: [...it.subsidiary] });
+  }
 
   function add(e) {
     e.preventDefault();
     const w = Number(weight);
     if (!name.trim() || !(w > 0)) return;
-    onChange([...shipments, { uid: nextUid(), name: name.trim(), weight: Math.round(w), dgClass: dgClass || null }]);
+    onChange([...shipments, { uid: nextUid(), name: name.trim(), weight: Math.round(w), ...hazard }]);
     setName("");
     setWeight("");
-    setDgClass("");
+    setHazard({ dgClass: null, subsidiary: [] });
   }
 
-  function update(uid, field, value) {
-    onChange(shipments.map((s) => (s.uid === uid ? { ...s, [field]: value } : s)));
+  function update(uid, patch) {
+    onChange(shipments.map((s) => (s.uid === uid ? { ...s, ...patch } : s)));
   }
 
   function remove(uid) {
@@ -37,7 +46,7 @@ export default function ShipmentForm({ shipments, capacity, onChange, ruleSet = 
         {shipments.map((s) => {
           const tooHeavy = capacity != null && Number(s.weight) > capacity;
           const refused = ruleSet === "northline"
-            ? northlineIssues(demoDg(s.dgClass)).find((i) => i.kind === "prohibited")
+            ? northlineIssues(demoDg(s.dgClass, s.subsidiary)).find((i) => i.kind === "prohibited")
             : null;
           const errId = `row-err-${s.uid}`;
           const dgErrId = `row-dg-err-${s.uid}`;
@@ -46,7 +55,7 @@ export default function ShipmentForm({ shipments, capacity, onChange, ruleSet = 
               <input
                 className="name"
                 value={s.name}
-                onChange={(e) => update(s.uid, "name", e.target.value)}
+                onChange={(e) => update(s.uid, { name: e.target.value })}
                 aria-label="Shipment name"
               />
               <input
@@ -54,17 +63,20 @@ export default function ShipmentForm({ shipments, capacity, onChange, ruleSet = 
                 type="number"
                 min="1"
                 value={s.weight}
-                onChange={(e) => update(s.uid, "weight", e.target.value)}
+                onChange={(e) => update(s.uid, { weight: e.target.value })}
                 aria-label={`Weight of ${s.name || "shipment"} in kg`}
                 aria-invalid={tooHeavy || undefined}
                 aria-describedby={tooHeavy ? errId : undefined}
               />
               <span className="unit">kg</span>
-              <DgSelect
-                value={s.dgClass}
-                onChange={(v) => update(s.uid, "dgClass", v)}
-                label={`Dangerous goods class of ${s.name || "shipment"}`}
+              <HazardPicker
+                value={s}
+                onChange={(h) => update(s.uid, h)}
+                name={s.name}
+                others={shipments.filter((o) => o.uid !== s.uid)}
+                ruleSet={ruleSet}
                 describedBy={refused ? dgErrId : undefined}
+                invalid={Boolean(refused)}
               />
               <button
                 type="button"
@@ -86,9 +98,15 @@ export default function ShipmentForm({ shipments, capacity, onChange, ruleSet = 
         <input
           placeholder="Shipment name"
           aria-label="New shipment name"
+          list={itemsId}
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => changeName(e.target.value)}
         />
+        <datalist id={itemsId}>
+          {ITEMS.map((it) => (
+            <option key={it.name} value={it.name}>{dgClassText(it.dgClass, it.subsidiary) || "General freight"}</option>
+          ))}
+        </datalist>
         <input
           placeholder="Weight"
           aria-label="New shipment weight in kg"
@@ -98,33 +116,12 @@ export default function ShipmentForm({ shipments, capacity, onChange, ruleSet = 
           onChange={(e) => setWeight(e.target.value)}
         />
         <span className="unit">kg</span>
-        <DgSelect value={dgClass} onChange={(v) => setDgClass(v ?? "")} label="New shipment dangerous goods class" />
+        <HazardPicker value={hazard} onChange={setHazard} name={name.trim() || "new shipment"} others={shipments} ruleSet={ruleSet} />
         <button type="submit">+ Add shipment</button>
       </form>
 
       <PasteWeights shipments={shipments} onChange={onChange} />
     </div>
-  );
-}
-
-/** Compact DG class picker: "—" (general freight), food, fire-risk or a class. */
-function DgSelect({ value, onChange, label, describedBy }) {
-  const v = value ?? "";
-  const code = v === "food" ? "F" : v === "fire_risk" ? "R" : v;
-  return (
-    <span className="dg-select">
-      {code ? <DgDiamond code={code} size="sm" /> : null}
-      <select
-        value={v}
-        onChange={(e) => onChange(e.target.value || null)}
-        aria-label={label}
-        aria-describedby={describedBy}
-        title={v ? DG_OPTIONS.find((o) => o.value === v)?.label : "Not dangerous goods"}
-      >
-        <option value="">— not DG</option>
-        {DG_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </span>
   );
 }
 

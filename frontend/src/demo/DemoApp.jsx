@@ -33,7 +33,6 @@ export default function App() {
   const [focusId, setFocusId] = useState(null);
   const [view, setView] = useState("2d"); // "2d" bars or "3d" trucks
   const [ruleSet, setRuleSet] = useState("adg"); // "adg" or "northline" (dangerous goods rules)
-  const [randomDg, setRandomDg] = useState(false); // random shipments get random DG classes
   const timer = useRef(null);
   const resultsRef = useRef(null);
   const errorRef = useRef(null);
@@ -50,7 +49,7 @@ export default function App() {
   const dgCount = shipments.filter((s) => s.dgClass).length;
   // Pairs of shipments that must travel apart (the server decides on Solve).
   const dgConflicts = useMemo(
-    () => (dgCount ? checkAll(shipments, (s) => demoDg(s.dgClass)).filter((p) => p.status === "incompatible").length : 0),
+    () => (dgCount ? checkAll(shipments, (s) => demoDg(s.dgClass, s.subsidiary)).filter((p) => p.status === "incompatible").length : 0),
     [shipments, dgCount]
   );
 
@@ -146,11 +145,12 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           capacity,
-          // dg_class only for dangerous goods, so a plain request looks as before
+          // dg_class / subsidiary only for dangerous goods, so a plain request looks as before
           shipments: shipments.map((s) => ({
             name: s.name.trim(),
             weight: Number(s.weight),
             ...(s.dgClass ? { dg_class: s.dgClass } : {}),
+            ...(s.subsidiary?.length ? { subsidiary: s.subsidiary } : {}),
           })),
           rule_set: ruleSet,
         }),
@@ -286,13 +286,9 @@ export default function App() {
         <ShipmentForm shipments={shipments} capacity={capacity} onChange={changeShipments} ruleSet={ruleSet} />
 
         <div className="actions">
-          <button type="button" onClick={() => changeShipments(randomShipments(capacity ?? undefined, 20, { dg: randomDg }))}>
+          <button type="button" onClick={() => changeShipments(randomShipments(capacity ?? undefined, 20))}>
             🎲 Load random shipments
           </button>
-          <label className="random-dg">
-            <input type="checkbox" checked={randomDg} onChange={(e) => setRandomDg(e.target.checked)} />
-            Random DG classes
-          </label>
           <button type="button" onClick={loadExample}>
             🧪 Example where FFD loses
           </button>
@@ -339,7 +335,7 @@ export default function App() {
                 <>
                   <span className="inspector-name">{active.shipment.name}</span>
                   <span>{active.shipment.weight} kg</span>
-                  {active.shipment.dg_class && <span>DG: <b>{dgClassText(active.shipment.dg_class)}</b></span>}
+                  {active.shipment.dg_class && <span>DG: <b>{dgClassText(active.shipment.dg_class, active.shipment.subsidiary)}</b></span>}
                   <span>FFD: <b>truck {active.ffd}</b></span>
                   <span>OR-Tools: <b>truck {active.ortools}</b></span>
                 </>

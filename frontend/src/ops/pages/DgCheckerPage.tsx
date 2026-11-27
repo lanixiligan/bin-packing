@@ -2,7 +2,7 @@
 // ADG Code Table 9.1 / 9.2 (and Northline's acceptance rules), with the tables
 // for reference. The verdicts come from the shared rules engine (src/dg/rules.ts),
 // the same one the backend mirrors, so the checker and the planner agree.
-import { useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useSearchParams } from "react-router";
 import { PageHeader } from "../../shell/AppShell";
 import {
@@ -16,10 +16,10 @@ import {
   newLoad, primaryName, primaryOfCol, primaryText, toDg, withPrimary, DEFAULT_EXPLOSIVE,
   type LoadState, type PackingGroup, type Primary,
 } from "../dg/load";
-import { codeKind, codeWords } from "../dg/codes";
+import { codeKind, codeWords, refTabOf, type RefTab } from "../dg/codes";
 import MatrixTable, { Code } from "../dg/MatrixTable";
-import NorthlineSection from "../dg/NorthlineSection";
-import { ExceptionsCard, SegregationCard, SourcesNote, Table92Card } from "../dg/ReferenceSections";
+import ReferenceTabs from "../dg/ReferenceTabs";
+import { SourcesNote } from "../dg/ReferenceSections";
 import "../dg-checker.css";
 
 type Side = "A" | "B";
@@ -27,71 +27,189 @@ const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce
 
 export default function DgCheckerPage() {
   const [params, setParams] = useSearchParams();
-  const ruleSet: RuleSet = params.get("rules") === "northline" ? "northline" : "adg";
-  const setRuleSet = (r: RuleSet) => {
+  const setParam = (key: string, value: string | null) => {
     const next = new URLSearchParams(params);
-    if (r === "northline") next.set("rules", r);
-    else next.delete("rules");
+    if (value) next.set(key, value);
+    else next.delete(key);
     setParams(next, { replace: true });
   };
+  const ruleSet: RuleSet = params.get("rules") === "northline" ? "northline" : "adg";
+  const setRuleSet = (r: RuleSet) => setParam("rules", r === "northline" ? r : null);
+  const refTab = refTabOf(params.get("ref"), ruleSet === "northline");
+  const setRefTab = (t: RefTab) => setParam("ref", t === "exceptions" ? null : t);
 
   const [a, setA] = useState<LoadState>(() => newLoad("3"));
   const [b, setB] = useState<LoadState>(() => newLoad("5.1"));
-  const checkerHeading = useRef<HTMLHeadingElement>(null);
-
   const verdict = useMemo(() => verdictFor(a, b), [a, b]);
+  const words = verdictWords(verdict);
 
+  // Load A only takes DG classes, so food or fire-risk goods in B can't move to A.
+  const swap = isGoods(b.primary) ? () => { setA(b); setB(a); } : undefined;
+
+  // Selecting a matrix cell loads the pair; the verdict bar shows the result, so the page doesn't jump.
   const pick = (row: Col, col: Col) => {
     setA(newLoad(primaryOfCol(row)));
     setB(newLoad(primaryOfCol(col)));
-    const h = checkerHeading.current;
-    h?.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
-    h?.focus({ preventScroll: true });
+  };
+
+  const page = useRef<HTMLDivElement>(null);
+  const anchor = useRef<HTMLDivElement>(null);
+  const verdictBox = useRef<HTMLElement>(null);
+  const top = useHeaderHeight();
+  const barOn = useBarVisible(page, anchor, verdictBox, top);
+  const showDetails = () => {
+    const el = verdictBox.current;
+    el?.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
+    el?.focus({ preventScroll: true });
   };
 
   return (
-    <div className="dgc">
+    <div className="dgc" ref={page} style={{ "--dgc-top": `${top}px` } as React.CSSProperties}>
       <PageHeader
         title="Dangerous goods"
         subtitle="Can these dangerous goods travel together? Select two loads: the checker applies ADG Code Table 9.1 and Table 9.2 to primary and subsidiary hazards."
         actions={<RuleSetToggle value={ruleSet} onChange={setRuleSet} />}
       />
 
-      <section className="dgc-checker" aria-labelledby="dgc-chk-h">
-        <h2 id="dgc-chk-h" ref={checkerHeading} tabIndex={-1} className="dgc-h2">Check two loads</h2>
-        <div className="dgc-loads">
-          <LoadCard side="A" load={a} onChange={setA} ruleSet={ruleSet} showT92={verdict.v.exceptions.includes(6)} />
-          <LoadCard side="B" load={b} onChange={setB} ruleSet={ruleSet} showT92={verdict.v.exceptions.includes(6)} other />
-        </div>
-        <VerdictBox a={a} b={b} setA={setA} setB={setB} result={verdict} ruleSet={ruleSet} />
-      </section>
+      <div ref={anchor} className="dgc-bar-anchor" />
+      <VerdictBar a={a} b={b} words={words} on={barOn} onSwap={swap} onDetails={showDetails} />
 
-      <section className="card dgc-section" aria-labelledby="dgc-mx-h">
-        <h2 id="dgc-mx-h">Table 9.1 matrix</h2>
-        <p>Each cell shows the ADG code for the row class against the column class. Select a cell to load that pair into the checker.</p>
-        <ul className="dgc-legend" aria-label="Legend">
-          <li><span className="dgc-code k-ok">0</span> Compatible</li>
-          <li><span className="dgc-code k-cond">0<sup>n</sup></span> Compatible, unless exception n applies</li>
-          <li><span className="dgc-code k-bad">N</span> Incompatible</li>
-          <li><span className="dgc-code k-bad">N<sup>8</sup></span> Incompatible with food</li>
-          <li><span className="dgc-code k-ex">(1)</span> Explosives, see exception 1</li>
-        </ul>
-        <MatrixTable selRow={colOf(a.primary)} selCol={colOf(b.primary)} onPick={pick} />
-        <p className="muted small">
-          Goods are incompatible if any of these conditions occur: the primary hazard of one is incompatible with the primary
-          hazard of the other; the primary hazard of one is incompatible with a subsidiary hazard of the other; or a subsidiary
-          hazard of one is incompatible with a subsidiary hazard of the other.
-        </p>
-      </section>
+      <div className="dgc-work">
+        <section className="dgc-checker" aria-labelledby="dgc-chk-h">
+          <div className="dgc-chk-head">
+            <h2 id="dgc-chk-h" className="dgc-h2">Check two loads</h2>
+            <SwapButton onSwap={swap} />
+          </div>
+          <div className="dgc-loads">
+            <LoadCard side="A" load={a} onChange={setA} ruleSet={ruleSet} showT92={verdict.v.exceptions.includes(6)} />
+            <LoadCard side="B" load={b} onChange={setB} ruleSet={ruleSet} showT92={verdict.v.exceptions.includes(6)} other />
+          </div>
+          <VerdictBox ref={verdictBox} a={a} b={b} setA={setA} setB={setB} result={verdict} words={words} ruleSet={ruleSet} />
+        </section>
 
-      <div className="dgc-grid2">
-        <ExceptionsCard />
-        <Table92Card />
+        <section className="card dgc-section dgc-matrix" aria-labelledby="dgc-mx-h">
+          <h2 id="dgc-mx-h">Table 9.1 matrix</h2>
+          <p className="small">Each cell shows the ADG code for the row class against the column class. Select a cell to load that pair into the checker.</p>
+          <ul className="dgc-legend" aria-label="Legend">
+            <li><span className="dgc-code k-ok">0</span> Compatible</li>
+            <li><span className="dgc-code k-cond">0<sup>n</sup></span> Unless exception n</li>
+            <li><span className="dgc-code k-bad">N</span> Incompatible</li>
+            <li><span className="dgc-code k-bad">N<sup>8</sup></span> Not with food</li>
+            <li><span className="dgc-code k-ex">(1)</span> Explosives, exception 1</li>
+          </ul>
+          <MatrixTable selRow={colOf(a.primary)} selCol={colOf(b.primary)} onPick={pick} />
+          <p className="muted small">
+            Goods are incompatible if any of these conditions occur: the primary hazard of one is incompatible with the primary
+            hazard of the other; the primary hazard of one is incompatible with a subsidiary hazard of the other; or a subsidiary
+            hazard of one is incompatible with a subsidiary hazard of the other.
+          </p>
+        </section>
       </div>
-      <SegregationCard />
-      {ruleSet === "northline" ? <NorthlineSection /> : null}
+
+      <ReferenceTabs value={refTab} onChange={setRefTab} northline={ruleSet === "northline"} />
       <SourcesNote />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sticky verdict bar
+// ---------------------------------------------------------------------------
+
+/** Height of the sticky shell header, so the verdict bar sits right under it. */
+function useHeaderHeight(): number {
+  const [h, setH] = useState(56);
+  useEffect(() => {
+    const header = document.querySelector<HTMLElement>(".shell-header");
+    if (!header || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setH(header.offsetHeight));
+    ro.observe(header);
+    return () => ro.disconnect();
+  }, []);
+  return h;
+}
+
+/**
+ * Show the bar once it has stuck under the header (the page has scrolled past its
+ * place) and the full verdict is out of view, so it never covers the page at rest
+ * and never repeats a verdict that is already on screen.
+ */
+function useBarVisible(page: RefObject<HTMLElement | null>, anchor: RefObject<HTMLElement | null>, verdict: RefObject<HTMLElement | null>, top: number): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const s = anchor.current?.getBoundingClientRect();
+      const band = verdict.current?.querySelector(".dgc-band")?.getBoundingClientRect();
+      if (!s || !band) return;
+      const stuck = s.top < top;
+      const bandInView = band.bottom > top + 24 && band.top < window.innerHeight - 24;
+      setOn(stuck && !bandInView);
+    };
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(update); };
+    schedule();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
+    if (page.current) ro?.observe(page.current);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      ro?.disconnect();
+    };
+  }, [page, anchor, verdict, top]);
+  return on;
+}
+
+/** A counter that goes up each time `value` changes (not on mount): key an element on it to replay a flash. */
+function useChangeCount(value: string): number {
+  const [prev, setPrev] = useState(value);
+  const [n, setN] = useState(0);
+  if (prev !== value) {
+    setPrev(value);
+    setN(n + 1);
+  }
+  return n;
+}
+
+function VerdictBar({ a, b, words, on, onSwap, onDetails }: {
+  a: LoadState; b: LoadState; words: VerdictWords; on: boolean;
+  onSwap?: () => void; onDetails: () => void;
+}) {
+  const flash = useChangeCount(words.word);
+  // Hidden from assistive tech: the verdict box below announces changes (aria-live).
+  return (
+    <div className="dgc-bar-wrap">
+      <div className={`dgc-bar ${words.cls}${on ? " on" : ""}`} aria-hidden={!on} inert={!on}>
+        {flash ? <span key={flash} className="dgc-flash" aria-hidden="true" /> : null}
+        <p className="dgc-bar-word">{words.word}</p>
+        <p className="dgc-bar-pair">
+          <span><DgDiamond code={a.primary} size="sm" />A: {primaryText(a)}</span>
+          <span><DgDiamond code={b.primary} size="sm" />B: {primaryText(b)}</span>
+        </p>
+        <div className="dgc-bar-actions">
+          <SwapButton onSwap={onSwap} compact />
+          <button type="button" className="secondary" onClick={onDetails}>Details</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SwapButton({ onSwap, compact = false }: { onSwap?: () => void; compact?: boolean }) {
+  return (
+    <button
+      type="button"
+      className="secondary dgc-swap"
+      onClick={onSwap}
+      disabled={!onSwap}
+      aria-label={compact ? "Swap load A and load B" : undefined}
+      title={onSwap ? "Swap load A and load B" : "Food and fire-risk goods can only be load B"}
+    >
+      <span aria-hidden="true">⇄</span>{compact ? null : " Swap A and B"}
+    </button>
   );
 }
 
@@ -143,25 +261,61 @@ function LoadCard({ side, load, onChange, ruleSet, showT92, other = false }: {
   const problems = validateDg(toDg(load));
   const northline = ruleSet === "northline";
 
+  // The class grid is long: show the chosen class and open the grid only to change it.
+  const [open, setOpen] = useState(false);
+  const toggle = useRef<HTMLButtonElement>(null);
+  const grid = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open) grid.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus();
+  }, [open]);
+  const close = () => { setOpen(false); toggle.current?.focus(); };
+
   return (
     <div className="card dgc-load" role="group" aria-labelledby={`${id}-h`}>
-      <h3 id={`${id}-h`}>Load {side} <span className="dgc-load-name">{primaryText(load)} · {primaryName(p)}</span></h3>
-
-      <div className="dgc-picker" role="group" aria-label={`Load ${side}: ${other ? "primary class or other goods" : "primary class"}`}>
-        {choices.map((c) => (
-          <button
-            key={c}
-            type="button"
-            className="dgc-class"
-            aria-pressed={c === p}
-            onClick={() => onChange(withPrimary(load, c))}
-          >
-            <DgDiamond code={c} />
-            <b>{c === "F" ? "Food" : c === "R" ? "Fire-risk" : c}</b>
-            <small>{SHORT[c] ?? (isGoods(c) ? CLASS_NAMES[c] : "")}</small>
-          </button>
-        ))}
+      <h3 id={`${id}-h`} className="sr-only">Load {side}: {primaryText(load)}, {primaryName(p)}</h3>
+      <div className="dgc-current">
+        <span className="dgc-side" aria-hidden="true">{side}</span>
+        <DgDiamond code={p} size="lg" />
+        <span className="dgc-current-text" aria-hidden="true">
+          <b>{primaryText(load)}</b>
+          <small>{primaryName(p)}{load.subs.length && hasSubsidiaries(p) ? ` · subsidiary ${load.subs.join(", ")}` : ""}</small>
+        </span>
+        <button
+          ref={toggle}
+          type="button"
+          className="secondary dgc-change"
+          aria-expanded={open}
+          aria-controls={open ? `${id}-classes` : undefined}
+          onClick={() => setOpen(!open)}
+        >
+          {open ? "Close" : "Change"}<span className="sr-only"> load {side} class</span>
+        </button>
       </div>
+
+      {open ? (
+        <div
+          id={`${id}-classes`}
+          ref={grid}
+          className="dgc-picker"
+          role="group"
+          aria-label={`Load ${side}: ${other ? "primary class or other goods" : "primary class"}`}
+          onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } }}
+        >
+          {choices.map((c) => (
+            <button
+              key={c}
+              type="button"
+              className="dgc-class"
+              aria-pressed={c === p}
+              onClick={() => { if (c !== p) onChange(withPrimary(load, c)); close(); }}
+            >
+              <DgDiamond code={c} />
+              <b>{c === "F" ? "Food" : c === "R" ? "Fire-risk" : c}</b>
+              <small>{SHORT[c] ?? (isGoods(c) ? CLASS_NAMES[c] : "")}</small>
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {p === "1" ? (
         <ExplosiveCode value={load.explosive} onChange={(explosive) => set({ explosive })} side={side} />
@@ -403,17 +557,26 @@ const MESSAGES = {
   exCheck: "Both loads are explosives in the same compatibility group. Check the Australian Explosives Code before you load them together.",
 };
 
-function VerdictBox({ a, b, setA, setB, result, ruleSet }: {
-  a: LoadState; b: LoadState;
-  setA: (l: LoadState) => void; setB: (l: LoadState) => void;
-  result: VerdictResult; ruleSet: RuleSet;
-}) {
-  const { v, same } = result;
+interface VerdictWords { cls: string; word: string; message: string }
+
+function verdictWords({ v, same }: VerdictResult): VerdictWords {
   const explosives = v.exceptions.includes(1);
   const [cls, word, message] =
     v.status === "ok" ? ["v-ok", "Compatible", same ? "Both loads are the same product (same UN number and details)." : MESSAGES.ok]
     : v.status === "check" ? (explosives ? ["v-check", "Check: explosives", MESSAGES.exCheck] : ["v-check", "Check specific goods", MESSAGES.check])
     : explosives ? ["v-ex", "Incompatible: explosives", MESSAGES.ex] : ["v-bad", "Incompatible", MESSAGES.incompatible];
+  return { cls, word, message };
+}
+
+function VerdictBox({ ref, a, b, setA, setB, result, words, ruleSet }: {
+  ref: RefObject<HTMLElement | null>;
+  a: LoadState; b: LoadState;
+  setA: (l: LoadState) => void; setB: (l: LoadState) => void;
+  result: VerdictResult; words: VerdictWords; ruleSet: RuleSet;
+}) {
+  const { v } = result;
+  const { cls, word, message } = words;
+  const flash = useChangeCount(word);
   const cells = cellsOf(a, b);
 
   // Exception questions, mapped onto the loads' DgInfo fields.
@@ -464,7 +627,8 @@ function VerdictBox({ a, b, setA, setB, result, ruleSet }: {
     : [];
 
   return (
-    <section className={`dgc-verdict ${cls}`} aria-label="Verdict">
+    <section ref={ref} tabIndex={-1} className={`dgc-verdict ${cls}`} aria-label="Verdict">
+      {flash ? <span key={flash} className="dgc-flash" aria-hidden="true" /> : null}
       <div className="dgc-band" aria-live="polite" aria-atomic="true">
         <p className="dgc-word">{word}</p>
         <p className="dgc-pair">

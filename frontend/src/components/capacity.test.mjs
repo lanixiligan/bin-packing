@@ -82,7 +82,10 @@ test("DG text for truck blocks", () => {
   assert.equal(dgClassText("1"), "Class 1.4S");
   assert.equal(dgClassText("food"), "Food");
   assert.equal(dgClassText("fire_risk"), "Fire-risk");
+  assert.equal(dgClassText("3", ["6.1", "8"]), "Class 3 (sub 6.1, 8)");
+  assert.equal(dgClassText("3", null), "Class 3");
   assert.equal(dgTextOf({ dg_class: "5.1" }), "Class 5.1");
+  assert.equal(dgTextOf({ dg_class: "2.2", subsidiary: ["5.1"] }), "Class 2.2 (sub 5.1)");
   assert.equal(dgTextOf({ dg_class: "8", dgLabel: "Class 8 (sub 6.1)" }), "Class 8 (sub 6.1)");
   assert.equal(dgTextOf({}), "");
 });

@@ -152,7 +152,8 @@ export function colorFor(id: number): string {
 /**
  * One block/crate in a truck: the demo's { id, name, weight } plus optional
  * volume/pallets, and optional dangerous goods: the demo's `dg_class` ("3",
- * "food", "fire_risk", …) or a ready-made `dgLabel` ("Class 5.1 (sub 8)").
+ * "food", "fire_risk", …) with its `subsidiary` hazards, or a ready-made
+ * `dgLabel` ("Class 5.1 (sub 8)").
  */
 export interface ShipmentLike {
   id: number;
@@ -161,20 +162,25 @@ export interface ShipmentLike {
   volume?: number;
   pallets?: number;
   dg_class?: string | null;
+  subsidiary?: string[] | null;
   dgLabel?: string | null;
 }
 
-/** Text for the demo's DG class: "Class 3", "Class 1.4S" (the demo's class 1), "Food", "Fire-risk"; "" for none. */
-export function dgClassText(dgClass: string | null | undefined): string {
+/**
+ * Text for the demo's DG class: "Class 3", "Class 3 (sub 6.1, 8)",
+ * "Class 1.4S" (the demo's class 1), "Food", "Fire-risk"; "" for none.
+ */
+export function dgClassText(dgClass: string | null | undefined, subsidiary: readonly string[] | null = []): string {
   if (!dgClass) return "";
   if (dgClass === "food") return "Food";
   if (dgClass === "fire_risk") return "Fire-risk";
-  return `Class ${dgClass === "1" ? "1.4S" : dgClass}`;
+  const subs = subsidiary?.length ? ` (sub ${subsidiary.join(", ")})` : "";
+  return `Class ${dgClass === "1" ? "1.4S" : dgClass}${subs}`;
 }
 
-/** The DG text shown on a block: its `dgLabel`, else from `dg_class`; "" for general freight. */
-export function dgTextOf(s: Pick<ShipmentLike, "dg_class" | "dgLabel">): string {
-  return s.dgLabel || dgClassText(s.dg_class);
+/** The DG text shown on a block: its `dgLabel`, else from `dg_class` and `subsidiary`; "" for general freight. */
+export function dgTextOf(s: Pick<ShipmentLike, "dg_class" | "subsidiary" | "dgLabel">): string {
+  return s.dgLabel || dgClassText(s.dg_class, s.subsidiary);
 }
 
 export const sizeOf = (s: ShipmentLike): UsageTotals => ({

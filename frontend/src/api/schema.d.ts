@@ -2181,6 +2181,11 @@ export interface components {
              * @description DG class, 'food', 'fire_risk', or null for general freight
              */
             dg_class?: ("1" | "2.1" | "2.2" | "2.3" | "3" | "4.1" | "4.2" | "4.3" | "5.1" | "5.2" | "6.1" | "6.2" | "7" | "8" | "9" | "food" | "fire_risk") | null;
+            /**
+             * Subsidiary
+             * @description Subsidiary hazards (only with a DG class, never the class itself)
+             */
+            subsidiary?: ("2.1" | "2.3" | "3" | "4.1" | "4.2" | "4.3" | "5.1" | "6.1" | "8")[];
         };
         /** SolveRequest */
         SolveRequest: {

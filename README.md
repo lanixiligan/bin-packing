@@ -235,7 +235,11 @@ The original demo is still there: shipments (items with a weight) go into trucks
 capacity) using the fewest trucks. It solves the same input with **FFD** (sort heaviest first, put each
 in the first truck with room) and **OR-Tools CP-SAT** (searches for the fewest trucks and can prove it's
 optimal), and animates both in 2D bars or 3D trucks. `POST /api/solve` is its API. Shipments can be
-given a dangerous goods class (or food / fire-risk); incompatible ones never share a truck.
+given a dangerous goods class (or food / fire-risk) and up to 4 subsidiary hazards with the hazard
+picker (click the chip in a shipment's row); incompatible ones never share a truck, and the picker lists
+which shipments a choice conflicts with. 🎲 Load random shipments draws from a small item catalogue in
+which each item carries its own DG data (Paint = Class 3, Methanol = 3 + sub 6.1, Oxygen cylinders =
+2.2 + sub 5.1, Rice = food, …); typing a catalogue name in the add row fills its DG data in too.
 
 **A case where FFD loses:** capacity 1000, shipments `560, 490, 440, 370, 360, 340, 190, 150` kg. The
 lower bound is 3. FFD needs 4 trucks (560+440, 490+370, 360+340+190, then 150 fits nowhere); CP-SAT
