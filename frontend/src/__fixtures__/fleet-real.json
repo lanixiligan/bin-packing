@@ -1,0 +1,754 @@
+{
+ "request": {
+  "items": [
+   {
+    "id": "paint",
+    "label": "Paint",
+    "kind": "pallet",
+    "type_id": "AU_STD",
+    "quantity": 4,
+    "gross_weight_kg": 450.0,
+    "height_mm": 1200,
+    "stackable": true,
+    "temp_controlled": false,
+    "dg": {
+     "dg_class": "3",
+     "subsidiary": [],
+     "container": "package",
+     "t92": [],
+     "carrier_tags": [],
+     "food": false,
+     "fire_risk": false
+    }
+   },
+   {
+    "id": "chlor",
+    "label": "Pool chlorine",
+    "kind": "pallet",
+    "type_id": "AU_STD",
+    "quantity": 3,
+    "gross_weight_kg": 600.0,
+    "height_mm": 1100,
+    "stackable": false,
+    "temp_controlled": false,
+    "dg": {
+     "dg_class": "5.1",
+     "subsidiary": [],
+     "container": "package",
+     "t92": [],
+     "carrier_tags": [],
+     "food": false,
+     "fire_risk": false
+    }
+   },
+   {
+    "id": "steel",
+    "label": "Steel",
+    "kind": "pallet",
+    "type_id": "AU_STD",
+    "quantity": 6,
+    "gross_weight_kg": 1000.0,
+    "height_mm": 600,
+    "stackable": false,
+    "temp_controlled": false
+   },
+   {
+    "id": "cartons",
+    "label": "Cartons",
+    "kind": "pallet",
+    "type_id": "AU_STD",
+    "quantity": 6,
+    "gross_weight_kg": 300.0,
+    "height_mm": 800,
+    "stackable": true,
+    "temp_controlled": false
+   },
+   {
+    "id": "pipes",
+    "label": "Pipes",
+    "kind": "loose",
+    "type_id": "LOOSE",
+    "length_mm": 4500,
+    "width_mm": 300,
+    "quantity": 3,
+    "gross_weight_kg": 250.0,
+    "height_mm": 300,
+    "stackable": false,
+    "temp_controlled": false
+   }
+  ],
+  "vehicle_id": "RIGID_MEDIUM",
+  "mass_scheme": "GML",
+  "rule_set": "northline"
+ },
+ "result": {
+  "vehicle_id": "RIGID_MEDIUM",
+  "vehicle_name": "Medium rigid (8 t)",
+  "body_type": "TAUTLINER",
+  "mass_scheme": "GML",
+  "fits": true,
+  "reasons": [],
+  "num_trucks": 3,
+  "trucks": [
+   {
+    "fits": true,
+    "reasons": [],
+    "warnings": [
+     {
+      "code": "DG_ON_BOARD",
+      "severity": "info",
+      "message": "This load carries dangerous goods (Class 3).",
+      "suggestion": "Check placard loads, the transport documents and the driver's DG licence requirements under the ADG Code.",
+      "item_ids": [
+       "paint"
+      ]
+     }
+    ],
+    "vehicle_id": "RIGID_MEDIUM",
+    "vehicle_name": "Medium rigid (8 t)",
+    "body_type": "TAUTLINER",
+    "mass_scheme": "GML",
+    "placements": [
+     {
+      "unit_id": "paint#1",
+      "item_id": "paint",
+      "label": "Paint",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 0,
+      "y_mm": 0,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1200,
+      "rotated": false,
+      "stack_id": 1,
+      "stack_level": 0,
+      "weight_kg": 450.0,
+      "stackable": true,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "paint#2",
+      "item_id": "paint",
+      "label": "Paint",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 0,
+      "y_mm": 1165,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1200,
+      "rotated": false,
+      "stack_id": 2,
+      "stack_level": 0,
+      "weight_kg": 450.0,
+      "stackable": true,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "paint#3",
+      "item_id": "paint",
+      "label": "Paint",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 1165,
+      "y_mm": 0,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1200,
+      "rotated": false,
+      "stack_id": 3,
+      "stack_level": 0,
+      "weight_kg": 450.0,
+      "stackable": true,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "paint#4",
+      "item_id": "paint",
+      "label": "Paint",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 1165,
+      "y_mm": 1165,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1200,
+      "rotated": false,
+      "stack_id": 4,
+      "stack_level": 0,
+      "weight_kg": 450.0,
+      "stackable": true,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "cartons#1",
+      "item_id": "cartons",
+      "label": "Cartons",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 2330,
+      "y_mm": 0,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 800,
+      "rotated": false,
+      "stack_id": 5,
+      "stack_level": 0,
+      "weight_kg": 300.0,
+      "stackable": true,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "cartons#3",
+      "item_id": "cartons",
+      "label": "Cartons",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 2330,
+      "y_mm": 1165,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 800,
+      "rotated": false,
+      "stack_id": 6,
+      "stack_level": 0,
+      "weight_kg": 300.0,
+      "stackable": true,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "cartons#5",
+      "item_id": "cartons",
+      "label": "Cartons",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 3495,
+      "y_mm": 0,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 800,
+      "rotated": false,
+      "stack_id": 7,
+      "stack_level": 0,
+      "weight_kg": 300.0,
+      "stackable": true,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "steel#1",
+      "item_id": "steel",
+      "label": "Steel",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 3495,
+      "y_mm": 1165,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 600,
+      "rotated": false,
+      "stack_id": 8,
+      "stack_level": 0,
+      "weight_kg": 1000.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "cartons#2",
+      "item_id": "cartons",
+      "label": "Cartons",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 2330,
+      "y_mm": 0,
+      "z_mm": 800,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 800,
+      "rotated": false,
+      "stack_id": 5,
+      "stack_level": 1,
+      "weight_kg": 300.0,
+      "stackable": true,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "cartons#4",
+      "item_id": "cartons",
+      "label": "Cartons",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 2330,
+      "y_mm": 1165,
+      "z_mm": 800,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 800,
+      "rotated": false,
+      "stack_id": 6,
+      "stack_level": 1,
+      "weight_kg": 300.0,
+      "stackable": true,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "cartons#6",
+      "item_id": "cartons",
+      "label": "Cartons",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 3495,
+      "y_mm": 0,
+      "z_mm": 800,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 800,
+      "rotated": false,
+      "stack_id": 7,
+      "stack_level": 1,
+      "weight_kg": 300.0,
+      "stackable": true,
+      "temp_controlled": false
+     }
+    ],
+    "unplaced": [],
+    "utilisation": {
+     "pallet_spaces": {
+      "used": 8.0,
+      "available": 8.0,
+      "pct": 100.0
+     },
+     "teu": {
+      "used": 0.0,
+      "available": 0.0,
+      "pct": 0.0
+     },
+     "payload_kg": {
+      "used": 4600.0,
+      "available": 8000.0,
+      "pct": 57.5
+     },
+     "volume_m3": {
+      "used": 13.84,
+      "available": 31.1,
+      "pct": 44.5
+     }
+    },
+    "axle_loads": [
+     {
+      "group_id": "steer",
+      "name": "Steer",
+      "load_kg": 4085.3333333333335,
+      "limit_kg": 6000.0,
+      "ratio": 0.6808888888888889,
+      "status": "ok"
+     },
+     {
+      "group_id": "rear",
+      "name": "Rear single",
+      "load_kg": 6014.666666666666,
+      "limit_kg": 9000.0,
+      "ratio": 0.6682962962962963,
+      "status": "ok"
+     }
+    ],
+    "total_weight_kg": 4600.0,
+    "max_load_height_mm": 2700,
+    "planner": "fleet",
+    "tried": null
+   },
+   {
+    "fits": true,
+    "reasons": [],
+    "warnings": [
+     {
+      "code": "DG_ON_BOARD",
+      "severity": "info",
+      "message": "This load carries dangerous goods (Class 5.1).",
+      "suggestion": "Check placard loads, the transport documents and the driver's DG licence requirements under the ADG Code.",
+      "item_ids": [
+       "chlor"
+      ]
+     },
+     {
+      "code": "UNSTACKABLE_FLOOR_SPACE",
+      "severity": "info",
+      "message": "Unstackable pallets take 3 more floor positions than stacked: steel (3 extra positions).",
+      "suggestion": "If they can be stacked (up to 1800 mm), mark them stackable to free 3 positions.",
+      "item_ids": [
+       "steel"
+      ]
+     }
+    ],
+    "vehicle_id": "RIGID_MEDIUM",
+    "vehicle_name": "Medium rigid (8 t)",
+    "body_type": "TAUTLINER",
+    "mass_scheme": "GML",
+    "placements": [
+     {
+      "unit_id": "chlor#1",
+      "item_id": "chlor",
+      "label": "Pool chlorine",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 0,
+      "y_mm": 0,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1100,
+      "rotated": false,
+      "stack_id": 1,
+      "stack_level": 0,
+      "weight_kg": 600.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "chlor#2",
+      "item_id": "chlor",
+      "label": "Pool chlorine",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 0,
+      "y_mm": 1165,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1100,
+      "rotated": false,
+      "stack_id": 2,
+      "stack_level": 0,
+      "weight_kg": 600.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "chlor#3",
+      "item_id": "chlor",
+      "label": "Pool chlorine",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 1165,
+      "y_mm": 0,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1100,
+      "rotated": false,
+      "stack_id": 3,
+      "stack_level": 0,
+      "weight_kg": 600.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "steel#2",
+      "item_id": "steel",
+      "label": "Steel",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 1165,
+      "y_mm": 1165,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 600,
+      "rotated": false,
+      "stack_id": 4,
+      "stack_level": 0,
+      "weight_kg": 1000.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "steel#3",
+      "item_id": "steel",
+      "label": "Steel",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 2330,
+      "y_mm": 0,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 600,
+      "rotated": false,
+      "stack_id": 5,
+      "stack_level": 0,
+      "weight_kg": 1000.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "steel#4",
+      "item_id": "steel",
+      "label": "Steel",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 2330,
+      "y_mm": 1165,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 600,
+      "rotated": false,
+      "stack_id": 6,
+      "stack_level": 0,
+      "weight_kg": 1000.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "steel#5",
+      "item_id": "steel",
+      "label": "Steel",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 3495,
+      "y_mm": 0,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 600,
+      "rotated": false,
+      "stack_id": 7,
+      "stack_level": 0,
+      "weight_kg": 1000.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "steel#6",
+      "item_id": "steel",
+      "label": "Steel",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 3495,
+      "y_mm": 1165,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 600,
+      "rotated": false,
+      "stack_id": 8,
+      "stack_level": 0,
+      "weight_kg": 1000.0,
+      "stackable": false,
+      "temp_controlled": false
+     }
+    ],
+    "unplaced": [],
+    "utilisation": {
+     "pallet_spaces": {
+      "used": 8.0,
+      "available": 8.0,
+      "pct": 100.0
+     },
+     "teu": {
+      "used": 0.0,
+      "available": 0.0,
+      "pct": 0.0
+     },
+     "payload_kg": {
+      "used": 6800.0,
+      "available": 8000.0,
+      "pct": 85.0
+     },
+     "volume_m3": {
+      "used": 8.55,
+      "available": 31.1,
+      "pct": 27.5
+     }
+    },
+    "axle_loads": [
+     {
+      "group_id": "steer",
+      "name": "Steer",
+      "load_kg": 4605.555555555556,
+      "limit_kg": 6000.0,
+      "ratio": 0.7675925925925926,
+      "status": "ok"
+     },
+     {
+      "group_id": "rear",
+      "name": "Rear single",
+      "load_kg": 7694.444444444444,
+      "limit_kg": 9000.0,
+      "ratio": 0.8549382716049383,
+      "status": "ok"
+     }
+    ],
+    "total_weight_kg": 6800.0,
+    "max_load_height_mm": 2200,
+    "planner": "fleet",
+    "tried": null
+   },
+   {
+    "fits": true,
+    "reasons": [],
+    "warnings": [
+     {
+      "code": "UNSTACKABLE_FLOOR_SPACE",
+      "severity": "info",
+      "message": "Unstackable items take 2 more floor positions than stacked: pipes (2 extra positions).",
+      "suggestion": "If they can be stacked (up to 1800 mm), mark them stackable to free 2 positions.",
+      "item_ids": [
+       "pipes"
+      ]
+     }
+    ],
+    "vehicle_id": "RIGID_MEDIUM",
+    "vehicle_name": "Medium rigid (8 t)",
+    "body_type": "TAUTLINER",
+    "mass_scheme": "GML",
+    "placements": [
+     {
+      "unit_id": "pipes#1",
+      "item_id": "pipes",
+      "label": "Pipes",
+      "kind": "loose",
+      "type_id": "LOOSE",
+      "deck_id": "body",
+      "x_mm": 0,
+      "y_mm": 0,
+      "z_mm": 0,
+      "length_mm": 4500,
+      "width_mm": 300,
+      "height_mm": 300,
+      "rotated": false,
+      "stack_id": 1,
+      "stack_level": 0,
+      "weight_kg": 250.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "pipes#2",
+      "item_id": "pipes",
+      "label": "Pipes",
+      "kind": "loose",
+      "type_id": "LOOSE",
+      "deck_id": "body",
+      "x_mm": 0,
+      "y_mm": 300,
+      "z_mm": 0,
+      "length_mm": 4500,
+      "width_mm": 300,
+      "height_mm": 300,
+      "rotated": false,
+      "stack_id": 2,
+      "stack_level": 0,
+      "weight_kg": 250.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "pipes#3",
+      "item_id": "pipes",
+      "label": "Pipes",
+      "kind": "loose",
+      "type_id": "LOOSE",
+      "deck_id": "body",
+      "x_mm": 0,
+      "y_mm": 600,
+      "z_mm": 0,
+      "length_mm": 4500,
+      "width_mm": 300,
+      "height_mm": 300,
+      "rotated": false,
+      "stack_id": 3,
+      "stack_level": 0,
+      "weight_kg": 250.0,
+      "stackable": false,
+      "temp_controlled": false
+     }
+    ],
+    "unplaced": [],
+    "utilisation": {
+     "pallet_spaces": {
+      "used": 3.0,
+      "available": 8.0,
+      "pct": 37.5
+     },
+     "teu": {
+      "used": 0.0,
+      "available": 0.0,
+      "pct": 0.0
+     },
+     "payload_kg": {
+      "used": 750.0,
+      "available": 8000.0,
+      "pct": 9.4
+     },
+     "volume_m3": {
+      "used": 1.22,
+      "available": 31.1,
+      "pct": 3.9
+     }
+    },
+    "axle_loads": [
+     {
+      "group_id": "steer",
+      "name": "Steer",
+      "load_kg": 3408.3333333333335,
+      "limit_kg": 6000.0,
+      "ratio": 0.5680555555555555,
+      "status": "ok"
+     },
+     {
+      "group_id": "rear",
+      "name": "Rear single",
+      "load_kg": 2841.6666666666665,
+      "limit_kg": 9000.0,
+      "ratio": 0.3157407407407407,
+      "status": "ok"
+     }
+    ],
+    "total_weight_kg": 750.0,
+    "max_load_height_mm": 1400,
+    "planner": "fleet",
+    "tried": null
+   }
+  ],
+  "unplaced": [],
+  "lower_bound": 2,
+  "lower_bounds": {
+   "weight": 2,
+   "floor": 2,
+   "volume": 2
+  },
+  "optimal": true,
+  "method": "exact",
+  "status": "OPTIMAL",
+  "solve_time_ms": 0.0,
+  "planner": "fleet"
+ }
+}
