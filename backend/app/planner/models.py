@@ -22,7 +22,7 @@ MAX_UNITS = 500
 # Warning codes shared by every planner and by the UI (keep in sync with frontend types).
 WarningCode = Literal[
     "UNKNOWN_TYPE",              # type_id not in the reference data
-    "MIXED_FREIGHT",             # pallets and containers in one plan (not supported)
+    "MIXED_FREIGHT",             # containers with pallets or loose items in one plan (not supported)
     "BODY_INCOMPATIBLE",         # e.g. pallets on a skeletal trailer, containers on a pantech
     "BODY_NOT_ALLOWED",          # body not allowed on this vehicle
     "OUT_OF_SCOPE_BODY",         # tipper, tanker, car carrier, livestock crate
@@ -53,20 +53,50 @@ class _In(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+FreightKind = Literal["pallet", "container", "loose"]
+LOOSE_TYPE = "LOOSE"  # type_id of a loose item: it has its own length x width x height
+
+
 class FreightItem(_In):
+    """One freight line. Pallets and loose items may share a plan; containers can't mix with either.
+
+    - pallet: on a pallet of `type_id` (its footprint), `height_mm` = total height incl. the pallet.
+    - loose: a long or odd item with its own `length_mm` x `width_mm` x `height_mm` (type_id "LOOSE").
+    - container: a container of `type_id`; its external size is used.
+    """
     id: str = Field(min_length=1, max_length=40)
     label: str = Field(default="", max_length=60)
-    kind: Literal["pallet", "container"]
-    type_id: str = Field(description="PalletType.id or ContainerType.id")
+    kind: FreightKind
+    type_id: str = Field(default="", description="PalletType.id or ContainerType.id; 'LOOSE' (or empty) "
+                                                 "for a loose item")
+    length_mm: int | None = Field(default=None, gt=0, le=20_000, description="Loose items only")
+    width_mm: int | None = Field(default=None, gt=0, le=20_000, description="Loose items only")
     quantity: int = Field(default=1, ge=1, le=200)
     gross_weight_kg: float = Field(gt=0, le=60_000, description="Per unit, including pallet tare")
     height_mm: int | None = Field(default=None, gt=0, le=5000,
-                                  description="Pallets: total height incl. the pallet. Containers: "
-                                              "ignored (the type's external height is used)")
+                                  description="Pallets: total height incl. the pallet. Loose: its "
+                                              "height (required). Containers: ignored (the type's "
+                                              "external height is used)")
     stackable: bool = False
     temp_controlled: bool = False
     dg: DgInfo | None = Field(default=None, description="Dangerous goods data (ADG class, subsidiary "
                                                         "hazards, food / fire-risk); null = general freight")
+
+    @model_validator(mode="after")
+    def _kind_fields(self) -> "FreightItem":
+        if self.kind == "loose":
+            if self.type_id in ("", LOOSE_TYPE):
+                self.type_id = LOOSE_TYPE
+            else:
+                raise ValueError(f"A loose item has no type (got '{self.type_id}'); give its size instead.")
+            if self.length_mm is None or self.width_mm is None or self.height_mm is None:
+                raise ValueError("A loose item needs a length, a width and a height.")
+        else:
+            if not self.type_id:
+                raise ValueError(f"Pick a {self.kind} type.")
+            if self.length_mm is not None or self.width_mm is not None:
+                raise ValueError(f"A {self.kind} takes its length and width from its type.")
+        return self
 
 
 class PlanRequest(_In):
@@ -104,7 +134,7 @@ class Placement(BaseModel):
     unit_id: str = Field(description='"<item_id>#<n>", n from 1')
     item_id: str
     label: str
-    kind: Literal["pallet", "container"]
+    kind: FreightKind
     type_id: str
     deck_id: str
     x_mm: int = Field(description="From the front of the deck to the unit's front edge")
@@ -166,3 +196,35 @@ class PlanResult(BaseModel):
     planner: str
     # Set when the request asked for vehicle_id="suggest": every vehicle tried, smallest first.
     tried: list[VehicleTried] | None = None
+
+
+FleetMethod = Literal["exact", "heuristic"]
+
+
+class FleetResult(BaseModel):
+    """POST /api/plan/fleet: the freight split across the fewest trucks of one vehicle type.
+
+    Every truck is a full single-vehicle PlanResult (placements, axle loads, utilisation, warnings),
+    so the UI shows each one exactly like a single-truck plan. Pallets and loose items only.
+    """
+    vehicle_id: str
+    vehicle_name: str
+    body_type: str
+    mass_scheme: MassScheme
+    fits: bool = Field(description="True when every unit is in a truck and every truck fits")
+    reasons: list[str] = Field(default_factory=list,
+                               description="Why not, in plain language (e.g. units no truck can take)")
+    num_trucks: int
+    trucks: list[PlanResult] = Field(description="Truck 1 first; each one's vehicle_id is the fleet's")
+    unplaced: list[str] = Field(default_factory=list,
+                                description="unit_ids no truck of this type can ever take (see reasons)")
+    lower_bound: int = Field(description="No split can use fewer trucks: max of lower_bounds")
+    lower_bounds: dict[str, int] = Field(
+        description="weight: ceil(kg / payload); floor: ceil(non-stackable floor area / deck area); "
+                    "volume: ceil(m3 / load volume)")
+    optimal: bool = Field(description="Proven fewest trucks (or equal to the lower bound)")
+    method: FleetMethod = Field(description="'exact': CP-SAT (small loads); 'heuristic': the planner's "
+                                            "placement truck by truck (big loads, never proven)")
+    status: str = Field(description="CP-SAT status (OPTIMAL, FEASIBLE, UNKNOWN) or HEURISTIC")
+    solve_time_ms: float
+    planner: str

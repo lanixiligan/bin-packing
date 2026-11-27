@@ -1,0 +1,490 @@
+{
+ "request": {
+  "items": [
+   {
+    "id": "paint",
+    "label": "Paint",
+    "kind": "pallet",
+    "type_id": "AU_STD",
+    "length_mm": null,
+    "width_mm": null,
+    "quantity": 4,
+    "gross_weight_kg": 450.0,
+    "height_mm": 1200,
+    "stackable": true,
+    "temp_controlled": false,
+    "dg": {
+     "dg_class": "3",
+     "subsidiary": [],
+     "packing_group": null,
+     "un_number": null,
+     "explosive_code": null,
+     "container": "package",
+     "t92": [],
+     "carrier_tags": [],
+     "food": false,
+     "fire_risk": false
+    }
+   },
+   {
+    "id": "chlor",
+    "label": "Pool chlorine",
+    "kind": "pallet",
+    "type_id": "AU_STD",
+    "length_mm": null,
+    "width_mm": null,
+    "quantity": 3,
+    "gross_weight_kg": 600.0,
+    "height_mm": 1100,
+    "stackable": false,
+    "temp_controlled": false,
+    "dg": {
+     "dg_class": "5.1",
+     "subsidiary": [],
+     "packing_group": null,
+     "un_number": null,
+     "explosive_code": null,
+     "container": "package",
+     "t92": [],
+     "carrier_tags": [],
+     "food": false,
+     "fire_risk": false
+    }
+   },
+   {
+    "id": "cem",
+    "label": "Cement",
+    "kind": "pallet",
+    "type_id": "AU_STD",
+    "length_mm": null,
+    "width_mm": null,
+    "quantity": 6,
+    "gross_weight_kg": 900.0,
+    "height_mm": 1000,
+    "stackable": false,
+    "temp_controlled": false,
+    "dg": null
+   }
+  ],
+  "vehicle_id": "RIGID_MEDIUM",
+  "body_type": null,
+  "mass_scheme": "GML",
+  "rule_set": "northline",
+  "overrides": null
+ },
+ "result": {
+  "vehicle_id": "RIGID_MEDIUM",
+  "vehicle_name": "Medium rigid (8 t)",
+  "body_type": "TAUTLINER",
+  "mass_scheme": "GML",
+  "fits": true,
+  "reasons": [],
+  "num_trucks": 2,
+  "trucks": [
+   {
+    "fits": true,
+    "reasons": [],
+    "warnings": [
+     {
+      "code": "DG_ON_BOARD",
+      "severity": "info",
+      "message": "This load carries dangerous goods (Class 3).",
+      "suggestion": "Check placard loads, the transport documents and the driver's DG licence requirements under the ADG Code.",
+      "item_ids": [
+       "paint"
+      ]
+     }
+    ],
+    "vehicle_id": "RIGID_MEDIUM",
+    "vehicle_name": "Medium rigid (8 t)",
+    "body_type": "TAUTLINER",
+    "mass_scheme": "GML",
+    "placements": [
+     {
+      "unit_id": "paint#1",
+      "item_id": "paint",
+      "label": "Paint",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 0,
+      "y_mm": 0,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1200,
+      "rotated": false,
+      "stack_id": 1,
+      "stack_level": 0,
+      "weight_kg": 450.0,
+      "stackable": true,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "paint#2",
+      "item_id": "paint",
+      "label": "Paint",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 0,
+      "y_mm": 1165,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1200,
+      "rotated": false,
+      "stack_id": 2,
+      "stack_level": 0,
+      "weight_kg": 450.0,
+      "stackable": true,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "cem#1",
+      "item_id": "cem",
+      "label": "Cement",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 1165,
+      "y_mm": 0,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1000,
+      "rotated": false,
+      "stack_id": 3,
+      "stack_level": 0,
+      "weight_kg": 900.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "cem#2",
+      "item_id": "cem",
+      "label": "Cement",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 1165,
+      "y_mm": 1165,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1000,
+      "rotated": false,
+      "stack_id": 4,
+      "stack_level": 0,
+      "weight_kg": 900.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "cem#3",
+      "item_id": "cem",
+      "label": "Cement",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 2330,
+      "y_mm": 0,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1000,
+      "rotated": false,
+      "stack_id": 5,
+      "stack_level": 0,
+      "weight_kg": 900.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "cem#4",
+      "item_id": "cem",
+      "label": "Cement",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 2330,
+      "y_mm": 1165,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1000,
+      "rotated": false,
+      "stack_id": 6,
+      "stack_level": 0,
+      "weight_kg": 900.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "paint#3",
+      "item_id": "paint",
+      "label": "Paint",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 3495,
+      "y_mm": 0,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1200,
+      "rotated": false,
+      "stack_id": 7,
+      "stack_level": 0,
+      "weight_kg": 450.0,
+      "stackable": true,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "paint#4",
+      "item_id": "paint",
+      "label": "Paint",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 3495,
+      "y_mm": 1165,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1200,
+      "rotated": false,
+      "stack_id": 8,
+      "stack_level": 0,
+      "weight_kg": 450.0,
+      "stackable": true,
+      "temp_controlled": false
+     }
+    ],
+    "unplaced": [],
+    "utilisation": {
+     "pallet_spaces": {
+      "used": 8.0,
+      "available": 8.0,
+      "pct": 100.0
+     },
+     "teu": {
+      "used": 0.0,
+      "available": 0.0,
+      "pct": 0.0
+     },
+     "payload_kg": {
+      "used": 5400.0,
+      "available": 8000.0,
+      "pct": 67.5
+     },
+     "volume_m3": {
+      "used": 11.94,
+      "available": 31.1,
+      "pct": 38.4
+     }
+    },
+    "axle_loads": [
+     {
+      "group_id": "steer",
+      "name": "Steer",
+      "load_kg": 4604.0,
+      "limit_kg": 6000.0,
+      "ratio": 0.7673333333333333,
+      "status": "ok"
+     },
+     {
+      "group_id": "rear",
+      "name": "Rear single",
+      "load_kg": 6296.0,
+      "limit_kg": 9000.0,
+      "ratio": 0.6995555555555556,
+      "status": "ok"
+     }
+    ],
+    "total_weight_kg": 5400.0,
+    "max_load_height_mm": 2300,
+    "planner": "heuristic",
+    "tried": null
+   },
+   {
+    "fits": true,
+    "reasons": [],
+    "warnings": [
+     {
+      "code": "DG_ON_BOARD",
+      "severity": "info",
+      "message": "This load carries dangerous goods (Class 5.1).",
+      "suggestion": "Check placard loads, the transport documents and the driver's DG licence requirements under the ADG Code.",
+      "item_ids": [
+       "chlor"
+      ]
+     }
+    ],
+    "vehicle_id": "RIGID_MEDIUM",
+    "vehicle_name": "Medium rigid (8 t)",
+    "body_type": "TAUTLINER",
+    "mass_scheme": "GML",
+    "placements": [
+     {
+      "unit_id": "chlor#1",
+      "item_id": "chlor",
+      "label": "Pool chlorine",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 620,
+      "y_mm": 0,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1100,
+      "rotated": false,
+      "stack_id": 1,
+      "stack_level": 0,
+      "weight_kg": 600.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "chlor#2",
+      "item_id": "chlor",
+      "label": "Pool chlorine",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 620,
+      "y_mm": 1165,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1100,
+      "rotated": false,
+      "stack_id": 2,
+      "stack_level": 0,
+      "weight_kg": 600.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "cem#5",
+      "item_id": "cem",
+      "label": "Cement",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 1785,
+      "y_mm": 0,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1000,
+      "rotated": false,
+      "stack_id": 3,
+      "stack_level": 0,
+      "weight_kg": 900.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "cem#6",
+      "item_id": "cem",
+      "label": "Cement",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 1785,
+      "y_mm": 1165,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1000,
+      "rotated": false,
+      "stack_id": 4,
+      "stack_level": 0,
+      "weight_kg": 900.0,
+      "stackable": false,
+      "temp_controlled": false
+     },
+     {
+      "unit_id": "chlor#3",
+      "item_id": "chlor",
+      "label": "Pool chlorine",
+      "kind": "pallet",
+      "type_id": "AU_STD",
+      "deck_id": "body",
+      "x_mm": 2950,
+      "y_mm": 0,
+      "z_mm": 0,
+      "length_mm": 1165,
+      "width_mm": 1165,
+      "height_mm": 1100,
+      "rotated": false,
+      "stack_id": 5,
+      "stack_level": 0,
+      "weight_kg": 600.0,
+      "stackable": false,
+      "temp_controlled": false
+     }
+    ],
+    "unplaced": [],
+    "utilisation": {
+     "pallet_spaces": {
+      "used": 5.0,
+      "available": 8.0,
+      "pct": 62.5
+     },
+     "teu": {
+      "used": 0.0,
+      "available": 0.0,
+      "pct": 0.0
+     },
+     "payload_kg": {
+      "used": 3600.0,
+      "available": 8000.0,
+      "pct": 45.0
+     },
+     "volume_m3": {
+      "used": 7.19,
+      "available": 31.1,
+      "pct": 23.1
+     }
+    },
+    "axle_loads": [
+     {
+      "group_id": "steer",
+      "name": "Steer",
+      "load_kg": 4261.333333333334,
+      "limit_kg": 6000.0,
+      "ratio": 0.7102222222222223,
+      "status": "ok"
+     },
+     {
+      "group_id": "rear",
+      "name": "Rear single",
+      "load_kg": 4838.666666666666,
+      "limit_kg": 9000.0,
+      "ratio": 0.5376296296296296,
+      "status": "ok"
+     }
+    ],
+    "total_weight_kg": 3600.0,
+    "max_load_height_mm": 2200,
+    "planner": "heuristic",
+    "tried": null
+   }
+  ],
+  "unplaced": [],
+  "lower_bound": 2,
+  "lower_bounds": {
+   "weight": 1,
+   "floor": 2,
+   "volume": 1
+  },
+  "optimal": true,
+  "method": "exact",
+  "status": "OPTIMAL",
+  "solve_time_ms": 312.5,
+  "planner": "fleet"
+ }
+}
