@@ -1,0 +1,27 @@
+.warnings-empty { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm);
+  color: var(--color-text); }
+.warnings-empty .icon { color: var(--color-success); }
+
+.warnings-groups { display: flex; flex-direction: column; gap: var(--space-5); }
+.warnings-group-title { font-size: var(--text-sm); font-weight: var(--weight-semibold); margin-bottom: var(--space-2); }
+.warnings-group-title .muted { font-weight: var(--weight-regular); }
+
+.warnings-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+
+/* Each warning: a coloured left rule and icon (plus hidden severity text), then the message,
+   the suggestion and the freight lines it concerns. */
+.warning { display: flex; gap: var(--space-3); padding: var(--space-3); border: var(--border);
+  border-left: 3px solid var(--color-border-strong); border-radius: var(--radius-sm); background: var(--color-surface); }
+.warning--error { border-left-color: var(--color-error); }
+.warning--warning { border-left-color: var(--color-warning); }
+.warning--info { border-left-color: var(--color-info); }
+.warning-icon { flex: none; line-height: 1; padding-top: 1px; }
+.warning--error .warning-icon { color: var(--color-error); }
+.warning--warning .warning-icon { color: var(--color-warning); }
+.warning--info .warning-icon { color: var(--color-info); }
+
+.warning-body { min-width: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.warning-message { font-size: var(--text-sm); font-weight: var(--weight-medium); }
+.warning-suggestion { font-size: var(--text-sm); color: var(--color-text-muted); }
+.warning-lines { font-size: var(--text-xs); color: var(--color-text-muted); }
+.warning-line { color: var(--color-text); font-weight: var(--weight-medium); }
