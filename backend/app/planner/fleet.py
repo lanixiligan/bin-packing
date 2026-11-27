@@ -70,7 +70,8 @@ from app.reference.schemas import BodyType, MassScheme, ReferenceData, VehicleCo
 
 PLANNER = "fleet"
 EXACT_LIMIT = 80            # most units the exact solver takes; bigger loads use the heuristic
-EXACT_TIME_LIMIT_S = 10.0
+EXACT_TIME_LIMIT_S = 10.0   # for the whole exact answer
+_SOLVER_MARGIN_S = 0.5      # kept back from CP-SAT for its own overrun and for building the results
 
 # Precheck errors that rule the vehicle or body out for every unit.
 _VEHICLE_BLOCKERS = {"BODY_NOT_ALLOWED", "OUT_OF_SCOPE_BODY", "BODY_INCOMPATIBLE"}
@@ -398,7 +399,8 @@ def plan_fleet(req: PlanRequest, ref: ReferenceData, time_limit_s: float = EXACT
     bounds = {k: max(1, bounds[k]) if k == "weight" else bounds[k] for k in ("weight", "floor", "volume")}
 
     if len(packable) <= EXACT_LIMIT:
-        loads, solution = _exact_trucks(packable, items, truck, time_limit_s)
+        budget = time_limit_s - (time.perf_counter() - start) - _SOLVER_MARGIN_S
+        loads, solution = _exact_trucks(packable, items, truck, max(budget, 0.5))
         method, status, proven = "exact", solution.status, solution.status == "OPTIMAL"
     else:
         # Two passes, the better one wins: every truck offered all the units left (the biggest and
