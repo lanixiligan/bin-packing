@@ -8,8 +8,8 @@ and, with a class, up to 4 `subsidiary` hazards; incompatible shipments (ADG
 Table 9.1, app/dg.py, which also pairs subsidiary hazards) never share a truck. With
 `rule_set: "northline"`, classes Northline never accepts are rejected (400).
 
-It runs on the multi-dimension solver (app/solver/multi.py) with weight as
-the only limited dimension, so the demo and load planning share one model.
+It packs with Google OR-Tools CP-SAT (app/solver.py) and returns the fewest
+trucks it finds, with whether that is proven optimal.
 
 Pallets (optional): each shipment may take `pallets` spaces and the request
 may set `max_pallets` per truck, which then limits the pallet dimension too.
@@ -23,8 +23,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app import dg as dgrules
-from app.schemas import Capacity, PackUnit
-from app.solver.multi import solve as solve_units
+from app.solver import Capacity, Unit
+from app.solver import solve as solve_units
 
 TIME_LIMIT_SECONDS = 10.0
 MAX_SHIPMENTS = 200
@@ -137,63 +137,46 @@ def solve(req: SolveRequest):
         if refused:
             raise HTTPException(400, "Northline does not accept these shipments: " + ", ".join(refused))
 
-    # Give each shipment an id so the frontend can track it across panels.
+    # Give each shipment an id so the frontend can track it in the views.
     shipments = [
         {"id": i, "name": s.name, "weight": s.weight, "dg_class": s.dg_class, "subsidiary": s.subsidiary,
          **({"pallets": s.pallets} if s.pallets else {})}
         for i, s in enumerate(req.shipments)
     ]
-    weights = [s["weight"] for s in shipments]
-    units = [
-        PackUnit(id=s["id"], order_id=0, order_reference="", order_line_id=s["id"],
-                 item_name=s["name"], item_sku="", weight_kg=s["weight"], volume_m3=0,
-                 pallets=s.get("pallets", 0),
-                 dg=d)
-        for s, d in zip(shipments, dgs, strict=True)
-    ]
+    units = [Unit(id=s["id"], name=s["name"], weight_kg=s["weight"], pallets=s.get("pallets", 0), dg=d)
+             for s, d in zip(shipments, dgs, strict=True)]
     segregated = any(c.status == "incompatible" for c in dgrules.check_all(list({
         d.key(): d for d in dgs if not dgrules.is_general(d)}.values())))
 
-    # ---- FFD, then CP-SAT warm-started with the FFD answer ---------------
+    # ---- OR-Tools CP-SAT ------------------------------------------------
     if not _solve_slots.acquire(blocking=False):
         raise HTTPException(429, "The solver is busy with other requests. Try again in a few seconds.")
     try:
-        result, status = solve_units(units, Capacity(weight_kg=req.capacity, pallets=req.max_pallets),
-                                     TIME_LIMIT_SECONDS)
+        result = solve_units(units, Capacity(weight_kg=req.capacity, pallets=req.max_pallets),
+                             TIME_LIMIT_SECONDS)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(500, str(exc)) from exc
     finally:
         _solve_slots.release()
-    if result.ortools is None:
-        raise HTTPException(500, f"Solver did not find a solution (status: {status}).")
-    lb = result.lower_bound
-    ffd_trucks = [load.unit_ids for load in result.ffd.loads]
-    cp_trucks = [load.unit_ids for load in result.ortools.loads]
 
     return {
         "capacity": req.capacity,
         **({"max_pallets": req.max_pallets} if req.max_pallets is not None else {}),
-        "total_weight": sum(weights),
-        "lower_bound": lb,
+        "total_weight": sum(s["weight"] for s in shipments),
+        "total_pallets": sum(s.get("pallets", 0) for s in shipments),
+        # No packing can use fewer trucks: the max over dimensions of ceil(total / capacity).
+        "lower_bound": result.lower_bound,
+        "lower_bounds": result.lower_bounds,
         # True when some shipments must travel apart (the lower bound ignores that).
         "segregated": segregated,
-        "ffd": {
-            "num_trucks": len(ffd_trucks),
-            "trucks": build_result(ffd_trucks, shipments, req.capacity),
-            "solve_time_ms": round(result.ffd.solve_time_ms, 3),
-            # FFD can't prove anything by itself, but if it hits the lower
-            # bound, nobody can do better -> it is optimal.
-            "hits_lower_bound": len(ffd_trucks) == lb,
-            # Order FFD actually loaded shipments (heaviest first) -> animation.
-            "drop_order": result.ffd.drop_order,
-        },
-        "ortools": {
-            "num_trucks": len(cp_trucks),
-            "trucks": build_result(cp_trucks, shipments, req.capacity),
-            "solve_time_ms": round(result.ortools.solve_time_ms, 1),
-            "optimal": result.ortools.optimal,
-            "status": result.ortools.status,
-            "time_limit_s": TIME_LIMIT_SECONDS,
-            "drop_order": [i for truck in cp_trucks for i in truck],
-        },
+        "num_trucks": len(result.loads),
+        "trucks": build_result(result.loads, shipments, req.capacity),
+        "solve_time_ms": result.solve_time_ms,
+        "optimal": result.optimal,
+        "status": result.status,
+        "time_limit_s": TIME_LIMIT_SECONDS,
+        # Truck by truck, the order the shipments drop in (animation).
+        "drop_order": [i for truck in result.loads for i in truck],
     }
