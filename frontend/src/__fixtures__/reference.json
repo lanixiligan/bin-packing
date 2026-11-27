@@ -1,0 +1,1328 @@
+{
+ "pallets": {
+  "AU_STD": {
+   "id": "AU_STD",
+   "name": "Australian Standard",
+   "length_mm": 1165,
+   "width_mm": 1165,
+   "notes": "CHEP / Loscam hire pallet. The unit for 'pallet spaces' on Australian trucks."
+  },
+  "EURO": {
+   "id": "EURO",
+   "name": "Euro (EUR / EPAL)",
+   "length_mm": 1200,
+   "width_mm": 800,
+   "notes": ""
+  },
+  "ISO_UK": {
+   "id": "ISO_UK",
+   "name": "ISO / UK",
+   "length_mm": 1200,
+   "width_mm": 1000,
+   "notes": ""
+  },
+  "NA": {
+   "id": "NA",
+   "name": "North American (GMA)",
+   "length_mm": 1219,
+   "width_mm": 1016,
+   "notes": "48\" x 40\"."
+  },
+  "ASIA": {
+   "id": "ASIA",
+   "name": "Asia",
+   "length_mm": 1100,
+   "width_mm": 1100,
+   "notes": ""
+  },
+  "SQUARE": {
+   "id": "SQUARE",
+   "name": "Square 42\"",
+   "length_mm": 1067,
+   "width_mm": 1067,
+   "notes": "42\" x 42\", common for drums and paint."
+  }
+ },
+ "pallet_defaults": {
+  "default_pallet": "AU_STD",
+  "tare_kg": 35.0,
+  "max_stack_height_mm": 1800
+ },
+ "containers": {
+  "GP20": {
+   "id": "GP20",
+   "name": "20' General purpose",
+   "size_class": "20",
+   "ext_length_mm": 6058,
+   "ext_width_mm": 2438,
+   "ext_height_mm": 2591,
+   "int_length_mm": 5898,
+   "int_width_mm": 2352,
+   "int_height_mm": 2393,
+   "volume_m3": 33.0,
+   "tare_kg": 2250.0,
+   "max_gross_kg": 30480.0,
+   "au_pallets": 10,
+   "teu": 1.0,
+   "temp_controlled": false,
+   "specialist": false,
+   "notes": ""
+  },
+  "GP40": {
+   "id": "GP40",
+   "name": "40' General purpose",
+   "size_class": "40",
+   "ext_length_mm": 12192,
+   "ext_width_mm": 2438,
+   "ext_height_mm": 2591,
+   "int_length_mm": 12032,
+   "int_width_mm": 2352,
+   "int_height_mm": 2393,
+   "volume_m3": 67.0,
+   "tare_kg": 3750.0,
+   "max_gross_kg": 30480.0,
+   "au_pallets": 20,
+   "teu": 2.0,
+   "temp_controlled": false,
+   "specialist": false,
+   "notes": ""
+  },
+  "HC40": {
+   "id": "HC40",
+   "name": "40' High cube",
+   "size_class": "40",
+   "ext_length_mm": 12192,
+   "ext_width_mm": 2438,
+   "ext_height_mm": 2896,
+   "int_length_mm": 12032,
+   "int_width_mm": 2352,
+   "int_height_mm": 2698,
+   "volume_m3": 76.0,
+   "tare_kg": 3950.0,
+   "max_gross_kg": 30480.0,
+   "au_pallets": 20,
+   "teu": 2.0,
+   "temp_controlled": false,
+   "specialist": false,
+   "notes": ""
+  },
+  "HC45": {
+   "id": "HC45",
+   "name": "45' High cube",
+   "size_class": "45",
+   "ext_length_mm": 13716,
+   "ext_width_mm": 2438,
+   "ext_height_mm": 2896,
+   "int_length_mm": 13556,
+   "int_width_mm": 2352,
+   "int_height_mm": 2698,
+   "volume_m3": 86.0,
+   "tare_kg": 4800.0,
+   "max_gross_kg": 32500.0,
+   "au_pallets": 22,
+   "teu": 2.25,
+   "temp_controlled": false,
+   "specialist": false,
+   "notes": ""
+  },
+  "RF20": {
+   "id": "RF20",
+   "name": "20' Reefer",
+   "size_class": "20",
+   "ext_length_mm": 6058,
+   "ext_width_mm": 2438,
+   "ext_height_mm": 2591,
+   "int_length_mm": 5440,
+   "int_width_mm": 2290,
+   "int_height_mm": 2270,
+   "volume_m3": 28.0,
+   "tare_kg": 3000.0,
+   "max_gross_kg": 30480.0,
+   "au_pallets": 8,
+   "teu": 1.0,
+   "temp_controlled": true,
+   "specialist": false,
+   "notes": ""
+  },
+  "RH40": {
+   "id": "RH40",
+   "name": "40' High cube reefer",
+   "size_class": "40",
+   "ext_length_mm": 12192,
+   "ext_width_mm": 2438,
+   "ext_height_mm": 2896,
+   "int_length_mm": 11580,
+   "int_width_mm": 2290,
+   "int_height_mm": 2500,
+   "volume_m3": 67.0,
+   "tare_kg": 4500.0,
+   "max_gross_kg": 34000.0,
+   "au_pallets": 18,
+   "teu": 2.0,
+   "temp_controlled": true,
+   "specialist": false,
+   "notes": ""
+  },
+  "OT20": {
+   "id": "OT20",
+   "name": "20' Open top",
+   "size_class": "20",
+   "ext_length_mm": 6058,
+   "ext_width_mm": 2438,
+   "ext_height_mm": 2591,
+   "int_length_mm": null,
+   "int_width_mm": null,
+   "int_height_mm": null,
+   "volume_m3": null,
+   "tare_kg": 2350.0,
+   "max_gross_kg": 30480.0,
+   "au_pallets": null,
+   "teu": 1.0,
+   "temp_controlled": false,
+   "specialist": true,
+   "notes": "Removable tarpaulin roof for top loading of tall or crane-lifted cargo."
+  },
+  "OT40": {
+   "id": "OT40",
+   "name": "40' Open top",
+   "size_class": "40",
+   "ext_length_mm": 12192,
+   "ext_width_mm": 2438,
+   "ext_height_mm": 2591,
+   "int_length_mm": null,
+   "int_width_mm": null,
+   "int_height_mm": null,
+   "volume_m3": null,
+   "tare_kg": 3850.0,
+   "max_gross_kg": 30480.0,
+   "au_pallets": null,
+   "teu": 2.0,
+   "temp_controlled": false,
+   "specialist": true,
+   "notes": "Removable tarpaulin roof for top loading of tall or crane-lifted cargo."
+  },
+  "FR20": {
+   "id": "FR20",
+   "name": "20' Flat rack",
+   "size_class": "20",
+   "ext_length_mm": 6058,
+   "ext_width_mm": 2438,
+   "ext_height_mm": 2591,
+   "int_length_mm": null,
+   "int_width_mm": null,
+   "int_height_mm": null,
+   "volume_m3": null,
+   "tare_kg": 2750.0,
+   "max_gross_kg": 34000.0,
+   "au_pallets": null,
+   "teu": 1.0,
+   "temp_controlled": false,
+   "specialist": true,
+   "notes": "End walls only (often collapsible). For out-of-gauge cargo."
+  },
+  "FR40": {
+   "id": "FR40",
+   "name": "40' Flat rack",
+   "size_class": "40",
+   "ext_length_mm": 12192,
+   "ext_width_mm": 2438,
+   "ext_height_mm": 2591,
+   "int_length_mm": null,
+   "int_width_mm": null,
+   "int_height_mm": null,
+   "volume_m3": null,
+   "tare_kg": 5000.0,
+   "max_gross_kg": 45000.0,
+   "au_pallets": null,
+   "teu": 2.0,
+   "temp_controlled": false,
+   "specialist": true,
+   "notes": "End walls only (often collapsible). For out-of-gauge cargo."
+  },
+  "TK20": {
+   "id": "TK20",
+   "name": "20' ISO tank",
+   "size_class": "20",
+   "ext_length_mm": 6058,
+   "ext_width_mm": 2438,
+   "ext_height_mm": 2591,
+   "int_length_mm": null,
+   "int_width_mm": null,
+   "int_height_mm": null,
+   "volume_m3": null,
+   "tare_kg": 3700.0,
+   "max_gross_kg": 36000.0,
+   "au_pallets": null,
+   "teu": 1.0,
+   "temp_controlled": false,
+   "specialist": true,
+   "notes": "Bulk liquids in a frame. Capacity typically 21,000-26,000 L."
+  },
+  "PL20": {
+   "id": "PL20",
+   "name": "20' Platform",
+   "size_class": "20",
+   "ext_length_mm": 6058,
+   "ext_width_mm": 2438,
+   "ext_height_mm": null,
+   "int_length_mm": null,
+   "int_width_mm": null,
+   "int_height_mm": null,
+   "volume_m3": null,
+   "tare_kg": 2500.0,
+   "max_gross_kg": 34000.0,
+   "au_pallets": null,
+   "teu": 1.0,
+   "temp_controlled": false,
+   "specialist": true,
+   "notes": "Flat bed with no walls. Height depends on the platform."
+  },
+  "PL40": {
+   "id": "PL40",
+   "name": "40' Platform",
+   "size_class": "40",
+   "ext_length_mm": 12192,
+   "ext_width_mm": 2438,
+   "ext_height_mm": null,
+   "int_length_mm": null,
+   "int_width_mm": null,
+   "int_height_mm": null,
+   "volume_m3": null,
+   "tare_kg": 5500.0,
+   "max_gross_kg": 45000.0,
+   "au_pallets": null,
+   "teu": 2.0,
+   "temp_controlled": false,
+   "specialist": true,
+   "notes": "Flat bed with no walls. Height depends on the platform."
+  },
+  "DOM40": {
+   "id": "DOM40",
+   "name": "40' Australian domestic",
+   "size_class": "40",
+   "ext_length_mm": 12192,
+   "ext_width_mm": null,
+   "ext_height_mm": null,
+   "int_length_mm": null,
+   "int_width_mm": null,
+   "int_height_mm": null,
+   "volume_m3": null,
+   "tare_kg": null,
+   "max_gross_kg": null,
+   "au_pallets": null,
+   "teu": 2.0,
+   "temp_controlled": false,
+   "specialist": true,
+   "notes": "Domestic rail/road box, often wider (about 2.5 m) to take 2 AU pallets across. Dimensions vary by operator."
+  },
+  "DOM48": {
+   "id": "DOM48",
+   "name": "48' Australian domestic",
+   "size_class": "48",
+   "ext_length_mm": 14630,
+   "ext_width_mm": null,
+   "ext_height_mm": null,
+   "int_length_mm": null,
+   "int_width_mm": null,
+   "int_height_mm": null,
+   "volume_m3": null,
+   "tare_kg": null,
+   "max_gross_kg": null,
+   "au_pallets": null,
+   "teu": 2.4,
+   "temp_controlled": false,
+   "specialist": true,
+   "notes": "Domestic rail/road box, often wider (about 2.5 m) to take 2 AU pallets across. Dimensions vary by operator."
+  }
+ },
+ "bodies": {
+  "TAUTLINER": {
+   "id": "TAUTLINER",
+   "name": "Tautliner (curtainsider)",
+   "carries_pallets": true,
+   "carries_containers": false,
+   "container_optional": false,
+   "access": [
+    "side",
+    "rear"
+   ],
+   "temp_controlled": false,
+   "internal_height_mm": 2700,
+   "in_scope": true,
+   "notes": "Curtain sides open for forklift loading from either side."
+  },
+  "PANTECH": {
+   "id": "PANTECH",
+   "name": "Pantech (van)",
+   "carries_pallets": true,
+   "carries_containers": false,
+   "container_optional": false,
+   "access": [
+    "rear"
+   ],
+   "temp_controlled": false,
+   "internal_height_mm": 2600,
+   "in_scope": true,
+   "notes": "Rigid walls and roof. Loaded from the rear only, so load in reverse stop order."
+  },
+  "REFRIGERATED_PANTECH": {
+   "id": "REFRIGERATED_PANTECH",
+   "name": "Refrigerated pantech (reefer)",
+   "carries_pallets": true,
+   "carries_containers": false,
+   "container_optional": false,
+   "access": [
+    "rear"
+   ],
+   "temp_controlled": true,
+   "internal_height_mm": 2500,
+   "in_scope": true,
+   "notes": "Insulated pantech with a fridge unit. Lower internal height than a dry pantech."
+  },
+  "FLAT_TOP": {
+   "id": "FLAT_TOP",
+   "name": "Flat top (flat bed)",
+   "carries_pallets": true,
+   "carries_containers": true,
+   "container_optional": true,
+   "access": [
+    "side",
+    "rear"
+   ],
+   "temp_controlled": false,
+   "internal_height_mm": null,
+   "in_scope": true,
+   "notes": "Open deck. Takes containers only when fitted with twist locks."
+  },
+  "DROP_DECK": {
+   "id": "DROP_DECK",
+   "name": "Drop deck",
+   "carries_pallets": true,
+   "carries_containers": false,
+   "container_optional": false,
+   "access": [
+    "side",
+    "rear"
+   ],
+   "temp_controlled": false,
+   "internal_height_mm": null,
+   "in_scope": true,
+   "notes": "Stepped deck: lower rear section for taller freight. Open unless fitted with curtains."
+  },
+  "SKELETAL": {
+   "id": "SKELETAL",
+   "name": "Skeletal",
+   "carries_pallets": false,
+   "carries_containers": true,
+   "container_optional": false,
+   "access": [
+    "top"
+   ],
+   "temp_controlled": false,
+   "internal_height_mm": null,
+   "in_scope": true,
+   "notes": "Chassis frame with twist locks. Containers are lifted on and off by crane or forklift."
+  },
+  "SIDE_LOADER": {
+   "id": "SIDE_LOADER",
+   "name": "Side loader (side lifter)",
+   "carries_pallets": false,
+   "carries_containers": true,
+   "container_optional": false,
+   "access": [
+    "side"
+   ],
+   "temp_controlled": false,
+   "internal_height_mm": null,
+   "in_scope": true,
+   "notes": "Lifts containers on and off itself, no crane needed."
+  },
+  "LOW_LOADER": {
+   "id": "LOW_LOADER",
+   "name": "Low loader (float)",
+   "carries_pallets": false,
+   "carries_containers": false,
+   "container_optional": false,
+   "access": [
+    "rear"
+   ],
+   "temp_controlled": false,
+   "internal_height_mm": null,
+   "in_scope": true,
+   "notes": "Heavy machinery and over-dimension loads. In scope, but this tool plans neither pallets nor containers on it (reference only)."
+  },
+  "TIPPER": {
+   "id": "TIPPER",
+   "name": "Tipper",
+   "carries_pallets": false,
+   "carries_containers": false,
+   "container_optional": false,
+   "access": [],
+   "temp_controlled": false,
+   "internal_height_mm": null,
+   "in_scope": false,
+   "notes": "Bulk loose material. Not planned by this tool."
+  },
+  "TANKER": {
+   "id": "TANKER",
+   "name": "Tanker",
+   "carries_pallets": false,
+   "carries_containers": false,
+   "container_optional": false,
+   "access": [],
+   "temp_controlled": false,
+   "internal_height_mm": null,
+   "in_scope": false,
+   "notes": "Bulk liquids or powders. Not planned by this tool."
+  },
+  "CAR_CARRIER": {
+   "id": "CAR_CARRIER",
+   "name": "Car carrier",
+   "carries_pallets": false,
+   "carries_containers": false,
+   "container_optional": false,
+   "access": [],
+   "temp_controlled": false,
+   "internal_height_mm": null,
+   "in_scope": false,
+   "notes": "Vehicles on ramps. Not planned by this tool."
+  },
+  "LIVESTOCK_CRATE": {
+   "id": "LIVESTOCK_CRATE",
+   "name": "Livestock crate",
+   "carries_pallets": false,
+   "carries_containers": false,
+   "container_optional": false,
+   "access": [],
+   "temp_controlled": false,
+   "internal_height_mm": null,
+   "in_scope": false,
+   "notes": "Livestock. Not planned by this tool."
+  }
+ },
+ "vehicles": {
+  "RIGID_SMALL": {
+   "id": "RIGID_SMALL",
+   "name": "Small rigid (4-6 t)",
+   "category": "rigid",
+   "description": "Light rigid truck, about 8.5 t GVM, 4-6 t payload, 6 AU pallet spaces. Metro deliveries.",
+   "pallet_spaces": 6,
+   "decks": [
+    {
+     "id": "body",
+     "name": "Body",
+     "x_mm": 2000,
+     "length_mm": 4200,
+     "width_mm": 2350,
+     "deck_height_mm": 1000,
+     "front_support": {
+      "position_mm": 1100,
+      "axle_group": "steer",
+      "on_deck": null
+     },
+     "rear_support": {
+      "position_mm": 4300,
+      "axle_group": "rear",
+      "on_deck": null
+     },
+     "pallet_spaces": 6,
+     "cargo": true
+    }
+   ],
+   "axle_groups": [
+    {
+     "id": "steer",
+     "name": "Steer",
+     "kind": "steer",
+     "position_mm": 1100,
+     "gml_kg": 6000.0,
+     "hml_kg": null,
+     "tare_kg": 2000.0
+    },
+    {
+     "id": "rear",
+     "name": "Rear single",
+     "kind": "single",
+     "position_mm": 4300,
+     "gml_kg": 9000.0,
+     "hml_kg": null,
+     "tare_kg": 1500.0
+    }
+   ],
+   "tare_kg": 3500.0,
+   "max_payload_kg": 5000.0,
+   "gcm_kg": 8500.0,
+   "allowed_bodies": [
+    "TAUTLINER",
+    "PANTECH",
+    "REFRIGERATED_PANTECH",
+    "FLAT_TOP"
+   ],
+   "default_body": "TAUTLINER",
+   "container_combos": [],
+   "overall_height_limit_mm": 4300,
+   "overall_length_mm": 6500,
+   "configurable": false,
+   "route_restricted": false,
+   "permit_note": "General access at GML: no permit needed on most roads. Check local load limits and bridges."
+  },
+  "RIGID_MEDIUM": {
+   "id": "RIGID_MEDIUM",
+   "name": "Medium rigid (8 t)",
+   "category": "rigid",
+   "description": "Medium rigid truck, about 13.5 t GVM, 8 t payload, 8 AU pallet spaces.",
+   "pallet_spaces": 8,
+   "decks": [
+    {
+     "id": "body",
+     "name": "Body",
+     "x_mm": 2300,
+     "length_mm": 4800,
+     "width_mm": 2400,
+     "deck_height_mm": 1100,
+     "front_support": {
+      "position_mm": 1300,
+      "axle_group": "steer",
+      "on_deck": null
+     },
+     "rear_support": {
+      "position_mm": 5800,
+      "axle_group": "rear",
+      "on_deck": null
+     },
+     "pallet_spaces": 8,
+     "cargo": true
+    }
+   ],
+   "axle_groups": [
+    {
+     "id": "steer",
+     "name": "Steer",
+     "kind": "steer",
+     "position_mm": 1300,
+     "gml_kg": 6000.0,
+     "hml_kg": null,
+     "tare_kg": 3200.0
+    },
+    {
+     "id": "rear",
+     "name": "Rear single",
+     "kind": "single",
+     "position_mm": 5800,
+     "gml_kg": 9000.0,
+     "hml_kg": null,
+     "tare_kg": 2300.0
+    }
+   ],
+   "tare_kg": 5500.0,
+   "max_payload_kg": 8000.0,
+   "gcm_kg": 13500.0,
+   "allowed_bodies": [
+    "TAUTLINER",
+    "PANTECH",
+    "REFRIGERATED_PANTECH",
+    "FLAT_TOP"
+   ],
+   "default_body": "TAUTLINER",
+   "container_combos": [],
+   "overall_height_limit_mm": 4300,
+   "overall_length_mm": 7400,
+   "configurable": false,
+   "route_restricted": false,
+   "permit_note": "General access at GML: no permit needed on most roads. Check local load limits and bridges."
+  },
+  "RIGID_LARGE": {
+   "id": "RIGID_LARGE",
+   "name": "Large rigid (12-14 t)",
+   "category": "rigid",
+   "description": "Heavy rigid with a tandem drive, about 22 t GVM, 13 t payload, 12 AU pallet spaces. Can carry one 20' container on a skeletal, side loader or flat top.",
+   "pallet_spaces": 12,
+   "decks": [
+    {
+     "id": "body",
+     "name": "Body",
+     "x_mm": 2300,
+     "length_mm": 7200,
+     "width_mm": 2450,
+     "deck_height_mm": 1200,
+     "front_support": {
+      "position_mm": 1400,
+      "axle_group": "steer",
+      "on_deck": null
+     },
+     "rear_support": {
+      "position_mm": 6600,
+      "axle_group": "rear",
+      "on_deck": null
+     },
+     "pallet_spaces": 12,
+     "cargo": true
+    }
+   ],
+   "axle_groups": [
+    {
+     "id": "steer",
+     "name": "Steer",
+     "kind": "steer",
+     "position_mm": 1400,
+     "gml_kg": 6000.0,
+     "hml_kg": null,
+     "tare_kg": 4000.0
+    },
+    {
+     "id": "rear",
+     "name": "Rear tandem",
+     "kind": "tandem",
+     "position_mm": 6600,
+     "gml_kg": 16500.0,
+     "hml_kg": 17000.0,
+     "tare_kg": 5000.0
+    }
+   ],
+   "tare_kg": 9000.0,
+   "max_payload_kg": 13000.0,
+   "gcm_kg": 22000.0,
+   "allowed_bodies": [
+    "TAUTLINER",
+    "PANTECH",
+    "REFRIGERATED_PANTECH",
+    "FLAT_TOP",
+    "SKELETAL",
+    "SIDE_LOADER"
+   ],
+   "default_body": "TAUTLINER",
+   "container_combos": [
+    {
+     "name": "1 x 20'",
+     "slots": [
+      {
+       "deck_id": "body",
+       "size_class": "20",
+       "x_mm": 500
+      }
+     ]
+    }
+   ],
+   "overall_height_limit_mm": 4300,
+   "overall_length_mm": 9800,
+   "configurable": false,
+   "route_restricted": false,
+   "permit_note": "General access at GML: no permit needed on most roads. Check local load limits and bridges."
+  },
+  "SEMI_TRAILER": {
+   "id": "SEMI_TRAILER",
+   "name": "Semi-trailer (13.7 m class)",
+   "category": "articulated",
+   "description": "Prime mover and a tri-axle semi-trailer, 22 AU pallet spaces, about 24 t payload. Takes 1 x 40', 1 x 45' or 2 x 20' containers.",
+   "pallet_spaces": 22,
+   "decks": [
+    {
+     "id": "prime_mover",
+     "name": "Prime mover",
+     "x_mm": 0,
+     "length_mm": 0,
+     "width_mm": 0,
+     "deck_height_mm": 0,
+     "front_support": {
+      "position_mm": 1500,
+      "axle_group": "steer",
+      "on_deck": null
+     },
+     "rear_support": {
+      "position_mm": 5000,
+      "axle_group": "drive",
+      "on_deck": null
+     },
+     "pallet_spaces": 0,
+     "cargo": false
+    },
+    {
+     "id": "trailer",
+     "name": "Trailer",
+     "x_mm": 3700,
+     "length_mm": 13900,
+     "width_mm": 2480,
+     "deck_height_mm": 1300,
+     "front_support": {
+      "position_mm": 4700,
+      "axle_group": null,
+      "on_deck": "prime_mover"
+     },
+     "rear_support": {
+      "position_mm": 15100,
+      "axle_group": "trailer_tri",
+      "on_deck": null
+     },
+     "pallet_spaces": 22,
+     "cargo": true
+    }
+   ],
+   "axle_groups": [
+    {
+     "id": "steer",
+     "name": "Steer",
+     "kind": "steer",
+     "position_mm": 1500,
+     "gml_kg": 6000.0,
+     "hml_kg": 6500.0,
+     "tare_kg": 4800.0
+    },
+    {
+     "id": "drive",
+     "name": "Drive tandem",
+     "kind": "tandem",
+     "position_mm": 5000,
+     "gml_kg": 16500.0,
+     "hml_kg": 17000.0,
+     "tare_kg": 6000.0
+    },
+    {
+     "id": "trailer_tri",
+     "name": "Trailer tri-axle",
+     "kind": "tri",
+     "position_mm": 15100,
+     "gml_kg": 20000.0,
+     "hml_kg": 22500.0,
+     "tare_kg": 4800.0
+    }
+   ],
+   "tare_kg": 15600.0,
+   "max_payload_kg": 24000.0,
+   "gcm_kg": 42500.0,
+   "allowed_bodies": [
+    "TAUTLINER",
+    "PANTECH",
+    "REFRIGERATED_PANTECH",
+    "FLAT_TOP",
+    "DROP_DECK",
+    "SKELETAL",
+    "SIDE_LOADER"
+   ],
+   "default_body": "TAUTLINER",
+   "container_combos": [
+    {
+     "name": "1 x 40'",
+     "slots": [
+      {
+       "deck_id": "trailer",
+       "size_class": "40",
+       "x_mm": 700
+      }
+     ]
+    },
+    {
+     "name": "1 x 45'",
+     "slots": [
+      {
+       "deck_id": "trailer",
+       "size_class": "45",
+       "x_mm": 100
+      }
+     ]
+    },
+    {
+     "name": "2 x 20'",
+     "slots": [
+      {
+       "deck_id": "trailer",
+       "size_class": "20",
+       "x_mm": 700
+      },
+      {
+       "deck_id": "trailer",
+       "size_class": "20",
+       "x_mm": 6800
+      }
+     ]
+    }
+   ],
+   "overall_height_limit_mm": 4300,
+   "overall_length_mm": 17600,
+   "configurable": false,
+   "route_restricted": false,
+   "permit_note": "General access at GML (19 m maximum length). Running at HML needs HML route access under an NHVR or state notice, usually with IAP / telematics enrolment."
+  },
+  "B_DOUBLE": {
+   "id": "B_DOUBLE",
+   "name": "B-double",
+   "category": "combination",
+   "description": "Prime mover with a lead trailer (12 AU) and rear trailer (22 AU), 34 AU pallet spaces, about 42.5 t payload. Containers: 1 x 20' on the lead and 1 x 40' on the rear only.",
+   "pallet_spaces": 34,
+   "decks": [
+    {
+     "id": "prime_mover",
+     "name": "Prime mover",
+     "x_mm": 0,
+     "length_mm": 0,
+     "width_mm": 0,
+     "deck_height_mm": 0,
+     "front_support": {
+      "position_mm": 1500,
+      "axle_group": "steer",
+      "on_deck": null
+     },
+     "rear_support": {
+      "position_mm": 5000,
+      "axle_group": "drive",
+      "on_deck": null
+     },
+     "pallet_spaces": 0,
+     "cargo": false
+    },
+    {
+     "id": "lead",
+     "name": "Lead trailer",
+     "x_mm": 3700,
+     "length_mm": 7400,
+     "width_mm": 2480,
+     "deck_height_mm": 1300,
+     "front_support": {
+      "position_mm": 4700,
+      "axle_group": null,
+      "on_deck": "prime_mover"
+     },
+     "rear_support": {
+      "position_mm": 11200,
+      "axle_group": "lead_tri",
+      "on_deck": null
+     },
+     "pallet_spaces": 12,
+     "cargo": true
+    },
+    {
+     "id": "rear",
+     "name": "Rear trailer",
+     "x_mm": 11200,
+     "length_mm": 13600,
+     "width_mm": 2480,
+     "deck_height_mm": 1300,
+     "front_support": {
+      "position_mm": 11600,
+      "axle_group": null,
+      "on_deck": "lead"
+     },
+     "rear_support": {
+      "position_mm": 22600,
+      "axle_group": "rear_tri",
+      "on_deck": null
+     },
+     "pallet_spaces": 22,
+     "cargo": true
+    }
+   ],
+   "axle_groups": [
+    {
+     "id": "steer",
+     "name": "Steer",
+     "kind": "steer",
+     "position_mm": 1500,
+     "gml_kg": 6000.0,
+     "hml_kg": 6500.0,
+     "tare_kg": 4800.0
+    },
+    {
+     "id": "drive",
+     "name": "Drive tandem",
+     "kind": "tandem",
+     "position_mm": 5000,
+     "gml_kg": 16500.0,
+     "hml_kg": 17000.0,
+     "tare_kg": 6000.0
+    },
+    {
+     "id": "lead_tri",
+     "name": "Lead tri-axle",
+     "kind": "tri",
+     "position_mm": 11200,
+     "gml_kg": 20000.0,
+     "hml_kg": 22500.0,
+     "tare_kg": 4500.0
+    },
+    {
+     "id": "rear_tri",
+     "name": "Rear tri-axle",
+     "kind": "tri",
+     "position_mm": 22600,
+     "gml_kg": 20000.0,
+     "hml_kg": 22500.0,
+     "tare_kg": 4700.0
+    }
+   ],
+   "tare_kg": 20000.0,
+   "max_payload_kg": 42500.0,
+   "gcm_kg": 62500.0,
+   "allowed_bodies": [
+    "TAUTLINER",
+    "PANTECH",
+    "REFRIGERATED_PANTECH",
+    "FLAT_TOP",
+    "SKELETAL",
+    "SIDE_LOADER"
+   ],
+   "default_body": "TAUTLINER",
+   "container_combos": [
+    {
+     "name": "1 x 20' + 1 x 40'",
+     "slots": [
+      {
+       "deck_id": "lead",
+       "size_class": "20",
+       "x_mm": 600
+      },
+      {
+       "deck_id": "rear",
+       "size_class": "40",
+       "x_mm": 700
+      }
+     ]
+    }
+   ],
+   "overall_height_limit_mm": 4300,
+   "overall_length_mm": 24800,
+   "configurable": false,
+   "route_restricted": false,
+   "permit_note": "Restricted access vehicle: only on the B-double route network approved by the NHVR or the state road authority (gazetted notice or permit). HML needs HML route access too."
+  },
+  "SUPER_B_DOUBLE": {
+   "id": "SUPER_B_DOUBLE",
+   "name": "Super B-double",
+   "category": "combination",
+   "description": "Longer B-double (about 29 m) with two 40'-capable trailers. Default 40 AU pallet spaces (20 + 20) and 2 x 40' containers. Configure spaces and limits for your unit.",
+   "pallet_spaces": 40,
+   "decks": [
+    {
+     "id": "prime_mover",
+     "name": "Prime mover",
+     "x_mm": 0,
+     "length_mm": 0,
+     "width_mm": 0,
+     "deck_height_mm": 0,
+     "front_support": {
+      "position_mm": 1500,
+      "axle_group": "steer",
+      "on_deck": null
+     },
+     "rear_support": {
+      "position_mm": 5000,
+      "axle_group": "drive",
+      "on_deck": null
+     },
+     "pallet_spaces": 0,
+     "cargo": false
+    },
+    {
+     "id": "lead",
+     "name": "Lead trailer",
+     "x_mm": 3700,
+     "length_mm": 12500,
+     "width_mm": 2480,
+     "deck_height_mm": 1300,
+     "front_support": {
+      "position_mm": 4700,
+      "axle_group": null,
+      "on_deck": "prime_mover"
+     },
+     "rear_support": {
+      "position_mm": 16600,
+      "axle_group": "lead_tri",
+      "on_deck": null
+     },
+     "pallet_spaces": 20,
+     "cargo": true
+    },
+    {
+     "id": "rear",
+     "name": "Rear trailer",
+     "x_mm": 16300,
+     "length_mm": 12500,
+     "width_mm": 2480,
+     "deck_height_mm": 1300,
+     "front_support": {
+      "position_mm": 16700,
+      "axle_group": null,
+      "on_deck": "lead"
+     },
+     "rear_support": {
+      "position_mm": 25100,
+      "axle_group": "rear_tri",
+      "on_deck": null
+     },
+     "pallet_spaces": 20,
+     "cargo": true
+    }
+   ],
+   "axle_groups": [
+    {
+     "id": "steer",
+     "name": "Steer",
+     "kind": "steer",
+     "position_mm": 1500,
+     "gml_kg": 6000.0,
+     "hml_kg": 6500.0,
+     "tare_kg": 4800.0
+    },
+    {
+     "id": "drive",
+     "name": "Drive tandem",
+     "kind": "tandem",
+     "position_mm": 5000,
+     "gml_kg": 16500.0,
+     "hml_kg": 17000.0,
+     "tare_kg": 6000.0
+    },
+    {
+     "id": "lead_tri",
+     "name": "Lead tri-axle",
+     "kind": "tri",
+     "position_mm": 16600,
+     "gml_kg": 20000.0,
+     "hml_kg": 22500.0,
+     "tare_kg": 4900.0
+    },
+    {
+     "id": "rear_tri",
+     "name": "Rear tri-axle",
+     "kind": "tri",
+     "position_mm": 25100,
+     "gml_kg": 20000.0,
+     "hml_kg": 22500.0,
+     "tare_kg": 4800.0
+    }
+   ],
+   "tare_kg": 20500.0,
+   "max_payload_kg": 42000.0,
+   "gcm_kg": 62500.0,
+   "allowed_bodies": [
+    "TAUTLINER",
+    "PANTECH",
+    "REFRIGERATED_PANTECH",
+    "FLAT_TOP",
+    "SKELETAL",
+    "SIDE_LOADER"
+   ],
+   "default_body": "TAUTLINER",
+   "container_combos": [
+    {
+     "name": "2 x 40'",
+     "slots": [
+      {
+       "deck_id": "lead",
+       "size_class": "40",
+       "x_mm": 150
+      },
+      {
+       "deck_id": "rear",
+       "size_class": "40",
+       "x_mm": 150
+      }
+     ]
+    },
+    {
+     "name": "4 x 20'",
+     "slots": [
+      {
+       "deck_id": "lead",
+       "size_class": "20",
+       "x_mm": 150
+      },
+      {
+       "deck_id": "lead",
+       "size_class": "20",
+       "x_mm": 6250
+      },
+      {
+       "deck_id": "rear",
+       "size_class": "20",
+       "x_mm": 150
+      },
+      {
+       "deck_id": "rear",
+       "size_class": "20",
+       "x_mm": 6250
+      }
+     ]
+    }
+   ],
+   "overall_height_limit_mm": 4300,
+   "overall_length_mm": 28800,
+   "configurable": true,
+   "route_restricted": true,
+   "permit_note": "Restricted access vehicle: needs an NHVR permit (normally under Performance Based Standards) and route approval from the NHVR and state road authorities for every road on the trip. Mass limits depend on the permit."
+  },
+  "ROAD_TRAIN": {
+   "id": "ROAD_TRAIN",
+   "name": "Road train (A-double)",
+   "category": "combination",
+   "description": "Prime mover, two 13.6 m trailers joined by a converter dolly, 44 AU pallet spaces, about 55 t payload. Takes 2 x 40' or 4 x 20' containers. Configure for your unit.",
+   "pallet_spaces": 44,
+   "decks": [
+    {
+     "id": "prime_mover",
+     "name": "Prime mover",
+     "x_mm": 0,
+     "length_mm": 0,
+     "width_mm": 0,
+     "deck_height_mm": 0,
+     "front_support": {
+      "position_mm": 1500,
+      "axle_group": "steer",
+      "on_deck": null
+     },
+     "rear_support": {
+      "position_mm": 5000,
+      "axle_group": "drive",
+      "on_deck": null
+     },
+     "pallet_spaces": 0,
+     "cargo": false
+    },
+    {
+     "id": "lead",
+     "name": "Lead trailer",
+     "x_mm": 3700,
+     "length_mm": 13600,
+     "width_mm": 2480,
+     "deck_height_mm": 1300,
+     "front_support": {
+      "position_mm": 4700,
+      "axle_group": null,
+      "on_deck": "prime_mover"
+     },
+     "rear_support": {
+      "position_mm": 15100,
+      "axle_group": "lead_tri",
+      "on_deck": null
+     },
+     "pallet_spaces": 22,
+     "cargo": true
+    },
+    {
+     "id": "rear",
+     "name": "Rear trailer",
+     "x_mm": 19000,
+     "length_mm": 13600,
+     "width_mm": 2480,
+     "deck_height_mm": 1300,
+     "front_support": {
+      "position_mm": 20000,
+      "axle_group": "dolly",
+      "on_deck": null
+     },
+     "rear_support": {
+      "position_mm": 30400,
+      "axle_group": "rear_tri",
+      "on_deck": null
+     },
+     "pallet_spaces": 22,
+     "cargo": true
+    }
+   ],
+   "axle_groups": [
+    {
+     "id": "steer",
+     "name": "Steer",
+     "kind": "steer",
+     "position_mm": 1500,
+     "gml_kg": 6000.0,
+     "hml_kg": 6500.0,
+     "tare_kg": 4800.0
+    },
+    {
+     "id": "drive",
+     "name": "Drive tandem",
+     "kind": "tandem",
+     "position_mm": 5000,
+     "gml_kg": 16500.0,
+     "hml_kg": 17000.0,
+     "tare_kg": 6000.0
+    },
+    {
+     "id": "lead_tri",
+     "name": "Lead tri-axle",
+     "kind": "tri",
+     "position_mm": 15100,
+     "gml_kg": 20000.0,
+     "hml_kg": 22500.0,
+     "tare_kg": 4800.0
+    },
+    {
+     "id": "dolly",
+     "name": "Dolly tandem",
+     "kind": "tandem",
+     "position_mm": 20000,
+     "gml_kg": 16500.0,
+     "hml_kg": 17000.0,
+     "tare_kg": 3000.0
+    },
+    {
+     "id": "rear_tri",
+     "name": "Rear tri-axle",
+     "kind": "tri",
+     "position_mm": 30400,
+     "gml_kg": 20000.0,
+     "hml_kg": 22500.0,
+     "tare_kg": 4800.0
+    }
+   ],
+   "tare_kg": 23400.0,
+   "max_payload_kg": 55000.0,
+   "gcm_kg": 79000.0,
+   "allowed_bodies": [
+    "TAUTLINER",
+    "PANTECH",
+    "REFRIGERATED_PANTECH",
+    "FLAT_TOP",
+    "SKELETAL",
+    "SIDE_LOADER"
+   ],
+   "default_body": "TAUTLINER",
+   "container_combos": [
+    {
+     "name": "2 x 40'",
+     "slots": [
+      {
+       "deck_id": "lead",
+       "size_class": "40",
+       "x_mm": 700
+      },
+      {
+       "deck_id": "rear",
+       "size_class": "40",
+       "x_mm": 700
+      }
+     ]
+    },
+    {
+     "name": "4 x 20'",
+     "slots": [
+      {
+       "deck_id": "lead",
+       "size_class": "20",
+       "x_mm": 700
+      },
+      {
+       "deck_id": "lead",
+       "size_class": "20",
+       "x_mm": 6900
+      },
+      {
+       "deck_id": "rear",
+       "size_class": "20",
+       "x_mm": 700
+      },
+      {
+       "deck_id": "rear",
+       "size_class": "20",
+       "x_mm": 6900
+      }
+     ]
+    }
+   ],
+   "overall_height_limit_mm": 4300,
+   "overall_length_mm": 32600,
+   "configurable": true,
+   "route_restricted": true,
+   "permit_note": "Restricted access vehicle: only on approved road train routes (NHVR or state notices and permits), mostly in regional and remote areas. Type 1 (double) road trains are up to 36.5 m. Some depots require decoupling before entering towns."
+  }
+ }
+}
