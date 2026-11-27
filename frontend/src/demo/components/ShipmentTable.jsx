@@ -18,7 +18,7 @@ import HazardPicker from "./HazardPicker.jsx";
 // Northline won't accept are flagged too. `placement` maps a shipment's position in the list
 // to { truck } once solved. Row index = the solver's shipment id.
 export default function ShipmentTable({
-  shipments, fit = null, pallets = KNOWN_PALLETS, onChange, ruleSet = "adg",
+  shipments, fit = null, pallets = KNOWN_PALLETS, onChange, ruleSet = "northline",
   placement = null, activeIds = null, activeTruck = null, onHover = () => {},
 }) {
   const [editing, setEditing] = useState(null); // uid of the row being edited

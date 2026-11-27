@@ -10,7 +10,7 @@
 // - `dgClass` is the dangerous goods class ("3", "5.1", …), "food", "fire_risk", or null for
 //   general freight; `subsidiary` lists subsidiary hazards ("6.1", "8", …), only with a class.
 // toRequest() turns the list into the POST /api/solve body (backend/app/demo_models.py).
-import { SUBSIDIARIES } from "../dg/rules.ts";
+import { northlineProhibited, SUBSIDIARIES } from "../dg/rules.ts";
 
 export const MAX_SHIPMENTS = 40; // backend/app/demo_models.py MAX_SHIPMENTS
 export const RANDOM_COUNT = 20;
@@ -67,7 +67,10 @@ export const ITEMS = [
 ];
 const GENERAL_ITEMS = ITEMS.filter((i) => !i.dgClass);
 const FOOD_ITEMS = ITEMS.filter((i) => i.dgClass === "food");
-const HAZARD_ITEMS = ITEMS.filter((i) => i.dgClass && i.dgClass !== "food");
+// Random shipments only draw goods Northline accepts (the page always applies its rules); the
+// others, such as Calcium carbide (4.3), stay in the catalogue so typing one shows the refusal.
+const HAZARD_ITEMS = ITEMS.filter((i) => i.dgClass && i.dgClass !== "food"
+  && !northlineProhibited(demoDg(i.dgClass, i.subsidiary)));
 // Share of random shipments drawn from each group (the rest: general freight).
 const HAZARD_SHARE = 0.35;
 const FOOD_SHARE = 0.15;
@@ -210,7 +213,7 @@ export function parseWeights(text) {
  * Pallets send their pallet type and no length or width; loose items send length and width
  * and no pallet type. dg_class and subsidiary only go with dangerous goods.
  */
-export function toRequest({ vehicleId, bodyType = null, ruleSet = "adg", shipments }) {
+export function toRequest({ vehicleId, bodyType = null, ruleSet = "northline", shipments }) {
   return {
     vehicle_id: vehicleId,
     body_type: bodyType ?? null,

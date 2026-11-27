@@ -31,7 +31,7 @@ const hazardText = (h) => dgClassText(h.dgClass, h.subsidiary) || "Not dangerous
  * value: { dgClass, subsidiary }; onChange(value); name: the shipment's name
  * (for labels); others: the other shipments in the list (for conflicts).
  */
-export default function HazardPicker({ value, onChange, name, others = [], ruleSet = "adg", describedBy, invalid = false }) {
+export default function HazardPicker({ value, onChange, name, others = [], ruleSet = "northline", describedBy, invalid = false }) {
   const id = useId();
   const dialogRef = useRef(null);
   const triggerRef = useRef(null);

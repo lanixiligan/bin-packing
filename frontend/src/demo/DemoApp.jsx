@@ -15,6 +15,8 @@ import "./demo.css";
 
 const DROP_INTERVAL_MS = 150; // time between each shipment dropping in
 const SOLVER_TIME_LIMIT_S = 10; // matches TIME_LIMIT_SECONDS in backend/app/routers/demo.py
+// Dangerous goods are always checked against the ADG Code plus Northline's acceptance rules.
+const RULE_SET = "northline";
 
 /** "'Pipes 04' (too long or wide), 'Tiles 07' (too heavy)" for the Solve error. */
 function listProblems(rows) {
@@ -39,7 +41,6 @@ export default function App() {
   const [focusIds, setFocusIds] = useState(null);
   const [hoverTruck, setHoverTruck] = useState(null); // truck card under the pointer
   const [view, setView] = useState("2d"); // "2d" deck plans or "3d" trucks
-  const [ruleSet, setRuleSet] = useState("adg"); // "adg" or "northline" (dangerous goods rules)
   const timer = useRef(null);
   const errorRef = useRef(null);
   const changeRef = useRef(null);
@@ -173,7 +174,7 @@ export default function App() {
       const res = await fetch("/api/solve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(toRequest({ vehicleId, bodyType, ruleSet, shipments })),
+        body: JSON.stringify(toRequest({ vehicleId, bodyType, ruleSet: RULE_SET, shipments })),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -270,24 +271,8 @@ export default function App() {
               </div>
             </div>
             <div className="field">
-              <span className="field-label" id="rule-set-label">Dangerous goods rules</span>
-              <fieldset className="segmented" aria-labelledby="rule-set-label">
-                {[["adg", "ADG Code"], ["northline", "ADG + Northline"]].map(([v, label]) => (
-                  <label key={v}>
-                    <input
-                      type="radio"
-                      name="rule-set"
-                      value={v}
-                      checked={ruleSet === v}
-                      onChange={() => {
-                        setRuleSet(v);
-                        clearResult();
-                      }}
-                    />
-                    <span>{label}</span>
-                  </label>
-                ))}
-              </fieldset>
+              <span className="field-label">Dangerous goods rules</span>
+              <span className="rule-set-value">ADG Code + Northline</span>
             </div>
           </div>
           <div className="toolbar-actions">
@@ -429,7 +414,7 @@ export default function App() {
               fit={fit}
               pallets={pallets}
               onChange={changeShipments}
-              ruleSet={ruleSet}
+              ruleSet={RULE_SET}
               placement={result ? placement : null}
               activeIds={activeIds}
               activeTruck={hoverTruck}

@@ -40,6 +40,8 @@
 .toolbar-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3) var(--space-5); }
 .toolbar .field { gap: var(--space-1); }
 .toolbar .field-label { font-size: var(--text-xs); color: var(--color-text-muted); }
+.rule-set-value { min-height: 36px; display: inline-flex; align-items: center; font-size: var(--text-sm);
+  font-weight: var(--weight-medium); }
 .toolbar fieldset { margin: 0; min-width: 0; }
 /* The chosen vehicle on one line, with Change opening the vehicle cards under the toolbar. */
 .vehicle-field { min-width: 0; }

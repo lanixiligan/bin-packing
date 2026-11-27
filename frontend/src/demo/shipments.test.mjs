@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SUBSIDIARIES, validateDg } from "../dg/rules.ts";
+import { northlineProhibited, SUBSIDIARIES, validateDg } from "../dg/rules.ts";
 import { fitProblems, inputProblem } from "./components/sizes.ts";
 import {
   autoName, demoDg, isDgClass, itemByName, ITEMS, MAX_SUBSIDIARY, normaliseHazard, PASTE_SIZE, randomShipments,
@@ -108,4 +108,13 @@ test("toRequest builds the solve request exactly as the contract says", () => {
     ],
   });
   assert.equal(toRequest({ vehicleId: "RIGID_MEDIUM", bodyType: "PANTECH", shipments: [] }).body_type, "PANTECH");
+});
+
+test("random shipments never include goods Northline refuses", () => {
+  const random = seeded(1);
+  for (let k = 0; k < 50; k++) {
+    for (const s of randomShipments(20, random)) {
+      assert.equal(northlineProhibited(demoDg(s.dgClass, s.subsidiary)), false, s.name);
+    }
+  }
 });
