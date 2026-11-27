@@ -85,8 +85,6 @@ export default function ItemDetails({ id, stack, anchor, heightLimit }: ItemDeta
             ? `${sameWeight ? `${units.weight(base.weight_kg)} each, ` : ""}${units.weight(stack.weight)} in total`
             : units.weight(base.weight_kg)}
         </dd>
-        <dt>Stop</dt>
-        <dd>{base.stop == null ? "None" : `Stop ${base.stop}`}</dd>
         <dt>Stackable</dt>
         <dd>{yesNo(base.stackable)}</dd>
         <dt>Temp controlled</dt>

@@ -43,12 +43,12 @@ describe("planToCsv", () => {
     expect(rows).toContainEqual(["Total weight (kg)", "14530"]);
     expect(rows.find((r) => r[0] === "Unit")).toEqual(PLACEMENT_HEADER);
     expect(PLACEMENT_HEADER).toEqual(["Unit", "Item", "Type", "Deck", "X (mm)", "Y (mm)", "Z (mm)", "Length (mm)",
-      "Width (mm)", "Height (mm)", "Weight (kg)", "Stop", "Level"]);
+      "Width (mm)", "Height (mm)", "Weight (kg)", "Level"]);
 
     const placements = placementRows(csv);
     expect(placements).toHaveLength(result.placements.length);
     expect(placements[0]).toEqual(["bev#1", "Beverages", "Australian Standard", "Trailer", "0", "0", "0", "1165",
-      "1165", "1200", "820", "3", "0"]);
+      "1165", "1200", "820", "0"]);
     expect(csv.endsWith("\r\n")).toBe(true);
   });
 
@@ -61,12 +61,11 @@ describe("planToCsv", () => {
     expect(placementRows(csv)).toHaveLength(22);
   });
 
-  it("names container types and decks, with no stop", () => {
+  it("names container types and decks", () => {
     const csv = planToCsv(planBdoubleContainers.result, planBdoubleContainers.request, reference);
     const placements = placementRows(csv);
     expect(placements).toHaveLength(2);
     expect(placements[0].slice(0, 4)).toEqual(["c20#1", "MSKU 20'", "20' General purpose", "Lead trailer"]);
-    expect(placements[0][11]).toBe("");
   });
 
   it("quotes commas, quotes and line breaks in labels", () => {

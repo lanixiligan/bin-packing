@@ -1,7 +1,6 @@
 // Every placement as a table: the text alternative to the drawings (the deck view's SVG points
-// here with aria-describedby). Collapsed by default; sortable by deck position or stop.
+// here with aria-describedby). Collapsed by default; in deck position order.
 
-import { useState } from "react";
 import type { Deck, DgInfo, Placement } from "../api/types.ts";
 import { dgName, placardCode } from "../lib/dg.ts";
 import { useUnits } from "../lib/units.ts";
@@ -16,11 +15,8 @@ export interface PlacementTableProps {
   dg?: ReadonlyMap<string, DgInfo>;
 }
 
-type SortKey = "position" | "stop";
-
 export default function PlacementTable({ id, placements, decks, typeName, dg }: PlacementTableProps) {
   const units = useUnits();
-  const [sort, setSort] = useState<SortKey>("position");
   const deckIndex = new Map(decks.map((d, i) => [d.id, i]));
   const deckName = new Map(decks.map((d) => [d.id, d.name]));
   const deckX = new Map(decks.map((d) => [d.id, d.x_mm]));
@@ -29,19 +25,8 @@ export default function PlacementTable({ id, placements, decks, typeName, dg }: 
     (deckX.get(a.deck_id) ?? 0) + a.x_mm - ((deckX.get(b.deck_id) ?? 0) + b.x_mm)
     || (deckIndex.get(a.deck_id) ?? 0) - (deckIndex.get(b.deck_id) ?? 0)
     || a.y_mm - b.y_mm || a.stack_level - b.stack_level;
-  const rows = [...placements].sort(sort === "stop"
-    ? (a, b) => (a.stop ?? Infinity) - (b.stop ?? Infinity) || byPosition(a, b)
-    : byPosition);
+  const rows = [...placements].sort(byPosition);
   const bare = (mm: number) => units.length(mm).replace(/\s*(mm|m)$/, "");
-
-  const sortHeader = (key: SortKey, label: string, className?: string) => (
-    <th scope="col" className={className} aria-sort={sort === key ? "ascending" : undefined}>
-      <button type="button" className="ptable-sort" onClick={() => setSort(key)}>
-        {label}<span className="visually-hidden">{key === "position" ? ", sort by position" : ", sort by stop"}</span>
-        <span aria-hidden="true" className="ptable-sort-mark">{sort === key ? "▲" : "↕"}</span>
-      </button>
-    </th>
-  );
 
   return (
     <details className="ptable">
@@ -57,12 +42,11 @@ export default function PlacementTable({ id, placements, decks, typeName, dg }: 
               <th scope="col">Item</th>
               <th scope="col">DG</th>
               <th scope="col">Type</th>
-              {sortHeader("position", "Deck")}
+              <th scope="col">Deck</th>
               <th scope="col" className="num">x</th>
               <th scope="col" className="num">y</th>
               <th scope="col" className="num">L × W × H</th>
               <th scope="col" className="num">Weight</th>
-              {sortHeader("stop", "Stop", "num")}
               <th scope="col" className="num">Level</th>
             </tr>
           </thead>
@@ -78,7 +62,6 @@ export default function PlacementTable({ id, placements, decks, typeName, dg }: 
                 <td className="num">{units.length(p.y_mm)}</td>
                 <td className="num">{bare(p.length_mm)} × {bare(p.width_mm)} × {units.length(p.height_mm)}</td>
                 <td className="num">{units.weight(p.weight_kg)}</td>
-                <td className="num">{p.stop ?? "–"}</td>
                 <td className="num">{p.stack_level + 1}</td>
               </tr>
             ))}

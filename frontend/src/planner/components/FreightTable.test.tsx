@@ -47,7 +47,6 @@ describe("FreightTable", () => {
     expect(screen.getAllByRole("listitem", { name: /^line \d/i })).toHaveLength(3);
     expect(within(line(2)).getByLabelText("Label")).toHaveValue("Cartons");
     expect(within(line(2)).getByLabelText("Stackable")).toBeChecked();
-    expect(within(line(1)).getByLabelText("Stop (1 = first drop)")).toHaveValue(null);
     expect(screen.getByText(/18 pallets · 12,500 kg/)).toBeInTheDocument();
   });
 

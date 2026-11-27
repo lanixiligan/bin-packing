@@ -26,18 +26,8 @@ describe("PlacementTable", () => {
     const row = screen.getByRole("row", { name: /dry#6/ });
     const cells = within(row).getAllByRole("cell").map((c) => c.textContent);
     expect(cells).toEqual([
-      "dry#6", "Dry goods", "–", "type AU_STD", "Trailer", "3,495 mm", "0 mm", "1,165 × 1,165 × 900 mm", "410 kg", "2", "2",
+      "dry#6", "Dry goods", "–", "type AU_STD", "Trailer", "3,495 mm", "0 mm", "1,165 × 1,165 × 900 mm", "410 kg", "2",
     ]);
-  });
-
-  it("sorts by stop", async () => {
-    render(<PlacementTable id="t" placements={planMultidrop.result.placements} decks={vehicle.decks} typeName={typeName} />);
-    await userEvent.click(screen.getByText("Show the plan as a table"));
-    const firstUnit = () => within(screen.getAllByRole("row")[1]).getAllByRole("cell")[0].textContent;
-    expect(firstUnit()).toBe("bev#1");
-    await userEvent.click(screen.getByRole("button", { name: /stop/i }));
-    expect(firstUnit()).toMatch(/^hw#/);
-    expect(screen.getByRole("columnheader", { name: /stop/i })).toHaveAttribute("aria-sort", "ascending");
   });
 
   it("orders multi-deck placements by vehicle position", async () => {

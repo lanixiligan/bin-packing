@@ -418,14 +418,6 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
                     </div>
                   )}
 
-                  <Field id={fid("stop")} label="Stop (1 = first drop)" error={err("stop")}>
-                    {(a) => (
-                      <input {...a} className="input" type="number" inputMode="numeric" min={1} max={50} step={1}
-                             placeholder="Any" value={row.stop ?? ""}
-                             onChange={(ev) => update(row.id, { stop: toNumber(ev.target.value) })} />
-                    )}
-                  </Field>
-
                   <div className="ft-span-2 ft-flags">
                     {isPallet && (
                       <label className="ft-check">

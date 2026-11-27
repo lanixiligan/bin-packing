@@ -28,8 +28,8 @@ describe("validateRows", () => {
     expect(v.errors[r.id].height_mm).toBe("This pallet is 2.1 m tall; the max stack height is 1.8 m.");
   });
 
-  it("checks quantity, weight and stop in plain language", () => {
-    const a = pallet({ quantity: null, gross_weight_kg: null, height_mm: null, stop: 0 });
+  it("checks quantity and weight in plain language", () => {
+    const a = pallet({ quantity: null, gross_weight_kg: null, height_mm: null });
     const b = pallet({ quantity: 2.5, gross_weight_kg: 1600 });
     const c = pallet({ quantity: 201, gross_weight_kg: 20 });
     const { errors } = validateRows([a, b, c], reference);
@@ -37,7 +37,6 @@ describe("validateRows", () => {
       quantity: "Enter how many, a whole number from 1.",
       gross_weight_kg: "Enter the weight of one pallet in kg.",
       height_mm: "Enter the pallet's height in mm, including the pallet.",
-      stop: "Stop is a whole number from 1 (first drop), or blank.",
     });
     expect(errors[b.id].quantity).toBe("Enter how many, a whole number from 1.");
     expect(errors[b.id].gross_weight_kg).toBe("This pallet weighs 1,600 kg; one pallet is limited to 1,500 kg.");

@@ -19,15 +19,15 @@ describe("DeckView", () => {
     for (const el of stacks()) expect(el).toHaveAttribute("tabindex", "0");
   });
 
-  it("labels each stack with its item, weight and stop", () => {
+  it("labels each stack with its item and weight", () => {
     renderPlan(planMultidrop);
     const bev = stacks().filter((el) => el.getAttribute("aria-label")!.startsWith("Beverages"));
     expect(bev).toHaveLength(6);
-    expect(bev[0]).toHaveAccessibleName(/Beverages, Australian Standard pallet 1,165 × 1,165 mm, 820 kg, stop 3/);
+    expect(bev[0]).toHaveAccessibleName(/Beverages, Australian Standard pallet 1,165 × 1,165 mm, 820 kg/);
     // A stack of two dry-goods pallets: total weight and the stack size.
     const dry = stacks().find((el) => /Dry goods/.test(el.getAttribute("aria-label")!) && /stack of 2/.test(el.getAttribute("aria-label")!));
     expect(dry).toBeDefined();
-    expect(dry).toHaveAccessibleName(/in total, stop 2, stack of 2/);
+    expect(dry).toHaveAccessibleName(/in total, stack of 2/);
   });
 
   it("summarises the plan and points at the table", () => {
@@ -77,7 +77,6 @@ describe("DeckView", () => {
     expect(tip).toHaveTextContent("Dry goods");
     expect(tip).toHaveTextContent("Australian Standard pallet");
     expect(tip).toHaveTextContent(/410 kg each, 820 kg in total/);
-    expect(tip).toHaveTextContent(/Stop 2/);
     expect(tip).toHaveTextContent(/L2/); // the second level is listed
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();

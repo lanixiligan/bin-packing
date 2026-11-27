@@ -21,12 +21,11 @@ export interface FreightRow {
   height_mm: number | null;
   stackable: boolean;
   temp_controlled: boolean;
-  stop: number | null;
   /** Dangerous goods data; null = general freight. */
   dg: DgInfo | null;
 }
 
-export type RowField = "label" | "type_id" | "quantity" | "gross_weight_kg" | "height_mm" | "stop" | "dg";
+export type RowField = "label" | "type_id" | "quantity" | "gross_weight_kg" | "height_mm" | "dg";
 /** Errors per row id, then per field: plain-language messages. */
 export type RowErrors = Record<string, Partial<Record<RowField, string>>>;
 
@@ -57,7 +56,6 @@ export function newRow(ref: ReferenceData | null, overrides: Partial<FreightRow>
     height_mm: 1200,
     stackable: false,
     temp_controlled: false,
-    stop: null,
     dg: null,
     ...overrides,
   };
@@ -115,9 +113,6 @@ export function validateRows(rows: FreightRow[], ref: ReferenceData | null): Val
         e.height_mm = `This pallet is ${metres(r.height_mm)} tall; the max stack height is ${metres(ref.pallet_defaults.max_stack_height_mm)}.`;
       }
     }
-    if (r.stop != null && (!Number.isInteger(r.stop) || r.stop < 1 || r.stop > 50)) {
-      e.stop = "Stop is a whole number from 1 (first drop), or blank.";
-    }
     const dgProblems = validateDg(r.dg);
     if (dgProblems.length) e.dg = dgProblems.join(" ");
     if (Object.keys(e).length) errors[r.id] = e;
@@ -141,7 +136,6 @@ export function toItem(r: FreightRow): FreightItem {
     height_mm: r.kind === "pallet" ? r.height_mm : null,
     stackable: r.stackable,
     temp_controlled: r.temp_controlled,
-    stop: r.stop,
     dg: isGeneral(r.dg) ? null : normalise(r.dg),
   };
 }

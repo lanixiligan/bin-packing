@@ -1,11 +1,11 @@
-// The key for the load plan's colour coding (stop / weight / type) plus the axle marker.
+// The key for the load plan's colour coding (DG class / weight / type) plus the axle marker.
 // Also home of the SVG pattern definitions the drawings share, so a swatch here matches the deck.
 
 import { useId } from "react";
-import { HEAT_STEPS, stopColor, stopTextColor } from "../lib/colors.ts";
+import { HEAT_STEPS, catColor, catTextColor } from "../lib/colors.ts";
 import { PATTERN_KINDS, type PatternKind } from "../lib/colors.ts";
 import { useUnits } from "../lib/units.ts";
-import type { ColorMode, PlanStack } from "./LoadPlanView.tsx";
+import type { ColorMode, DgClassColour, PlanStack } from "./LoadPlanView.tsx";
 import "./Legend.css";
 
 /** Type patterns plus the container corrugation, sized in mm (the drawings' user units). Pattern ids
@@ -107,13 +107,15 @@ export function AxleWheels({ x, groundY, kind }: { x: number; groundY: number; k
 export interface LegendProps {
   mode: ColorMode;
   stacks: PlanStack[];
+  /** The DG classes in the plan and their colours, for the DG class mode. */
+  dgClasses: Map<string, DgClassColour>;
 }
 
-export default function Legend({ mode, stacks }: LegendProps) {
+export default function Legend({ mode, stacks, dgClasses }: LegendProps) {
   return (
     <div className="legend" aria-label="Legend" role="group">
       <div className="legend-main">
-        {mode === "stop" && <StopLegend stacks={stacks} />}
+        {mode === "dg" && <DgLegend stacks={stacks} dgClasses={dgClasses} />}
         {mode === "weight" && <WeightLegend stacks={stacks} />}
         {mode === "type" && <TypeLegend stacks={stacks} />}
       </div>
@@ -127,41 +129,24 @@ export default function Legend({ mode, stacks }: LegendProps) {
   );
 }
 
-function StopLegend({ stacks }: { stacks: PlanStack[] }) {
-  const byStop = new Map<number | null, Map<string, number>>();
-  for (const s of stacks) {
-    for (const u of s.units) {
-      const labels = byStop.get(u.stop) ?? new Map<string, number>();
-      labels.set(u.label || u.item_id, (labels.get(u.label || u.item_id) ?? 0) + 1);
-      byStop.set(u.stop, labels);
-    }
-  }
-  const stops = [...byStop.keys()].sort((a, b) => (a ?? Infinity) - (b ?? Infinity));
-  const numbered = stops.filter((s): s is number => s != null);
-  const first = numbered[0];
-  const last = numbered[numbered.length - 1];
+function DgLegend({ stacks, dgClasses }: { stacks: PlanStack[]; dgClasses: Map<string, DgClassColour> }) {
+  const general = stacks.some((s) => !s.dg.length);
+  const entries = [
+    ...[...dgClasses.values()].map((c) => ({ key: c.code, code: c.code, name: c.name, fill: c.fill, text: c.text })),
+    ...(general ? [{ key: "general", code: "–", name: "General freight", fill: catColor(null), text: catTextColor(null) }] : []),
+  ];
   return (
     <>
-      <h3 className="legend-title">Delivery stop</h3>
+      <h3 className="legend-title">Dangerous goods class</h3>
       <ul className="legend-list">
-        {stops.map((stop) => (
-          <li key={stop ?? "none"} className="legend-item">
-            <span className="legend-swatch legend-swatch-stop num" style={{ background: stopColor(stop), color: stopTextColor(stop) }}
-                  aria-hidden="true">{stop ?? "–"}</span>
-            <span>
-              <strong>{stop == null ? "No stop" : `Stop ${stop}`}</strong>{" "}
-              <span className="muted">
-                {[...byStop.get(stop)!.entries()].map(([label, n]) => `${label} × ${n}`).join(", ")}
-              </span>
-            </span>
+        {entries.map((e) => (
+          <li key={e.key} className="legend-item">
+            <span className="legend-swatch legend-swatch-cat num" style={{ background: e.fill, color: e.text }}
+                  aria-hidden="true">{e.code}</span>
+            <strong>{e.name}</strong>
           </li>
         ))}
       </ul>
-      {numbered.length > 1 && (
-        <p className="subtle legend-note">
-          Last in, first out: stop {first} comes off first and stop {last} is unloaded last.
-        </p>
-      )}
     </>
   );
 }

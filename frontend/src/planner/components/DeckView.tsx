@@ -240,7 +240,7 @@ function StackShape({ stack: s, mode, prefix, weightText }: {
   const inner = L - 2 * PAD;
 
   // Badge row, left to right: the DG placard diamond, the conflict warning, the colour's meaning
-  // (stop / type code); the stack count on the right. DG and conflict marks win when room is short.
+  // (type code); the stack count on the right. DG and conflict marks win when room is short.
   const badges: { text: string; x: number; w: number; dark: boolean }[] = [];
   const codes = [...new Set(s.dg.map((d) => d.code))];
   const diamonds: { code: string; cx: number }[] = [];

@@ -36,7 +36,7 @@ describe("LoadPlanView dangerous goods", () => {
 
   it("keeps the badges in every colour mode", async () => {
     const { container } = renderPlan(planDgConflict);
-    for (const mode of ["Weight", "Type"]) {
+    for (const mode of ["Weight", "Type", "DG class"]) {
       act(() => screen.getByRole("radio", { name: mode }).click());
       expect(container.querySelectorAll(".deck-view .dg-diamond")).toHaveLength(9);
     }

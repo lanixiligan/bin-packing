@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
-import { planMultidrop, reference } from "../test/fixtures.ts";
+import { planDgConflict, planMultidrop, reference } from "../test/fixtures.ts";
 import LoadPlanView from "./LoadPlanView.tsx";
 
 function renderPlan() {
@@ -12,25 +12,35 @@ const legend = () => screen.getByRole("group", { name: "Legend" });
 const deckSvg = (container: HTMLElement) => container.querySelector<HTMLElement>(".deck-view")!;
 
 describe("Legend and colour modes", () => {
-  it("colours by stop by default, with stop badges and LIFO explained", () => {
-    const { container } = renderPlan();
-    expect(screen.getByRole("radio", { name: "Stop" })).toBeChecked();
-    expect(within(legend()).getByText("Delivery stop")).toBeInTheDocument();
-    for (const n of [1, 2, 3]) expect(within(legend()).getByText(`Stop ${n}`)).toBeInTheDocument();
-    expect(within(legend()).getByText(/Euro imports × 4, Dry goods × 6/)).toBeInTheDocument();
-    expect(within(legend()).getByText(/stop 1 comes off first and stop 3 is unloaded last/)).toBeInTheDocument();
-    expect(within(deckSvg(container)).getAllByText("S3")).toHaveLength(6);
-    expect(within(deckSvg(container)).getAllByText("S1")).toHaveLength(5);
-    const fills = [...container.querySelectorAll(".deck-view .deck-unit")].map((r) => r.getAttribute("fill"));
-    expect(new Set(fills)).toEqual(new Set(["var(--stop-1)", "var(--stop-2)", "var(--stop-3)"]));
+  it("colours by DG class by default, in order of first appearance, general freight neutral", () => {
+    const { container } = render(
+      <LoadPlanView result={planDgConflict.result} reference={reference} request={planDgConflict.request} />,
+    );
+    expect(screen.getByRole("radio", { name: "DG class" })).toBeChecked();
+    expect(within(legend()).getByText("Dangerous goods class")).toBeInTheDocument();
+    const items = within(legend()).getAllByRole("listitem").map((li) => li.textContent);
+    expect(items).toEqual(["3Flammable liquid", "8Corrosive", "5.1Oxidising substance", "–General freight"]);
+    const fillOf = (label: string) => container.querySelector(
+      `.deck-view .deck-stack[aria-label^="${label}"] .deck-unit`)!.getAttribute("fill");
+    expect(fillOf("Paint")).toBe("var(--cat-1)");
+    expect(fillOf("Battery acid")).toBe("var(--cat-2)");
+    expect(fillOf("Pool chlorine")).toBe("var(--cat-3)");
+    expect(fillOf("General freight")).toBe("var(--cat-none)");
   });
 
-  it("switches to weight: a heat scale with min and max, no stop badges", async () => {
+  it("lists only general freight without DG", () => {
+    const { container } = renderPlan();
+    const items = within(legend()).getAllByRole("listitem").map((li) => li.textContent);
+    expect(items).toEqual(["–General freight"]);
+    const fills = [...container.querySelectorAll(".deck-view .deck-unit")].map((r) => r.getAttribute("fill"));
+    expect(new Set(fills)).toEqual(new Set(["var(--cat-none)"]));
+  });
+
+  it("switches to weight: a heat scale with min and max", async () => {
     const { container } = renderPlan();
     await userEvent.click(screen.getByRole("radio", { name: "Weight" }));
     expect(within(legend()).getByText("Stack weight")).toBeInTheDocument();
     expect(within(legend()).getByText(/Lightest 600 kg, heaviest 950 kg/)).toBeInTheDocument();
-    expect(within(deckSvg(container)).queryByText("S3")).not.toBeInTheDocument();
     const fills = [...container.querySelectorAll(".deck-view .deck-unit")].map((r) => r.getAttribute("fill"));
     expect(fills.every((f) => /^var\(--heat-[1-6]\)$/.test(f!))).toBe(true);
     expect(fills).toContain("var(--heat-6)");
@@ -41,7 +51,6 @@ describe("Legend and colour modes", () => {
     await userEvent.click(screen.getByRole("radio", { name: "Type" }));
     expect(within(legend()).getByText(/Australian Standard pallet/)).toBeInTheDocument();
     expect(within(legend()).getByText(/Euro \(EUR \/ EPAL\) pallet/)).toBeInTheDocument();
-    expect(within(deckSvg(container)).queryByText("S3")).not.toBeInTheDocument();
     expect(within(deckSvg(container)).getAllByText("AU").length).toBeGreaterThan(0);
     expect(within(deckSvg(container)).getAllByText("EURO").length).toBeGreaterThan(0);
     const patterns = new Set([...container.querySelectorAll(".deck-view .deck-stack rect[fill^='url(']")]
