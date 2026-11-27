@@ -20,6 +20,50 @@
 .dgc-seg input { margin: 0; accent-color: var(--on-primary); }
 .dgc-seg label:has(input:focus-visible) { outline: 2px solid var(--primary); outline-offset: -4px; box-shadow: inset 0 0 0 4px var(--card); }
 
+/* ---------- Checker heading ---------- */
+.dgc-chk-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 10px; }
+.dgc-chk-head .dgc-h2 { margin: 0; }
+.dgc button.dgc-swap { min-height: 36px; }
+.dgc-swap span { font-size: 1.1em; line-height: 1; }
+
+/* ---------- Sticky verdict bar ---------- */
+.dgc-bar-anchor { height: 1px; margin-top: -1px; }
+.dgc-bar-wrap { position: sticky; top: var(--dgc-top, var(--header-h)); height: 0; z-index: 4; }
+.dgc-bar {
+  position: absolute; left: 0; right: 0; top: 8px; overflow: hidden;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px;
+  padding: 8px 10px 8px 16px; border-radius: 12px;
+  background: var(--card); border: 2px solid var(--vc); border-left-width: 8px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  visibility: hidden; opacity: 0; transform: translateY(-6px);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0s linear 0.15s;
+}
+.dgc-bar.on { visibility: visible; opacity: 1; transform: none; transition-delay: 0s; }
+.dgc-bar p { margin: 0; }
+.dgc-bar-word { font-size: 1.25rem; font-weight: 800; color: var(--vc); white-space: nowrap; }
+.dgc-bar-pair { display: flex; flex-wrap: wrap; gap: 4px 14px; font-weight: 600; font-size: 0.92rem; flex: 1; min-width: 0; }
+.dgc-bar-pair > span { display: inline-flex; align-items: center; gap: 6px; }
+.dgc-bar-actions { display: flex; gap: 6px; margin-left: auto; }
+@media (max-width: 700px) {
+  .dgc-bar { padding: 6px 8px 6px 12px; }
+  .dgc-bar-word { font-size: 1.05rem; }
+  .dgc-bar-pair { order: 3; flex-basis: 100%; font-size: 0.85rem; }
+}
+
+/* A short ring when the verdict changes (replayed by remounting the element) */
+.dgc-flash {
+  position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  animation: dgc-flash 0.7s ease-out forwards;
+}
+@keyframes dgc-flash {
+  from { background: var(--vc); opacity: 0.35; }
+  to { background: var(--vc); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dgc-flash { display: none; }
+  .dgc-bar, .dgc-bar.on { transition: none; transform: none; }
+}
+
 /* ---------- Loads ---------- */
 .dgc-loads { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 1000px) { .dgc-loads { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
@@ -35,7 +79,6 @@
 .dgc-current-text b { font-size: 1.1rem; }
 .dgc-current-text small { color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; }
 .dgc button.dgc-change { flex: none; min-height: 36px; }
-
 
 .dgc-picker {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; margin-top: 10px;
@@ -88,7 +131,12 @@
 .dgc .v-ok { --vc: var(--good); --vb: var(--good-bg); }
 .dgc .v-bad, .dgc .v-ex { --vc: var(--bad-text); --vb: var(--bad-bg); }
 .dgc .v-check { --vc: var(--warn); --vb: var(--warn-bg); }
-.dgc-verdict { margin: 16px 0 18px; border: 2px solid var(--vc); border-radius: 12px; overflow: hidden; background: var(--card); }
+.dgc-verdict {
+  position: relative; margin: 16px 0 18px; border: 2px solid var(--vc); border-radius: 12px; overflow: hidden; background: var(--card);
+  scroll-margin-top: calc(var(--dgc-top, var(--header-h)) + 12px);
+}
+.dgc-verdict:focus { outline: none; }
+.dgc-verdict:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .dgc-band { padding: 14px 18px; background: var(--vb); }
 .dgc-band p { margin: 0; }
 .dgc-word { font-size: clamp(1.6rem, 5vw, 2.2rem); font-weight: 800; line-height: 1.1; color: var(--vc); }

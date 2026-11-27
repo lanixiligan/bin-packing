@@ -2,7 +2,7 @@
 // ADG Code Table 9.1 / 9.2 (and Northline's acceptance rules), with the tables
 // for reference. The verdicts come from the shared rules engine (src/dg/rules.ts),
 // the same one the backend mirrors, so the checker and the planner agree.
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useSearchParams } from "react-router";
 import { PageHeader } from "../../shell/AppShell";
 import {
@@ -40,33 +40,50 @@ export default function DgCheckerPage() {
 
   const [a, setA] = useState<LoadState>(() => newLoad("3"));
   const [b, setB] = useState<LoadState>(() => newLoad("5.1"));
-  const checkerHeading = useRef<HTMLHeadingElement>(null);
-
   const verdict = useMemo(() => verdictFor(a, b), [a, b]);
+  const words = verdictWords(verdict);
 
+  // Load A only takes DG classes, so food or fire-risk goods in B can't move to A.
+  const swap = isGoods(b.primary) ? () => { setA(b); setB(a); } : undefined;
+
+  // Selecting a matrix cell loads the pair; the verdict bar shows the result, so the page doesn't jump.
   const pick = (row: Col, col: Col) => {
     setA(newLoad(primaryOfCol(row)));
     setB(newLoad(primaryOfCol(col)));
-    const h = checkerHeading.current;
-    h?.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
-    h?.focus({ preventScroll: true });
+  };
+
+  const page = useRef<HTMLDivElement>(null);
+  const anchor = useRef<HTMLDivElement>(null);
+  const verdictBox = useRef<HTMLElement>(null);
+  const top = useHeaderHeight();
+  const barOn = useBarVisible(page, anchor, verdictBox, top);
+  const showDetails = () => {
+    const el = verdictBox.current;
+    el?.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
+    el?.focus({ preventScroll: true });
   };
 
   return (
-    <div className="dgc">
+    <div className="dgc" ref={page} style={{ "--dgc-top": `${top}px` } as React.CSSProperties}>
       <PageHeader
         title="Dangerous goods"
         subtitle="Can these dangerous goods travel together? Select two loads: the checker applies ADG Code Table 9.1 and Table 9.2 to primary and subsidiary hazards."
         actions={<RuleSetToggle value={ruleSet} onChange={setRuleSet} />}
       />
 
+      <div ref={anchor} className="dgc-bar-anchor" />
+      <VerdictBar a={a} b={b} words={words} on={barOn} onSwap={swap} onDetails={showDetails} />
+
       <section className="dgc-checker" aria-labelledby="dgc-chk-h">
-        <h2 id="dgc-chk-h" ref={checkerHeading} tabIndex={-1} className="dgc-h2">Check two loads</h2>
+        <div className="dgc-chk-head">
+          <h2 id="dgc-chk-h" className="dgc-h2">Check two loads</h2>
+          <SwapButton onSwap={swap} />
+        </div>
         <div className="dgc-loads">
           <LoadCard side="A" load={a} onChange={setA} ruleSet={ruleSet} showT92={verdict.v.exceptions.includes(6)} />
           <LoadCard side="B" load={b} onChange={setB} ruleSet={ruleSet} showT92={verdict.v.exceptions.includes(6)} other />
         </div>
-        <VerdictBox a={a} b={b} setA={setA} setB={setB} result={verdict} ruleSet={ruleSet} />
+        <VerdictBox ref={verdictBox} a={a} b={b} setA={setA} setB={setB} result={verdict} words={words} ruleSet={ruleSet} />
       </section>
 
       <section className="card dgc-section" aria-labelledby="dgc-mx-h">
@@ -90,6 +107,107 @@ export default function DgCheckerPage() {
       <ReferenceTabs value={refTab} onChange={setRefTab} northline={ruleSet === "northline"} />
       <SourcesNote />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sticky verdict bar
+// ---------------------------------------------------------------------------
+
+/** Height of the sticky shell header, so the verdict bar sits right under it. */
+function useHeaderHeight(): number {
+  const [h, setH] = useState(56);
+  useEffect(() => {
+    const header = document.querySelector<HTMLElement>(".shell-header");
+    if (!header || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setH(header.offsetHeight));
+    ro.observe(header);
+    return () => ro.disconnect();
+  }, []);
+  return h;
+}
+
+/**
+ * Show the bar once it has stuck under the header (the page has scrolled past its
+ * place) and the full verdict is out of view, so it never covers the page at rest
+ * and never repeats a verdict that is already on screen.
+ */
+function useBarVisible(page: RefObject<HTMLElement | null>, anchor: RefObject<HTMLElement | null>, verdict: RefObject<HTMLElement | null>, top: number): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      raf = 0;
+      const s = anchor.current?.getBoundingClientRect();
+      const band = verdict.current?.querySelector(".dgc-band")?.getBoundingClientRect();
+      if (!s || !band) return;
+      const stuck = s.top < top;
+      const bandInView = band.bottom > top + 24 && band.top < window.innerHeight - 24;
+      setOn(stuck && !bandInView);
+    };
+    const schedule = () => { if (!raf) raf = requestAnimationFrame(update); };
+    schedule();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
+    if (page.current) ro?.observe(page.current);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      ro?.disconnect();
+    };
+  }, [page, anchor, verdict, top]);
+  return on;
+}
+
+/** A counter that goes up each time `value` changes (not on mount): key an element on it to replay a flash. */
+function useChangeCount(value: string): number {
+  const [prev, setPrev] = useState(value);
+  const [n, setN] = useState(0);
+  if (prev !== value) {
+    setPrev(value);
+    setN(n + 1);
+  }
+  return n;
+}
+
+function VerdictBar({ a, b, words, on, onSwap, onDetails }: {
+  a: LoadState; b: LoadState; words: VerdictWords; on: boolean;
+  onSwap?: () => void; onDetails: () => void;
+}) {
+  const flash = useChangeCount(words.word);
+  // Hidden from assistive tech: the verdict box below announces changes (aria-live).
+  return (
+    <div className="dgc-bar-wrap">
+      <div className={`dgc-bar ${words.cls}${on ? " on" : ""}`} aria-hidden={!on} inert={!on}>
+        {flash ? <span key={flash} className="dgc-flash" aria-hidden="true" /> : null}
+        <p className="dgc-bar-word">{words.word}</p>
+        <p className="dgc-bar-pair">
+          <span><DgDiamond code={a.primary} size="sm" />A: {primaryText(a)}</span>
+          <span><DgDiamond code={b.primary} size="sm" />B: {primaryText(b)}</span>
+        </p>
+        <div className="dgc-bar-actions">
+          <SwapButton onSwap={onSwap} compact />
+          <button type="button" className="secondary" onClick={onDetails}>Details</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SwapButton({ onSwap, compact = false }: { onSwap?: () => void; compact?: boolean }) {
+  return (
+    <button
+      type="button"
+      className="secondary dgc-swap"
+      onClick={onSwap}
+      disabled={!onSwap}
+      aria-label={compact ? "Swap load A and load B" : undefined}
+      title={onSwap ? "Swap load A and load B" : "Food and fire-risk goods can only be load B"}
+    >
+      <span aria-hidden="true">⇄</span>{compact ? null : " Swap A and B"}
+    </button>
   );
 }
 
@@ -437,17 +555,26 @@ const MESSAGES = {
   exCheck: "Both loads are explosives in the same compatibility group. Check the Australian Explosives Code before you load them together.",
 };
 
-function VerdictBox({ a, b, setA, setB, result, ruleSet }: {
-  a: LoadState; b: LoadState;
-  setA: (l: LoadState) => void; setB: (l: LoadState) => void;
-  result: VerdictResult; ruleSet: RuleSet;
-}) {
-  const { v, same } = result;
+interface VerdictWords { cls: string; word: string; message: string }
+
+function verdictWords({ v, same }: VerdictResult): VerdictWords {
   const explosives = v.exceptions.includes(1);
   const [cls, word, message] =
     v.status === "ok" ? ["v-ok", "Compatible", same ? "Both loads are the same product (same UN number and details)." : MESSAGES.ok]
     : v.status === "check" ? (explosives ? ["v-check", "Check: explosives", MESSAGES.exCheck] : ["v-check", "Check specific goods", MESSAGES.check])
     : explosives ? ["v-ex", "Incompatible: explosives", MESSAGES.ex] : ["v-bad", "Incompatible", MESSAGES.incompatible];
+  return { cls, word, message };
+}
+
+function VerdictBox({ ref, a, b, setA, setB, result, words, ruleSet }: {
+  ref: RefObject<HTMLElement | null>;
+  a: LoadState; b: LoadState;
+  setA: (l: LoadState) => void; setB: (l: LoadState) => void;
+  result: VerdictResult; words: VerdictWords; ruleSet: RuleSet;
+}) {
+  const { v } = result;
+  const { cls, word, message } = words;
+  const flash = useChangeCount(word);
   const cells = cellsOf(a, b);
 
   // Exception questions, mapped onto the loads' DgInfo fields.
@@ -498,7 +625,8 @@ function VerdictBox({ a, b, setA, setB, result, ruleSet }: {
     : [];
 
   return (
-    <section className={`dgc-verdict ${cls}`} aria-label="Verdict">
+    <section ref={ref} tabIndex={-1} className={`dgc-verdict ${cls}`} aria-label="Verdict">
+      {flash ? <span key={flash} className="dgc-flash" aria-hidden="true" /> : null}
       <div className="dgc-band" aria-live="polite" aria-atomic="true">
         <p className="dgc-word">{word}</p>
         <p className="dgc-pair">
