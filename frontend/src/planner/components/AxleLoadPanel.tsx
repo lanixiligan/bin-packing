@@ -32,7 +32,9 @@ function AxleRow({ axle }: { axle: AxleLoad }) {
   const units = useUnits();
   const nameId = useId();
   const ratio = axle.limit_kg > 0 ? axle.load_kg / axle.limit_kg : axle.ratio;
-  const pct = formatPercent(ratio * 100);
+  // Round towards the status, so 89.7 % reads "89 %" (within limit), not "90 %" beside "Within limit",
+  // and anything over the limit never reads "100 %".
+  const pct = formatPercent(axle.status === "over" ? Math.ceil(ratio * 100) : Math.floor(ratio * 100));
   const status = statusText(axle, units);
   const over = axle.status === "over";
   const shown = Math.min(Math.max(ratio, 0), SCALE);
