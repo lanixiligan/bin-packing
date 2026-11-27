@@ -133,6 +133,37 @@ async def test_demo_endpoint_validation(client):
     assert r.status_code == 400 and "'Big' (101 kg)" in r.json()["detail"]
 
 
+async def test_demo_endpoint_pallets(client):
+    # Light shipments: weight never binds, 8 pallet spaces per truck do.
+    pallets = [3, 3, 2, 2, 2, 2, 1, 1]
+    body = {"capacity": 10_000, "max_pallets": 8,
+            "shipments": [{"name": f"P{i}", "weight": 50, "pallets": p} for i, p in enumerate(pallets)]}
+    r = await client.post("/api/solve", json=body)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["max_pallets"] == 8
+    assert data["lower_bound"] == 2  # ceil(16 / 8)
+    for method in ("ffd", "ortools"):
+        for t in data[method]["trucks"]:
+            assert sum(s["pallets"] for s in t["shipments"]) <= 8
+    assert data["ortools"]["num_trucks"] == 2
+
+    # Without a pallet limit the pallets ride along but don't constrain.
+    body.pop("max_pallets")
+    data = (await client.post("/api/solve", json=body)).json()
+    assert "max_pallets" not in data and data["ortools"]["num_trucks"] == 1
+    assert data["ffd"]["trucks"][0]["shipments"][0]["pallets"] == 3
+
+
+async def test_demo_endpoint_pallet_validation(client):
+    body = {"capacity": 1000, "max_pallets": 4, "shipments": [{"name": "Huge", "weight": 10, "pallets": 5}]}
+    r = await client.post("/api/solve", json=body)
+    assert r.status_code == 400 and "'Huge' (5 pallets)" in r.json()["detail"]
+    bad = {"capacity": 1000, "shipments": [{"name": "X", "weight": 1, "pallets": -1}]}
+    r = await client.post("/api/solve", json=bad)
+    assert r.status_code == 422
+
+
 # ---------------------------------------------------------------------------
 # Multi-dimension behaviour
 # ---------------------------------------------------------------------------

@@ -183,6 +183,13 @@ export function dgTextOf(s: Pick<ShipmentLike, "dg_class" | "subsidiary" | "dgLa
   return s.dgLabel || dgClassText(s.dg_class, s.subsidiary);
 }
 
+/** Placard code for a block: its `dgCode`, else the demo's `dg_class` ("food" → "F", "fire_risk" → "R"); null for none. */
+export function dgCodeOf(s: Pick<ShipmentLike, "dg_class"> & { dgCode?: string | null }): string | null {
+  const c = s.dgCode ?? s.dg_class;
+  if (!c) return null;
+  return c === "food" ? "F" : c === "fire_risk" ? "R" : c;
+}
+
 export const sizeOf = (s: ShipmentLike): UsageTotals => ({
   weight_kg: s.weight,
   volume_m3: s.volume ?? 0,

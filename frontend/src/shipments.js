@@ -1,7 +1,8 @@
 // Helpers for building the client-side shipment list.
 // Each shipment gets a stable `uid` so React keys survive edits and removals.
-// The uid stays in the browser: only { name, weight, dg_class, subsidiary } is
-// sent to /solve. `dgClass` is the dangerous goods class ("3", "5.1", …),
+// The uid stays in the browser: only { name, weight, dg_class, subsidiary,
+// pallets } is sent to /solve. `pallets` is the number of pallet spaces the
+// shipment takes (0 = loose freight); the truck views draw them on the deck. `dgClass` is the dangerous goods class ("3", "5.1", …),
 // "food", "fire_risk", or null for general freight (the default).
 // `subsidiary` lists subsidiary hazards ("6.1", "8", …): only with a class.
 import { SUBSIDIARIES } from "./dg/rules.ts";
@@ -92,6 +93,7 @@ export function shipmentsFromWeights(weights, startIndex = 0) {
     weight,
     dgClass: null,
     subsidiary: [],
+    pallets: 1,
   }));
 }
 
@@ -99,7 +101,7 @@ export function shipmentsFromWeights(weights, startIndex = 0) {
  * Random shipments of catalogue items, each with the item's own DG data,
  * sized relative to the truck capacity: each weight is between 5% and 60%
  * of `capacity` (50–600 kg for a 1000 kg truck), so every shipment fits and
- * trucks hold a mix of two to several shipments.
+ * trucks hold a mix of two to several shipments. Each takes 1–3 pallet spaces.
  * Falls back to 1000 kg when no valid capacity is given.
  */
 export function randomShipments(capacity = 1000, count = 20, random = Math.random) {
@@ -114,6 +116,7 @@ export function randomShipments(capacity = 1000, count = 20, random = Math.rando
       weight: Math.floor(min + random() * (max - min + 1)),
       dgClass: it.dgClass,
       subsidiary: [...it.subsidiary],
+      pallets: 1 + Math.floor(random() * 3),
     };
   });
 }

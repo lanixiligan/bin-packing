@@ -3,6 +3,7 @@ import ShipmentForm from "../components/ShipmentForm.jsx";
 import ResultPanel from "../components/ResultPanel.jsx";
 import Summary from "../components/Summary.jsx";
 import { dgClassText } from "../components/capacity.ts";
+import { palletFootprint } from "../components/deck.ts";
 import { checkAll } from "../dg/rules.ts";
 import { demoDg, FFD_LOSES_EXAMPLE, randomShipments, shipmentsFromWeights } from "../shipments.js";
 import { NARROW_SCREEN, REDUCED_MOTION, SMALL_SCREEN, useMediaQuery } from "../useMediaQuery.js";
@@ -19,9 +20,38 @@ function capacityProblem(text) {
   return "";
 }
 
+// Pallet spaces per truck: blank means not limited.
+function palletsProblem(text) {
+  if (text.trim() === "") return "";
+  const n = Number(text);
+  if (!Number.isInteger(n) || n < 1 || n > 100) return "Pallet spaces must be a whole number from 1 to 100, or blank.";
+  return "";
+}
+
+const palletsOf = (s) => Math.max(0, Number(s.pallets) || 0);
+
+/**
+ * Summary.jsx's result with a per-dimension lower bound when the trucks have a
+ * pallet limit (the bound is then the larger of the weight and pallet bounds).
+ */
+function summaryResult(result) {
+  if (!result.max_pallets) return result;
+  const shipments = result.ffd.trucks.flatMap((t) => t.shipments);
+  const pallets = shipments.reduce((sum, s) => sum + palletsOf(s), 0);
+  const byWeight = Math.ceil(result.total_weight / result.capacity);
+  const byPallets = Math.ceil(pallets / result.max_pallets);
+  const details = [
+    { label: "Weight", text: `⌈${result.total_weight.toLocaleString()} ÷ ${result.capacity.toLocaleString()}⌉ = ${byWeight}`, binding: byWeight === result.lower_bound },
+    { label: "Pallets", text: `⌈${pallets} ÷ ${result.max_pallets}⌉ = ${byPallets}`, binding: byPallets === result.lower_bound },
+  ];
+  const binding = details.filter((d) => d.binding).map((d) => d.label.toLowerCase()).join(" and ");
+  return { ...result, bound_note: `by ${binding}: no plan can use fewer`, bound_details: details };
+}
+
 export default function App() {
   const [capacityText, setCapacityText] = useState("1000");
   const [capacityChecked, setCapacityChecked] = useState(false); // show field error after blur/Solve
+  const [palletsText, setPalletsText] = useState(""); // pallet spaces per truck, blank = not limited
   const [shipments, setShipments] = useState(() => randomShipments());
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
@@ -43,8 +73,13 @@ export default function App() {
 
   const capError = capacityProblem(capacityText);
   const capacity = capError ? null : Number(capacityText); // null while invalid
+  const palError = palletsProblem(palletsText);
+  const maxPallets = palError || palletsText.trim() === "" ? null : Number(palletsText);
   const totalWeight = shipments.reduce((s, x) => s + (Number(x.weight) || 0), 0);
-  const lowerBound = capacity ? Math.ceil(totalWeight / capacity) : null;
+  const totalPallets = shipments.reduce((s, x) => s + palletsOf(x), 0);
+  const lowerBound = capacity
+    ? Math.max(Math.ceil(totalWeight / capacity), maxPallets ? Math.ceil(totalPallets / maxPallets) : 0)
+    : null;
   const activeId = hoverId ?? focusId; // shipment highlighted in both panels
   const dgCount = shipments.filter((s) => s.dgClass).length;
   // Pairs of shipments that must travel apart (the server decides on Solve).
@@ -109,11 +144,24 @@ export default function App() {
   // ---- Validation done in the browser (the backend checks again) --------
   function validate() {
     if (capError) return capError;
+    if (palError) return palError;
     if (shipments.length === 0) return "Add at least one shipment.";
     const bad = shipments.find(
       (s) => !s.name.trim() || !(Number(s.weight) > 0) || !Number.isInteger(Number(s.weight))
     );
     if (bad) return "Every shipment needs a name and a whole-number weight above 0 kg.";
+    const badPallets = shipments.find((s) => {
+      const p = Number(s.pallets ?? 0);
+      return !Number.isInteger(p) || p < 0 || p > 100;
+    });
+    if (badPallets) return `Pallet spaces must be a whole number from 0 to 100 ('${badPallets.name}').`;
+    const tooBig = maxPallets ? shipments.filter((s) => palletsOf(s) > maxPallets) : [];
+    if (tooBig.length) {
+      return (
+        `These shipments take more pallet spaces than a truck has (${maxPallets}) and can never fit: ` +
+        tooBig.map((s) => `'${s.name}' (${palletsOf(s)} pallets)`).join(", ")
+      );
+    }
     const tooHeavy = shipments.filter((s) => Number(s.weight) > capacity);
     if (tooHeavy.length) {
       return (
@@ -145,12 +193,14 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           capacity,
+          ...(maxPallets ? { max_pallets: maxPallets } : {}),
           // dg_class / subsidiary only for dangerous goods, so a plain request looks as before
           shipments: shipments.map((s) => ({
             name: s.name.trim(),
             weight: Number(s.weight),
             ...(s.dgClass ? { dg_class: s.dgClass } : {}),
             ...(s.subsidiary?.length ? { subsidiary: s.subsidiary } : {}),
+            ...(palletsOf(s) ? { pallets: palletsOf(s) } : {}),
           })),
           rule_set: ruleSet,
         }),
@@ -216,6 +266,9 @@ export default function App() {
   }, [result]);
 
   const showCapError = capacityChecked && capError;
+  // The capacity the truck views get: kg only, or kg and pallet spaces.
+  const viewCapacity = result?.max_pallets ? { weight_kg: result.capacity, pallets: result.max_pallets } : result?.capacity;
+  const usesPallets = Boolean(result?.max_pallets) || shipments.some((s) => palletsOf(s) > 0);
   const optimumTrucks = result ? result.ortools.num_trucks : null;
   const linkProps = { activeId, onHover: setHoverId, onFocusBlock: setFocusId };
   const active = activeId != null ? placement[activeId] : null;
@@ -251,9 +304,31 @@ export default function App() {
             />
             {showCapError && <span id="capacity-error" className="field-error">{capError}</span>}
           </div>
+          <div className="capacity-field">
+            <label htmlFor="max-pallets">Pallet spaces per truck</label>
+            <input
+              id="max-pallets"
+              type="number"
+              min="1"
+              max="100"
+              inputMode="numeric"
+              placeholder="not limited"
+              value={palletsText}
+              aria-invalid={palError ? true : undefined}
+              aria-describedby={palError ? "pallets-error" : "pallets-hint"}
+              onChange={(e) => {
+                setPalletsText(e.target.value);
+                clearResult();
+              }}
+            />
+            {palError
+              ? <span id="pallets-error" className="field-error">{palError}</span>
+              : <span id="pallets-hint" className="muted small">1165 × 1165 mm pallets, 2 across</span>}
+          </div>
           <div className="quick-stats">
             <span><b>{shipments.length}</b> shipments</span>
             <span><b>{totalWeight.toLocaleString()}</b> kg total</span>
+            <span><b>{totalPallets.toLocaleString()}</b> pallets</span>
             <span>Lower bound: <b>{lowerBound ?? "—"}</b> trucks</span>
             {dgCount > 0 && (
               <span className="dg-quick">
@@ -283,7 +358,7 @@ export default function App() {
           </fieldset>
         </div>
 
-        <ShipmentForm shipments={shipments} capacity={capacity} onChange={changeShipments} ruleSet={ruleSet} />
+        <ShipmentForm shipments={shipments} capacity={capacity} maxPallets={maxPallets} onChange={changeShipments} ruleSet={ruleSet} />
 
         <div className="actions">
           <button type="button" onClick={() => changeShipments(randomShipments(capacity ?? undefined, 20))}>
@@ -326,7 +401,7 @@ export default function App() {
       <div className="results" ref={resultsRef}>
         {loading && <SolvingProgress elapsed={elapsed} count={shipments.length} />}
 
-        {result && <Summary result={result} />}
+        {result && <Summary result={summaryResult(result)} />}
 
         {result && (
           <>
@@ -335,6 +410,7 @@ export default function App() {
                 <>
                   <span className="inspector-name">{active.shipment.name}</span>
                   <span>{active.shipment.weight} kg</span>
+                  <span>{palletFootprint(active.shipment.pallets) || "loose freight"}</span>
                   {active.shipment.dg_class && <span>DG: <b>{dgClassText(active.shipment.dg_class, active.shipment.subsidiary)}</b></span>}
                   <span>FFD: <b>truck {active.ffd}</b></span>
                   <span>OR-Tools: <b>truck {active.ortools}</b></span>
@@ -346,7 +422,7 @@ export default function App() {
               )}
             </div>
             <div className="view-toggle" role="group" aria-label="Truck view">
-              {[["2d", "2D bars"], ["3d", "3D trucks"]].map(([v, label]) => (
+              {[["2d", usesPallets ? "2D deck plan" : "2D bars"], ["3d", "3D trucks"]].map(([v, label]) => (
                 <button
                   key={v}
                   type="button"
@@ -363,7 +439,7 @@ export default function App() {
                 title="FFD (quick rule)"
                 explanation="Sort shipments heaviest → lightest. Put each one in the first truck with room; open a new truck if none fits."
                 data={result.ffd}
-                capacity={result.capacity}
+                capacity={viewCapacity}
                 step={step}
                 truckHeight={narrowScreen ? 200 : 280}
                 optimumTrucks={optimumTrucks}
@@ -377,7 +453,7 @@ export default function App() {
                 title="OR-Tools (optimal)"
                 explanation="CP-SAT solver searches all possible loadings for the fewest trucks, and proves when no better answer exists."
                 data={result.ortools}
-                capacity={result.capacity}
+                capacity={viewCapacity}
                 step={step}
                 truckHeight={narrowScreen ? 200 : 280}
                 badge={result.ortools.optimal

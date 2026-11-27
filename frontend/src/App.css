@@ -147,6 +147,7 @@ button.icon:hover { color: var(--bad); }
 .add-row { display: flex; gap: 6px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
 .add-row input:first-child { width: 200px; max-width: 100%; }
 .add-row input[type="number"] { width: 90px; }
+.add-row input.pallets { width: 64px; }
 .shipment-form > .link-button { margin-top: 10px; }
 
 .paste-box {

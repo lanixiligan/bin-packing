@@ -5,12 +5,14 @@ import { dgClassText } from "./capacity.ts";
 import HazardPicker from "./HazardPicker.jsx";
 
 // `capacity` is null while the capacity field is empty or invalid, so rows are
-// only flagged "heavier than truck" against a real capacity. With
+// only flagged "heavier than truck" against a real capacity. Likewise
+// `maxPallets` (null = not limited) flags rows with more pallets than a truck. With
 // `ruleSet === "northline"`, rows Northline won't accept are flagged too (the
 // server refuses them on Solve).
-export default function ShipmentForm({ shipments, capacity, onChange, ruleSet = "adg" }) {
+export default function ShipmentForm({ shipments, capacity, maxPallets = null, onChange, ruleSet = "adg" }) {
   const [name, setName] = useState("");
   const [weight, setWeight] = useState("");
+  const [pallets, setPallets] = useState("1");
   const [hazard, setHazard] = useState({ dgClass: null, subsidiary: [] });
   const itemsId = useId();
 
@@ -25,9 +27,11 @@ export default function ShipmentForm({ shipments, capacity, onChange, ruleSet = 
     e.preventDefault();
     const w = Number(weight);
     if (!name.trim() || !(w > 0)) return;
-    onChange([...shipments, { uid: nextUid(), name: name.trim(), weight: Math.round(w), ...hazard }]);
+    const p = Math.max(0, Math.round(Number(pallets) || 0));
+    onChange([...shipments, { uid: nextUid(), name: name.trim(), weight: Math.round(w), pallets: p, ...hazard }]);
     setName("");
     setWeight("");
+    setPallets("1");
     setHazard({ dgClass: null, subsidiary: [] });
   }
 
@@ -45,13 +49,14 @@ export default function ShipmentForm({ shipments, capacity, onChange, ruleSet = 
         {shipments.length === 0 && <p className="muted">No shipments yet. Add one below, paste weights, or load random ones.</p>}
         {shipments.map((s) => {
           const tooHeavy = capacity != null && Number(s.weight) > capacity;
+          const tooBig = maxPallets != null && Number(s.pallets) > maxPallets;
           const refused = ruleSet === "northline"
             ? northlineIssues(demoDg(s.dgClass, s.subsidiary)).find((i) => i.kind === "prohibited")
             : null;
           const errId = `row-err-${s.uid}`;
           const dgErrId = `row-dg-err-${s.uid}`;
           return (
-            <div key={s.uid} className={`shipment-row ${tooHeavy ? "invalid" : ""}${refused ? " dg-refused" : ""}`}>
+            <div key={s.uid} className={`shipment-row ${tooHeavy || tooBig ? "invalid" : ""}${refused ? " dg-refused" : ""}`}>
               <input
                 className="name"
                 value={s.name}
@@ -69,6 +74,19 @@ export default function ShipmentForm({ shipments, capacity, onChange, ruleSet = 
                 aria-describedby={tooHeavy ? errId : undefined}
               />
               <span className="unit">kg</span>
+              <input
+                className="pallets"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                value={s.pallets ?? 0}
+                onChange={(e) => update(s.uid, { pallets: e.target.value })}
+                aria-label={`Pallet spaces of ${s.name || "shipment"} (0 for loose freight)`}
+                aria-invalid={tooBig || undefined}
+                aria-describedby={tooBig ? `${errId}-pal` : undefined}
+              />
+              <span className="unit" aria-hidden="true">pal</span>
               <HazardPicker
                 value={s}
                 onChange={(h) => update(s.uid, h)}
@@ -88,6 +106,7 @@ export default function ShipmentForm({ shipments, capacity, onChange, ruleSet = 
                 ✕
               </button>
               {tooHeavy && <span id={errId} className="row-error">heavier than truck!</span>}
+              {tooBig && <span id={`${errId}-pal`} className="row-error">more pallets than a truck holds!</span>}
               {refused && <span id={dgErrId} className="row-error">{refused.message}</span>}
             </div>
           );
@@ -116,6 +135,18 @@ export default function ShipmentForm({ shipments, capacity, onChange, ruleSet = 
           onChange={(e) => setWeight(e.target.value)}
         />
         <span className="unit">kg</span>
+        <input
+          className="pallets"
+          placeholder="Pallets"
+          aria-label="New shipment pallet spaces (0 for loose freight)"
+          type="number"
+          min="0"
+          max="100"
+          step="1"
+          value={pallets}
+          onChange={(e) => setPallets(e.target.value)}
+        />
+        <span className="unit" aria-hidden="true">pal</span>
         <HazardPicker value={hazard} onChange={setHazard} name={name.trim() || "new shipment"} others={shipments} ruleSet={ruleSet} />
         <button type="submit">+ Add shipment</button>
       </form>

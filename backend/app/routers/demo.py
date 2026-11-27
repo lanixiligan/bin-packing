@@ -10,6 +10,10 @@ Table 9.1, app/dg.py, which also pairs subsidiary hazards) never share a truck. 
 
 It runs on the multi-dimension solver (app/solver/multi.py) with weight as
 the only limited dimension, so the demo and load planning share one model.
+
+Pallets (optional): each shipment may take `pallets` spaces and the request
+may set `max_pallets` per truck, which then limits the pallet dimension too.
+Both are echoed only when given, so older requests get the same response.
 """
 
 import threading
@@ -47,6 +51,8 @@ class Shipment(BaseModel):
         default_factory=list, max_length=4,
         description="Subsidiary hazards (only with a DG class, never the class itself)")
 
+    pallets: int = Field(default=0, ge=0, le=100, description="Pallet spaces taken (0 = loose freight)")
+
     @field_validator("subsidiary")
     @classmethod
     def _sorted_unique(cls, v: list[str]) -> list[str]:
@@ -64,6 +70,8 @@ class Shipment(BaseModel):
 
 class SolveRequest(BaseModel):
     capacity: int = Field(gt=0, le=1_000_000, description="Truck max capacity in kg")
+    max_pallets: int | None = Field(default=None, gt=0, le=100,
+                                    description="Pallet spaces per truck (null = not limited)")
     shipments: list[Shipment]
     rule_set: dgrules.RuleSet = "adg"
 
@@ -112,6 +120,16 @@ def solve(req: SolveRequest):
             f"({req.capacity} kg) and can never fit: {names}",
         )
 
+    if req.max_pallets is not None:
+        too_big = [s for s in req.shipments if s.pallets > req.max_pallets]
+        if too_big:
+            names = ", ".join(f"'{s.name}' ({s.pallets} pallets)" for s in too_big)
+            raise HTTPException(
+                400,
+                f"These shipments take more pallet spaces than a truck has "
+                f"({req.max_pallets}) and can never fit: {names}",
+            )
+
     dgs = [demo_dg(s.dg_class, s.subsidiary) for s in req.shipments]
     if req.rule_set == "northline":
         refused = [f"'{s.name}' ({dgrules.label(d)})" for s, d in zip(req.shipments, dgs, strict=True)
@@ -121,13 +139,15 @@ def solve(req: SolveRequest):
 
     # Give each shipment an id so the frontend can track it across panels.
     shipments = [
-        {"id": i, "name": s.name, "weight": s.weight, "dg_class": s.dg_class, "subsidiary": s.subsidiary}
+        {"id": i, "name": s.name, "weight": s.weight, "dg_class": s.dg_class, "subsidiary": s.subsidiary,
+         **({"pallets": s.pallets} if s.pallets else {})}
         for i, s in enumerate(req.shipments)
     ]
     weights = [s["weight"] for s in shipments]
     units = [
         PackUnit(id=s["id"], order_id=0, order_reference="", order_line_id=s["id"],
-                 item_name=s["name"], item_sku="", weight_kg=s["weight"], volume_m3=0, pallets=0,
+                 item_name=s["name"], item_sku="", weight_kg=s["weight"], volume_m3=0,
+                 pallets=s.get("pallets", 0),
                  dg=d)
         for s, d in zip(shipments, dgs, strict=True)
     ]
@@ -138,7 +158,8 @@ def solve(req: SolveRequest):
     if not _solve_slots.acquire(blocking=False):
         raise HTTPException(429, "The solver is busy with other requests. Try again in a few seconds.")
     try:
-        result, status = solve_units(units, Capacity(weight_kg=req.capacity), TIME_LIMIT_SECONDS)
+        result, status = solve_units(units, Capacity(weight_kg=req.capacity, pallets=req.max_pallets),
+                                     TIME_LIMIT_SECONDS)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     finally:
@@ -151,6 +172,7 @@ def solve(req: SolveRequest):
 
     return {
         "capacity": req.capacity,
+        **({"max_pallets": req.max_pallets} if req.max_pallets is not None else {}),
         "total_weight": sum(weights),
         "lower_bound": lb,
         # True when some shipments must travel apart (the lower bound ignores that).

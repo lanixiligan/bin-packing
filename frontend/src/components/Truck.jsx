@@ -1,4 +1,6 @@
-import { colorFor, describeSize, describeUsage, dgTextOf, shipmentFractions, sizeOf, truckFill } from "./capacity.ts";
+import { colorFor, describeSize, describeUsage, dgCodeOf, dgTextOf, shipmentFractions, sizeOf, truckFill } from "./capacity.ts";
+import { usesDeck } from "./deck.ts";
+import DeckTruck from "./DeckTruck.jsx";
 import DimBars from "./DimBars.jsx";
 import { DgDiamond } from "../dg/DgBadge.tsx";
 import "./truck.css";
@@ -19,13 +21,10 @@ import "./truck.css";
 // ready-made `shipment.dgLabel` ("Class 3") is written on tall blocks and in
 // the screen-reader label, with the class diamond at the block's left edge.
 // Blocks without DG look exactly as before.
+// Trucks with a pallet limit, or carrying shipments on pallets, are drawn as a
+// top-down pallet deck at real proportions instead (DeckTruck.jsx).
 
-/** Diamond code for a block (the demo's dg_class, or `dgCode` if given), or null. */
-function diamondOf(s) {
-  const c = s.dgCode ?? s.dg_class;
-  if (!c) return null;
-  return c === "food" ? "F" : c === "fire_risk" ? "R" : c;
-}
+const diamondOf = dgCodeOf;
 
 /** The block's label lines: name, weight, then the DG class when there is room. */
 function BlockLabel({ s, h, weight, dg }) {
@@ -50,6 +49,22 @@ export default function Truck({
   truck, numTrucks, capacity, height, step, dropIndex, activeId, onHover, onFocusBlock, extra,
 }) {
   const cap = truck.capacity ?? capacity;
+  if (usesDeck(truck.shipments, cap)) {
+    return (
+      <DeckTruck
+        truck={truck}
+        numTrucks={numTrucks}
+        cap={cap}
+        height={height}
+        step={step}
+        dropIndex={dropIndex}
+        activeId={activeId}
+        onHover={onHover}
+        onFocusBlock={onFocusBlock}
+        extra={extra}
+      />
+    );
+  }
   if (typeof cap === "object" && cap !== null) {
     return (
       <MultiTruck

@@ -47,6 +47,7 @@ test("random shipments take their DG data from the item", () => {
     assert.ok(it, s.name);
     assert.deepEqual({ dgClass: s.dgClass, subsidiary: s.subsidiary }, { dgClass: it.dgClass, subsidiary: it.subsidiary });
     assert.ok(s.weight >= 50 && s.weight <= 600);
+    assert.ok([1, 2, 3].includes(s.pallets), String(s.pallets));
   }
   assert.ok(all.some((s) => isDgClass(s.dgClass)) && all.some((s) => s.dgClass === "food") && all.some((s) => !s.dgClass));
   assert.ok(all.some((s) => s.subsidiary.length > 0));
@@ -54,5 +55,5 @@ test("random shipments take their DG data from the item", () => {
 
 test("automatic names are general freight only", () => {
   for (let i = 0; i < 40; i++) assert.equal(itemByName(autoName(i)).dgClass, null);
-  assert.ok(shipmentsFromWeights([1, 2, 3]).every((s) => s.dgClass === null && s.subsidiary.length === 0));
+  assert.ok(shipmentsFromWeights([1, 2, 3]).every((s) => s.dgClass === null && s.subsidiary.length === 0 && s.pallets === 1));
 });

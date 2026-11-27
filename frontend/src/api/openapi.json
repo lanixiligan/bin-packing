@@ -6963,6 +6963,14 @@
             "maxItems": 4,
             "title": "Subsidiary",
             "description": "Subsidiary hazards (only with a DG class, never the class itself)"
+          },
+          "pallets": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Pallets",
+            "description": "Pallet spaces taken (0 = loose freight)",
+            "default": 0
           }
         },
         "type": "object",
@@ -6980,6 +6988,20 @@
             "exclusiveMinimum": 0.0,
             "title": "Capacity",
             "description": "Truck max capacity in kg"
+          },
+          "max_pallets": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 100.0,
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Pallets",
+            "description": "Pallet spaces per truck (null = not limited)"
           },
           "shipments": {
             "items": {

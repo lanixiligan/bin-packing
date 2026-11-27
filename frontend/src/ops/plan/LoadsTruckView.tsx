@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { Schemas } from "../../api/client";
 import ResultPanel from "../../components/ResultPanel.jsx";
 import { describeSize } from "../../components/capacity";
+import { palletFootprint } from "../../components/deck";
 import { NARROW_SCREEN, useMediaQuery } from "../../useMediaQuery.js";
 import { loadsPanelData } from "./solveView";
 import ViewToggle, { type TruckView } from "./ViewToggle";
@@ -29,6 +30,7 @@ export default function LoadsTruckView({ plan }: { plan: Schemas["PlanRead"] }) 
             <span className="inspector-name">{active.s.name}</span>
             <span>{active.s.detail}</span>
             <span>{describeSize({ weight_kg: active.s.weight, volume_m3: active.s.volume, pallets: active.s.pallets })}</span>
+            {active.s.pallets > 0 && <span>{palletFootprint(active.s.pallets)}</span>}
             <span>Load <b>{active.load}</b></span>
           </>
         ) : (

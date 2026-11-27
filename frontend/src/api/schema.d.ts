@@ -2186,6 +2186,12 @@ export interface components {
              * @description Subsidiary hazards (only with a DG class, never the class itself)
              */
             subsidiary?: ("2.1" | "2.3" | "3" | "4.1" | "4.2" | "4.3" | "5.1" | "6.1" | "8")[];
+            /**
+             * Pallets
+             * @description Pallet spaces taken (0 = loose freight)
+             * @default 0
+             */
+            pallets: number;
         };
         /** SolveRequest */
         SolveRequest: {
@@ -2194,6 +2200,11 @@ export interface components {
              * @description Truck max capacity in kg
              */
             capacity: number;
+            /**
+             * Max Pallets
+             * @description Pallet spaces per truck (null = not limited)
+             */
+            max_pallets?: number | null;
             /** Shipments */
             shipments: components["schemas"]["Shipment"][];
             /**

@@ -7,6 +7,7 @@ import { errorMessage } from "../../api/errors";
 import ResultPanel from "../../components/ResultPanel.jsx";
 import Summary from "../../components/Summary.jsx";
 import { describeSize } from "../../components/capacity";
+import { palletFootprint } from "../../components/deck";
 import { NARROW_SCREEN, useMediaQuery } from "../../useMediaQuery.js";
 import { DgBadge } from "../../dg/DgBadge";
 import { isGeneral } from "../../dg/rules";
@@ -94,6 +95,7 @@ export default function SolveComparison({ plan, result, replacing = false, onSav
             <span>{active.unit.order_reference}</span>
             {!isGeneral(active.unit.dg) ? <DgBadge dg={active.unit.dg} showUn /> : null}
             <span>{describeSize({ weight_kg: active.unit.weight_kg, volume_m3: active.unit.volume_m3, pallets: active.unit.pallets })}</span>
+            {active.unit.pallets > 0 && <span>{palletFootprint(active.unit.pallets)}</span>}
             <span>FFD: <b>load {active.ffd}</b></span>
             {active.ortools != null && <span>OR-Tools: <b>load {active.ortools}</b></span>}
           </>
