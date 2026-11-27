@@ -109,11 +109,24 @@ def check_integrity(ref: ReferenceData) -> None:
         for d in v.decks:
             _check_no_loop(d.id, decks, (), where)
 
+        floor = sum(floor_positions(d) for d in v.cargo_decks)
+        if v.pallet_spaces > floor:
+            raise ValueError(f"{where}: {v.pallet_spaces} pallet spaces won't fit on its decks, which hold "
+                             f"{floor} AU pallets; make the decks longer or wider too.")
+
         for combo in v.container_combos:
             for slot in combo.slots:
                 if slot.deck_id not in decks or not decks[slot.deck_id].cargo:
                     raise ValueError(f"{where}: combo '{combo.name}' uses unknown cargo deck "
                                      f"'{slot.deck_id}'.")
+
+
+AU_PALLET_MM = 1165
+
+
+def floor_positions(deck: Deck) -> int:
+    """AU standard pallets that fit on a deck's floor, laid in flush rows."""
+    return (deck.length_mm // AU_PALLET_MM) * (deck.width_mm // AU_PALLET_MM)
 
 
 def _check_no_loop(deck_id: str, decks: dict[str, Deck], path: tuple[str, ...], where: str) -> None:
@@ -126,4 +139,5 @@ def _check_no_loop(deck_id: str, decks: dict[str, Deck], path: tuple[str, ...], 
             _check_no_loop(s.on_deck, decks, (*path, deck_id), where)
 
 
-__all__ = ["ReferenceData", "ReferenceOverrides", "apply_overrides", "check_integrity", "load_reference"]
+__all__ = ["ReferenceData", "ReferenceOverrides", "apply_overrides", "check_integrity", "floor_positions",
+           "load_reference"]

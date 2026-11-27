@@ -97,15 +97,18 @@ async def test_unstackable_items_take_floor_space(client):
     assert "UNSTACKABLE_FLOOR_SPACE" in codes(loose, "warning")
 
 
+HEAVY_PALLETS = {"pallet_defaults": {"max_gross_kg": 2000}}  # steel coil: the carrier allows 2 t
+
+
 async def test_axle_overload(client):
     # Stop 1 drops first, so it rides at the rear: 12 heavy pallets over the trailer tri-axle.
-    r = await plan(client, pallet(12, 1800, id="H", stop=1), pallet(10, 50, id="L", stop=2))
+    heavy = [pallet(12, 1800, id="H", stop=1), pallet(10, 50, id="L", stop=2)]
+    r = await plan(client, *heavy, overrides=HEAVY_PALLETS)
     assert not r["fits"] and codes(r, "error") == ["AXLE_OVER_LIMIT"]
     tri = next(a for a in r["axle_loads"] if a["group_id"] == "trailer_tri")
     assert tri["status"] == "over" and tri["load_kg"] > tri["limit_kg"]
     # Higher Mass Limits cover it.
-    hml = await plan(client, pallet(12, 1800, id="H", stop=1), pallet(10, 50, id="L", stop=2),
-                     mass_scheme="HML")
+    hml = await plan(client, *heavy, mass_scheme="HML", overrides=HEAVY_PALLETS)
     assert "AXLE_OVER_LIMIT" not in codes(hml)
 
 
@@ -164,3 +167,66 @@ async def test_overrides_change_the_limits(client):
 async def test_bad_requests(client, body, status):
     res = await client.post("/api/plan", json=body)
     assert res.status_code == status
+
+
+# ---- Review fixes ----------------------------------------------------------
+
+async def test_a_pallet_over_its_rated_weight_does_not_fit(client):
+    r = await plan(client, pallet(2, 1800))
+    assert not r["fits"] and "PALLET_OVER_MAX_GROSS" in codes(r, "error")
+    assert "1.5 t" in next(w["message"] for w in r["warnings"] if w["code"] == "PALLET_OVER_MAX_GROSS")
+
+
+async def test_duplicate_item_ids_are_rejected(client):
+    res = await client.post("/api/plan", json={"items": [pallet(2), pallet(3)]})
+    assert res.status_code == 422 and "repeated: P" in res.text
+
+
+async def test_too_many_units_are_rejected(client):
+    items = [pallet(200, id=f"P{i}") for i in range(3)]
+    res = await client.post("/api/plan", json={"items": items})
+    assert res.status_code == 422 and "at most 500" in res.text
+
+
+async def test_the_largest_request_is_quick(client):
+    import time
+    items = [pallet(100, 100, id=f"P{i}", height=1700, stackable=True) for i in range(5)]
+    started = time.perf_counter()
+    await plan(client, *items, vehicle="suggest")
+    assert time.perf_counter() - started < 5
+
+
+async def test_a_lower_pallet_space_override_caps_the_load(client):
+    r = await plan(client, pallet(20), overrides={"vehicles": {"SEMI_TRAILER": {"pallet_spaces": 18}}})
+    assert not r["fits"] and len(r["placements"]) == 18
+    assert r["utilisation"]["pallet_spaces"] == {"used": 18.0, "available": 18.0, "pct": 100.0}
+
+
+async def test_more_pallet_spaces_than_the_deck_holds_is_rejected(client):
+    res = await client.post("/api/plan", json={
+        "items": [pallet(1)], "overrides": {"vehicles": {"SEMI_TRAILER": {"pallet_spaces": 30}}}})
+    assert res.status_code == 400 and "won't fit on its decks" in res.text
+
+
+async def test_suggest_keeps_the_requested_body(client):
+    r = await plan(client, pallet(7), vehicle="suggest", body_type="DROP_DECK")
+    assert r["vehicle_id"] == "SEMI_TRAILER" and r["body_type"] == "DROP_DECK"
+    assert not r["tried"][0]["fits"] and "drop deck" in r["tried"][0]["reason"].lower()
+
+
+async def test_a_pallet_wider_than_the_deck_is_oversize_not_over_capacity(client):
+    r = await plan(client, pallet(1, type_id="WIDE"),
+                   overrides={"pallets": {"WIDE": {"name": "Wide skid", "length_mm": 2600,
+                                                   "width_mm": 2600}}})
+    assert codes(r, "error") == ["OVERSIZE_FOOTPRINT"] and r["unplaced"] == ["P#1"]
+
+
+async def test_container_drops_follow_stop_order_and_warn_when_the_slots_block_it(client):
+    two_20s = [dict(container("GP20", id="A"), stop=1), dict(container("GP20", id="B"), stop=2)]
+    r = await plan(client, *two_20s, body_type="SKELETAL")
+    x = {p["item_id"]: p["x_mm"] for p in r["placements"]}
+    assert x["B"] < x["A"] and "STOP_ORDER_BLOCKED" not in codes(r)  # last drop at the front
+    # On a B-double the 20' must ride on the lead trailer, ahead of the 40', whatever the stops say.
+    mixed = [dict(container("GP20", id="A"), stop=1), dict(container("GP40", id="B"), stop=2)]
+    r = await plan(client, *mixed, vehicle="B_DOUBLE", body_type="SKELETAL")
+    assert "STOP_ORDER_BLOCKED" in codes(r, "warning")

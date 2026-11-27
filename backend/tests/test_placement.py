@@ -150,14 +150,20 @@ def test_heavier_pallet_goes_at_the_bottom(ref):
     assert by_item["HEAVY"].stack_level == 0 and by_item["LIGHT"].z_mm == 900
 
 
-def test_unstackable_pallets_dont_stack_and_get_a_warning(ref):
+def test_unstackable_pallets_dont_stack_and_get_a_note(ref):
     result = plan(ref, pallets(22, height=900))
     assert result.fits
     assert floor_positions(result.placements) == 22
     [warning] = [w for w in result.warnings if w.code == "UNSTACKABLE_FLOOR_SPACE"]
-    assert warning.severity == "warning"
+    assert warning.severity == "info"  # it all fits, so it's only a note
     assert warning.item_ids == ["P"]
     assert "11" in warning.message
+
+
+def test_unstackable_warns_when_short_of_space(ref):
+    result = plan(ref, pallets(30, height=900))
+    [warning] = [w for w in result.warnings if w.code == "UNSTACKABLE_FLOOR_SPACE"]
+    assert warning.severity == "warning"
 
 
 def test_stacks_never_mix_stops(ref):

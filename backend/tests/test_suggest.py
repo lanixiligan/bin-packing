@@ -4,7 +4,7 @@ from app.planner.base import run_plan
 from app.planner.models import PlanRequest, PlanResult, PlanWarning, Usage, Utilisation
 from app.planner.suggest import suggest_vehicle
 from app.reference.schemas import ReferenceData
-from tests.factories import SEMI, pallets, reference, request
+from tests.factories import BDOUBLE, SEMI, pallets, reference, request
 
 
 class FakePlanner:
@@ -70,10 +70,20 @@ def test_configurable_and_route_restricted_vehicles_are_skipped():
     assert result.vehicle_id == "BDOUBLE"
 
 
-def test_body_is_kept_only_where_allowed():
-    _, planner = suggest(30, body="SKELETAL")
+def test_a_requested_body_skips_vehicles_without_it():
+    result, planner = suggest(30, body="SKELETAL")
+    # RIGID doesn't offer a skeletal: it's skipped, not planned on its default tautliner.
     assert [(c.vehicle_id, c.body_type) for c in planner.calls] == [
-        ("RIGID", None), ("SEMI", "SKELETAL"), ("BDOUBLE", "SKELETAL")]
+        ("SEMI", "SKELETAL"), ("BDOUBLE", "SKELETAL")]
+    assert result.tried[0].vehicle_id == "RIGID" and not result.tried[0].fits
+    assert "skeletal" in result.tried[0].reason
+
+
+def test_no_vehicle_with_the_requested_body_is_an_error():
+    with pytest.raises(ValueError, match="TIPPER"):
+        suggest(5, reference(SEMI=SEMI.model_copy(update={"allowed_bodies": ["TAUTLINER"]}),
+                             BDOUBLE=BDOUBLE.model_copy(update={"allowed_bodies": ["TAUTLINER"]})),
+                body="TIPPER")
 
 
 def test_run_plan_routes_suggest():

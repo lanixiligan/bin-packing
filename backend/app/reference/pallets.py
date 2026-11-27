@@ -21,5 +21,7 @@ PALLETS: dict[str, PalletType] = {
     ]
 }
 
-# Tare 35 kg is a typical timber AU pallet; carriers' stack-height limits are often 1.2-1.8 m.
-PALLET_DEFAULTS = PalletDefaults(default_pallet="AU_STD", tare_kg=35, max_stack_height_mm=1800)
+# Tare 35 kg is a typical timber AU pallet; carriers' stack-height limits are often 1.2-1.8 m, and
+# 1,500 kg is a common carrier cap for one loaded pallet (CHEP's rated loads are higher).
+PALLET_DEFAULTS = PalletDefaults(default_pallet="AU_STD", tare_kg=35, max_stack_height_mm=1800,
+                                 max_gross_kg=1500)

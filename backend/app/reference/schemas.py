@@ -47,14 +47,21 @@ class PalletType(_Model):
     name: str
     length_mm: int = Field(gt=0)
     width_mm: int = Field(gt=0)
+    # Rated gross weight of one loaded pallet; None = use PalletDefaults.max_gross_kg.
+    max_gross_kg: float | None = Field(default=None, gt=0)
     notes: str = ""
 
 
 class PalletDefaults(_Model):
-    """Typical defaults; carriers differ (max stack height is often 1.2-1.8 m)."""
+    """Typical defaults; carriers differ (max stack height is often 1.2-1.8 m, and many carriers
+    cap a pallet at 1-1.5 t)."""
     default_pallet: str = "AU_STD"
     tare_kg: float = Field(default=35, ge=0)
     max_stack_height_mm: int = Field(default=1800, gt=0)
+    max_gross_kg: float = Field(default=1500, gt=0)
+
+    def max_gross_for(self, pallet: "PalletType") -> float:
+        return pallet.max_gross_kg if pallet.max_gross_kg is not None else self.max_gross_kg
 
 
 # ---------------------------------------------------------------------------

@@ -52,7 +52,9 @@ Containers (`place_containers`)
 -------------------------------
 The first `vehicle.container_combos` entry that gives every container its own slot of the same
 size class is used (unused slots are fine). Within a size class the heaviest container takes the
-slot nearest the midpoint of its deck's supports. x = slot.x_mm, y = centred across the deck,
+slot nearest the midpoint of its deck's supports; with delivery stops, the last drop takes the
+frontmost slot instead, and STOP_ORDER_BLOCKED warns when the slots force an earlier drop ahead of
+a later one. x = slot.x_mm, y = centred across the deck,
 z = 0. Types without external dimensions use nominal size-class dimensions. No combo (or a
 vehicle with no combos) is a CONTAINER_COMBO error that spells out the allowed mixes, and every
 container is unplaced.
@@ -261,17 +263,26 @@ def _join_row(row: Row, stack: Stack, deck: Deck) -> bool:
     return False
 
 
-def fill_rows(stacks: list[Stack], decks: list[Deck]) -> tuple[list[Row], list[Stack]]:
+def fill_rows(stacks: list[Stack], decks: list[Deck],
+              max_spaces: float | None = None) -> tuple[list[Row], list[Stack]]:
     """Lay ordered stacks in rows from the front of the first deck, spilling to later decks.
 
-    Returns (rows in loading order, stacks that didn't fit)."""
+    `max_spaces` caps the floor used, in AU-equivalent pallet spaces (the vehicle's pallet_spaces,
+    which may be overridden lower than the decks could hold). Returns (rows in loading order,
+    stacks that didn't fit)."""
     rows: list[Row] = []
     unplaced: list[Stack] = []
     deck_end: dict[str, int] = {d.id: 0 for d in decks}  # x where the next row starts
     deck_idx = 0
     open_row: Row | None = None
+    used = 0.0
 
     for stack in stacks:
+        spaces = floor_au_equivalent(stack.type_id, stack.length_mm, stack.width_mm)
+        if max_spaces is not None and used + spaces > max_spaces + 1e-9:
+            unplaced.append(stack)
+            continue
+        used += spaces
         same_stop = open_row is not None and open_row.stop == stack.stop
         if same_stop and _join_row(open_row, stack, decks[deck_idx]):
             deck_end[open_row.deck_id] = open_row.x_mm + open_row.depth_mm
@@ -291,6 +302,7 @@ def fill_rows(stacks: list[Stack], decks: list[Deck]) -> tuple[list[Row], list[S
             if placed:
                 break
         if not placed:
+            used -= spaces
             unplaced.append(stack)
     return rows, unplaced
 
@@ -359,7 +371,7 @@ def place_pallets(units: list[Unit], vehicle: VehicleConfig, body: BodyType,
                   ref: ReferenceData) -> tuple[list[Placement], list[str]]:
     """Place pallet units (known type_ids only). Returns (placements, unplaced unit_ids)."""
     stacks = order_stacks(build_stacks(units, stack_height_cap(vehicle, body, ref), ref))
-    rows, unplaced = fill_rows(stacks, vehicle.cargo_decks)
+    rows, unplaced = fill_rows(stacks, vehicle.cargo_decks, vehicle.pallet_spaces)
     rows = balance_rows(rows, vehicle)
     return rows_to_placements(rows), [u.unit_id for s in unplaced for u, _ in s.units]
 
@@ -367,6 +379,30 @@ def place_pallets(units: list[Unit], vehicle: VehicleConfig, body: BodyType,
 # ---------------------------------------------------------------------------
 # Pallets: warnings
 # ---------------------------------------------------------------------------
+
+def oversize_warning(units: list[Unit], vehicle: VehicleConfig, ref: ReferenceData) -> PlanWarning | None:
+    """OVERSIZE_FOOTPRINT for pallets narrower than no deck in either orientation (they can't go on
+    this vehicle at all, so a bigger vehicle of the same width won't help)."""
+    widest = max((d.width_mm for d in vehicle.cargo_decks), default=0)
+    ids = oversize_unit_ids(units, vehicle, ref)
+    big = [u for u in units if u.unit_id in ids]
+    if not big:
+        return None
+    p = ref.pallets[big[0].item.type_id]
+    return PlanWarning(
+        code="OVERSIZE_FOOTPRINT", severity="error",
+        message=(f"A {p.name} pallet ({p.length_mm} × {p.width_mm} mm) is wider than the "
+                 f"{vehicle.name}'s {widest} mm deck whichever way it turns."),
+        suggestion="Check the pallet size, or move it as an over-dimensional load.",
+        item_ids=list(dict.fromkeys(u.item.id for u in big)),
+    )
+
+
+def oversize_unit_ids(units: list[Unit], vehicle: VehicleConfig, ref: ReferenceData) -> set[str]:
+    widest = max((d.width_mm for d in vehicle.cargo_decks), default=0)
+    return {u.unit_id for u in units
+            if min(ref.pallets[u.item.type_id].length_mm, ref.pallets[u.item.type_id].width_mm) > widest}
+
 
 def floor_au_equivalent(type_id: str, length_mm: int, width_mm: int) -> float:
     """One floor position in AU-standard pallet spaces: exactly 1 for AU_STD, else by area."""
@@ -402,8 +438,11 @@ def over_capacity_warning(unplaced_units: list[Unit], placements: list[Placement
     )
 
 
-def unstackable_floor_warning(units: list[Unit], cap_mm: int, ref: ReferenceData) -> PlanWarning | None:
-    """UNSTACKABLE_FLOOR_SPACE when unstackable items would take fewer floor positions stacked."""
+def unstackable_floor_warning(units: list[Unit], cap_mm: int, ref: ReferenceData,
+                              *, short_of_space: bool = True) -> PlanWarning | None:
+    """UNSTACKABLE_FLOOR_SPACE when unstackable items would take fewer floor positions stacked.
+
+    A warning when the load ran out of floor space, otherwise just info."""
     by_item: dict[str, list[Unit]] = defaultdict(list)
     for u in units:
         if not u.item.stackable:
@@ -419,7 +458,7 @@ def unstackable_floor_warning(units: list[Unit], cap_mm: int, ref: ReferenceData
     total = sum(extra.values())
     named = ", ".join(f"{i} ({_plural(n, 'extra position')})" for i, n in extra.items())
     return PlanWarning(
-        code="UNSTACKABLE_FLOOR_SPACE", severity="warning",
+        code="UNSTACKABLE_FLOOR_SPACE", severity="warning" if short_of_space else "info",
         message=f"Unstackable pallets take {_plural(total, 'more floor position')} than stacked: {named}.",
         suggestion=f"If they can be stacked (up to {cap_mm} mm), mark them stackable to free "
                    f"{_plural(total, 'position')}.",
@@ -456,23 +495,32 @@ def place_containers(units: list[Unit], vehicle: VehicleConfig,
         return [], [], []
     types = {u.unit_id: ref.containers[u.item.type_id] for u in units}
     wanted = [types[u.unit_id].size_class for u in units]
+    deck_order = {d.id: i for i, d in enumerate(vehicle.decks)}
+    by_stop = any(u.item.stop is not None for u in units)
 
     for combo in vehicle.container_combos:
         if not _combo_fits(wanted, [s.size_class for s in combo.slots]):
             continue
         placements: list[Placement] = []
         for sc in SIZE_CLASS_ORDER:
-            group = sorted((u for u in units if types[u.unit_id].size_class == sc),
-                           key=lambda u: -u.weight_kg)
-            if not group:
+            members = [u for u in units if types[u.unit_id].size_class == sc]
+            if not members:
                 continue
-            nominal_length = NOMINAL_CONTAINER_DIMS[sc][0]
+            same_size = [s for s in combo.slots if s.size_class == sc]
+            if by_stop:
+                # Multi-drop: the last drop rides at the front (as for pallets), weight breaks ties.
+                group = sorted(members, key=lambda u: (u.item.stop is not None, -(u.item.stop or 0),
+                                                        -u.weight_kg))
+                slots = sorted(same_size, key=lambda s: (deck_order[s.deck_id], s.x_mm))
+            else:
+                nominal_length = NOMINAL_CONTAINER_DIMS[sc][0]
 
-            def off_centre(slot, nominal_length=nominal_length) -> float:
-                deck = vehicle.deck(slot.deck_id)
-                return abs(slot.x_mm + nominal_length / 2 - balance_target_mm(deck))
+                def off_centre(slot, nominal_length=nominal_length) -> float:
+                    deck = vehicle.deck(slot.deck_id)
+                    return abs(slot.x_mm + nominal_length / 2 - balance_target_mm(deck))
 
-            slots = sorted((s for s in combo.slots if s.size_class == sc), key=off_centre)
+                group = sorted(members, key=lambda u: -u.weight_kg)
+                slots = sorted(same_size, key=off_centre)
             for unit, slot in zip(group, slots, strict=False):
                 deck = vehicle.deck(slot.deck_id)
                 length, width, height = container_dims(types[unit.unit_id])
@@ -484,12 +532,29 @@ def place_containers(units: list[Unit], vehicle: VehicleConfig,
                     weight_kg=item.gross_weight_kg, stop=item.stop, stackable=item.stackable,
                     temp_controlled=item.temp_controlled or types[unit.unit_id].temp_controlled,
                 ))
-        deck_order = {d.id: i for i, d in enumerate(vehicle.decks)}
         placements.sort(key=lambda p: (deck_order[p.deck_id], p.x_mm))
         placements = [p.model_copy(update={"stack_id": i}) for i, p in enumerate(placements, start=1)]
-        return placements, [], []
+        blocked = stop_order_warning(placements) if by_stop else None
+        return placements, [], [blocked] if blocked else []
 
     return [], [u.unit_id for u in units], [container_combo_warning(units, wanted, vehicle, ref)]
+
+
+def stop_order_warning(placements: list[Placement]) -> PlanWarning | None:
+    """STOP_ORDER_BLOCKED when, front to back, an earlier drop rides ahead of a later one. Container
+    slots fix where each size goes (a B-double's 20' is always on the lead trailer), so the stop
+    order can't always be kept. `placements` must be sorted front to back."""
+    for i, front in enumerate(placements):
+        for rear in placements[i + 1:]:
+            if front.stop is not None and rear.stop is not None and front.stop < rear.stop:
+                return PlanWarning(
+                    code="STOP_ORDER_BLOCKED", severity="warning",
+                    message=(f"{front.label} (stop {front.stop}) rides in front of {rear.label} "
+                             f"(stop {rear.stop}); this vehicle's container slots fix that order."),
+                    suggestion="Check the first site can lift it off past the other, or swap the drops.",
+                    item_ids=[front.item_id, rear.item_id],
+                )
+    return None
 
 
 def container_combo_warning(units: list[Unit], wanted: list[str], vehicle: VehicleConfig,
@@ -568,6 +633,11 @@ class HeuristicPlanner:
             pallet_units = [u for u in known if u.item.kind == "pallet"]
             container_units = [u for u in known if u.item.kind == "container"]
             if pallet_units:
+                oversize = oversize_unit_ids(pallet_units, vehicle, ref)
+                if oversize:
+                    warnings.append(oversize_warning(pallet_units, vehicle, ref))
+                    unplaced += [u.unit_id for u in pallet_units if u.unit_id in oversize]
+                    pallet_units = [u for u in pallet_units if u.unit_id not in oversize]
                 placed, missed = place_pallets(pallet_units, vehicle, body, ref)
                 placements += placed
                 unplaced += missed
@@ -576,7 +646,7 @@ class HeuristicPlanner:
                     missed_units = [u for u in pallet_units if u.unit_id in missed_set]
                     warnings.append(over_capacity_warning(missed_units, placed, vehicle, body, ref))
                 cap = stack_height_cap(vehicle, body, ref)
-                unstackable = unstackable_floor_warning(pallet_units, cap, ref)
+                unstackable = unstackable_floor_warning(pallet_units, cap, ref, short_of_space=bool(missed))
                 if unstackable is not None:
                     warnings.append(unstackable)
             if container_units:

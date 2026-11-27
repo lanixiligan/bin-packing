@@ -9,11 +9,14 @@ messages of the error warnings for convenience.
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.reference.schemas import MassScheme, ReferenceOverrides
 
 SUGGEST = "suggest"
+# Most units (item quantity summed) one request may hold: plenty for any single vehicle, and it keeps
+# a public request quick even in "suggest" mode, which plans on every vehicle.
+MAX_UNITS = 500
 
 # Warning codes shared by every planner and by the UI (keep in sync with frontend types).
 WarningCode = Literal[
@@ -30,6 +33,9 @@ WarningCode = Literal[
     "OVER_CAPACITY",             # not every unit could be placed (out of floor space / slots)
     "CONTAINER_COMBO",           # container mix not allowed on this vehicle
     "CONTAINER_OVER_MAX_GROSS",  # container gross weight over its rated max gross
+    "PALLET_OVER_MAX_GROSS",     # a pallet heavier than the pallet's rated gross weight
+    "OVERSIZE_FOOTPRINT",        # a pallet wider than every deck, in either orientation
+    "STOP_ORDER_BLOCKED",        # an earlier drop sits in front of (or on top of) a later one
     "OVER_PAYLOAD",              # total weight over the vehicle's max payload
     "AXLE_NEAR_LIMIT",           # an axle group at >= 90 % of its limit
     "AXLE_OVER_LIMIT",           # an axle group over its limit
@@ -63,6 +69,18 @@ class PlanRequest(_In):
     body_type: str | None = Field(default=None, description="BodyType.id; None = the vehicle's default")
     mass_scheme: MassScheme = "GML"
     overrides: ReferenceOverrides | None = None
+
+    @model_validator(mode="after")
+    def _ids_unique_and_size_capped(self) -> "PlanRequest":
+        seen: set[str] = set()
+        dupes = sorted({i.id for i in self.items if i.id in seen or seen.add(i.id)})
+        if dupes:
+            raise ValueError(f"Each freight line needs its own id; repeated: {', '.join(dupes)}.")
+        units = sum(i.quantity for i in self.items)
+        if units > MAX_UNITS:
+            raise ValueError(f"That's {units} units; one plan takes at most {MAX_UNITS}. "
+                             "Split the freight into smaller plans.")
+        return self
 
 
 class PlanWarning(BaseModel):

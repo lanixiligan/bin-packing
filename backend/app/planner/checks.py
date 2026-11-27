@@ -173,6 +173,13 @@ def precheck(items: list[FreightItem], vehicle: VehicleConfig, body: BodyType,
     for it in known:
         if it.kind == "pallet":
             h = it.height_mm if it.height_mm is not None else max_stack
+            max_gross = ref.pallet_defaults.max_gross_for(ref.pallets[it.type_id])
+            if it.gross_weight_kg > max_gross:
+                warn("PALLET_OVER_MAX_GROSS", "error",
+                     f"Pallet {_name(it)} weighs {_t(it.gross_weight_kg)}; one pallet is limited to "
+                     f"{_t(max_gross)}.",
+                     "Split the freight across more pallets, or check the carrier's per-pallet limit.",
+                     [it.id])
             if h > max_stack:
                 warn("STACK_TOO_HIGH", "error",
                      f"Pallet {_name(it)} is {_m(h)} tall; the max stack height is {_m(max_stack)}.",

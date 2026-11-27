@@ -6,7 +6,7 @@ estimate to be meaningful:
 
 SEMI: prime mover (steer @1500, drive tandem @5000, fifth wheel @4700); trailer deck 13,600 x 2,480
       from x=3,700, kingpin @4,700, tri-axle @15,100. 22 AU pallets = 11 rows x 2 across, flush.
-      22 x 1,000 kg uniformly loaded stays within GML on every group.
+      22 x 1,000 kg uniformly loaded never goes over GML (the drive tandem is near its limit).
 BDOUBLE: lead deck 7,400 (12 AU) on the prime mover + lead tri; rear deck 13,600 (22 AU) on the lead
       trailer's fifth wheel + rear tri. Containers: 1 x 20' (lead) + 1 x 40' (rear) only.
 RIGID: 8 AU pallets, 4 rows on a 4,800 deck, steer + single rear.
