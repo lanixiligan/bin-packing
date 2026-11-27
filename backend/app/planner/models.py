@@ -74,8 +74,9 @@ class PlanRequest(_In):
     vehicle_id: str = Field(default="SEMI_TRAILER", description="VehicleConfig.id, or 'suggest'")
     body_type: str | None = Field(default=None, description="BodyType.id; None = the vehicle's default")
     mass_scheme: MassScheme = "GML"
-    rule_set: RuleSet = Field(default="adg", description="Dangerous goods rules: 'adg' (ADG Code) or "
-                                                        "'northline' (ADG plus Northline's acceptance rules)")
+    rule_set: RuleSet = Field(default="northline",
+                              description="Dangerous goods rules: 'northline' (default: ADG Code plus "
+                                          "Northline's acceptance rules) or 'adg' (ADG Code only)")
     overrides: ReferenceOverrides | None = None
 
     @model_validator(mode="after")

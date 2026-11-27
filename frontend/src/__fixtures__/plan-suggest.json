@@ -15,7 +15,7 @@
   ],
   "vehicle_id": "suggest",
   "mass_scheme": "GML",
-  "rule_set": "adg"
+  "rule_set": "northline"
  },
  "result": {
   "fits": true,

@@ -17,7 +17,7 @@ def _name(item: FreightItem) -> str:
     return f'"{item.label}"' if item.label else f'"{item.id}"'
 
 
-def dg_warnings(items: list[FreightItem], rule_set: dgrules.RuleSet = "adg") -> list[PlanWarning]:
+def dg_warnings(items: list[FreightItem], rule_set: dgrules.RuleSet = "northline") -> list[PlanWarning]:
     out: list[PlanWarning] = []
     dg_items = [it for it in items if not dgrules.is_general(it.dg)]
     if not dg_items:

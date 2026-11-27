@@ -91,7 +91,7 @@ def resolve_body(vehicle: VehicleConfig, body_type: str | None, ref: ReferenceDa
 
 
 def precheck(items: list[FreightItem], vehicle: VehicleConfig, body: BodyType,
-             ref: ReferenceData, rule_set: RuleSet = "adg") -> CheckResult:
+             ref: ReferenceData, rule_set: RuleSet = "northline") -> CheckResult:
     """Unknown types, mixed freight, body/vehicle compatibility, out-of-scope bodies, reefer items,
     per-item height (max stack, internal, overall limit), container gross vs max gross,
     route-restricted vehicles, and dangerous goods segregation / carrier rules (dg_checks)."""

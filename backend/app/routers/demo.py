@@ -11,7 +11,8 @@ the coordinate conventions, are in app/demo_models.py.
 Dangerous goods: a shipment may carry a `dg_class` (or "food" / "fire_risk")
 and, with a class, up to 4 `subsidiary` hazards; incompatible shipments (ADG
 Table 9.1, app/dg.py, which also pairs subsidiary hazards) never share a truck.
-With `rule_set: "northline"`, classes Northline never accepts are rejected (400).
+With the default `rule_set: "northline"`, classes Northline never accepts are
+rejected (400); `rule_set: "adg"` applies the ADG Code only.
 
 It packs with Google OR-Tools CP-SAT (app/solver.py) and returns the fewest
 trucks it finds, with whether that is proven optimal.

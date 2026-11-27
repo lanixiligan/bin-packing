@@ -252,9 +252,10 @@ async def test_the_same_product_on_two_lines_never_conflicts(client):
 
 async def test_northline_refuses_goods_the_adg_allows(client):
     wet = pallet(1, id="wet", dg=dg("4.3", packing_group="II"))
-    assert "DG_CARRIER_REFUSED" not in codes(await plan(client, wet))
-    r = await plan(client, wet, rule_set="northline")
+    # ADG + Northline is the default; the ADG Code alone allows it.
+    r = await plan(client, wet)
     assert not r["fits"] and "DG_CARRIER_REFUSED" in codes(r, "error")
+    assert "DG_CARRIER_REFUSED" not in codes(await plan(client, wet, rule_set="adg"))
 
 
 async def test_invalid_dg_data_is_rejected(client):

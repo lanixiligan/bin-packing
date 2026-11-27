@@ -26,7 +26,7 @@
   ],
   "vehicle_id": "B_DOUBLE",
   "mass_scheme": "GML",
-  "rule_set": "adg"
+  "rule_set": "northline"
  },
  "result": {
   "fits": false,

@@ -365,11 +365,12 @@ async def test_demo_endpoint_validation(client):
 
 async def test_demo_endpoint_northline_rule_set(client):
     shipments = [ship("Matches", dg_class="4.3"), ship("Paint", dg_class="3")]
+    # ADG + Northline is the default; the ADG Code alone accepts Class 4.3.
     r = await client.post("/api/solve", json=body(*shipments))
-    assert r.status_code == 200
-    r = await client.post("/api/solve", json=body(*shipments, rule_set="northline"))
     assert r.status_code == 400 and "'Matches' (Class 4.3)" in r.json()["detail"]
     assert "Paint" not in r.json()["detail"]
+    r = await client.post("/api/solve", json=body(*shipments, rule_set="adg"))
+    assert r.status_code == 200
 
 
 async def test_demo_solve_is_capped(client):

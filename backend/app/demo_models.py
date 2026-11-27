@@ -82,7 +82,9 @@ class SolveRequest(BaseModel):
     vehicle_id: str = Field(default=DEFAULT_VEHICLE, description="A vehicle id from GET /api/reference")
     body_type: str | None = Field(default=None, description="A body id, or null for the vehicle's default")
     shipments: list[Shipment] = Field(max_length=MAX_SHIPMENTS)
-    rule_set: dgrules.RuleSet = "adg"
+    rule_set: dgrules.RuleSet = Field(
+        default="northline", description="'northline' (default: ADG Code plus Northline's acceptance "
+                                         "rules) or 'adg' (ADG Code only)")
 
 
 # ---- Response ---------------------------------------------------------------
