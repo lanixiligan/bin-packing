@@ -67,6 +67,7 @@ export function sampleRows(ref: ReferenceData | null): FreightRow[] {
   ];
 }
 
+const kg = (n: number) => `${n.toLocaleString("en-AU", { maximumFractionDigits: 0 })} kg`;
 const metres = (mm: number) => `${(mm / 1000).toLocaleString("en-AU", { maximumFractionDigits: 2 })} m`;
 
 export function validateRows(rows: FreightRow[], ref: ReferenceData | null): Validation {
@@ -84,14 +85,25 @@ export function validateRows(rows: FreightRow[], ref: ReferenceData | null): Val
       e.quantity = "At most 200 per line: split it into more lines.";
     }
     if (r.gross_weight_kg == null || !(r.gross_weight_kg > 0)) {
-      e.gross_weight_kg = "Enter the weight of one unit in kg.";
+      e.gross_weight_kg = `Enter the weight of one ${r.kind} in kg.`;
     } else if (r.kind === "pallet" && ref) {
       const p = ref.pallets[r.type_id];
       const max = p?.max_gross_kg ?? ref.pallet_defaults.max_gross_kg;
+      const tare = ref.pallet_defaults.tare_kg;
       if (r.gross_weight_kg > max) {
-        e.gross_weight_kg = `This pallet weighs ${r.gross_weight_kg.toLocaleString("en-AU")} kg; one pallet is limited to ${max.toLocaleString("en-AU")} kg.`;
+        e.gross_weight_kg = `This pallet weighs ${kg(r.gross_weight_kg)}; one pallet is limited to ${kg(max)}.`;
+      } else if (r.gross_weight_kg < tare) {
+        e.gross_weight_kg = `That's lighter than an empty pallet (${kg(tare)}): include the pallet in the weight.`;
+      }
+    } else if (r.kind === "container" && ref) {
+      const c = ref.containers[r.type_id];
+      if (c?.max_gross_kg != null && r.gross_weight_kg > c.max_gross_kg) {
+        e.gross_weight_kg = `This container weighs ${kg(r.gross_weight_kg)}; a ${c.name} is limited to ${kg(c.max_gross_kg)} gross.`;
+      } else if (c?.tare_kg != null && r.gross_weight_kg < c.tare_kg) {
+        e.gross_weight_kg = `An empty ${c.name} weighs ${kg(c.tare_kg)}: enter the gross weight, including the container.`;
       }
     }
+    // Containers have a fixed height, so their height field is ignored.
     if (r.kind === "pallet") {
       if (r.height_mm == null || !(r.height_mm > 0)) {
         e.height_mm = "Enter the pallet's height in mm, including the pallet.";
