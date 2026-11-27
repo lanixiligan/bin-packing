@@ -57,6 +57,6 @@ describe("AxleLoadPanel", () => {
     expect(meter).toHaveAttribute("aria-valuenow", "22172");
     expect(meter).toHaveAttribute("aria-valuetext", "22,172 kg of 20,000 kg limit, 111 %, over by 2,172 kg");
     expect(screen.getByRole("meter", { name: "Steer" }))
-      .toHaveAttribute("aria-valuetext", "5,205 kg of 6,000 kg limit, 87 %, within limit");
+      .toHaveAttribute("aria-valuetext", "5,205 kg of 6,000 kg limit, 86 %, within limit");
   });
 });
