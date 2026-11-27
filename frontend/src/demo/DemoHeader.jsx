@@ -21,7 +21,7 @@ export default function DemoHeader({ theme, onTheme }) {
           </div>
         </div>
         <div className="header-controls">
-          <a className="btn btn-ghost header-link" href="/">Load planner <span aria-hidden="true">→</span></a>
+          <a className="btn btn-ghost btn-sm" href="/">Load planner <span aria-hidden="true">→</span></a>
           <fieldset className="segmented" aria-label="Colour theme">
             {THEMES.map(([value, label]) => (
               <label key={value}>
