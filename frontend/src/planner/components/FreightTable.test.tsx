@@ -2,21 +2,27 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { normalise, type DgClass } from "../../dg/rules.ts";
 import { newRow, validateRows, type FreightRow } from "../lib/freight.ts";
+import { randomFreight, seededRandom } from "../lib/randomFreight.ts";
 import { reference } from "../test/fixtures.ts";
 import FreightTable from "./FreightTable.tsx";
 
 /** The rows the table last reported through onRowsChange. */
 const store: { rows: FreightRow[] } = { rows: [] };
 
-function Harness({ initial }: { initial: FreightRow[] }) {
+/** DG data for a class, as the random freight catalogue builds it. */
+const dg = (dg_class: DgClass) => normalise({ dg_class, t92: [], container: "package" });
+
+function Harness({ initial, random }: { initial: FreightRow[]; random?: () => number }) {
   const [rows, setRows] = useState(initial);
   const onRowsChange = (next: FreightRow[]) => {
     store.rows = next;
     setRows(next);
   };
   const v = validateRows(rows, reference);
-  return <FreightTable reference={reference} rows={rows} onRowsChange={onRowsChange} errors={v.errors} listErrors={v.listErrors} />;
+  return <FreightTable reference={reference} rows={rows} onRowsChange={onRowsChange} errors={v.errors} listErrors={v.listErrors}
+                       random={random} />;
 }
 
 const rowsFixture = () => [
@@ -132,6 +138,79 @@ describe("FreightTable", () => {
     const rows = [1, 2, 3].map(() => newRow(reference, { quantity: 200 }));
     setup(rows);
     expect(screen.getByText(/one plan takes at most 500/)).toBeInTheDocument();
+  });
+
+  it("replaces the rows with random freight, and Undo restores them", async () => {
+    store.rows = rowsFixture();
+    const user = userEvent.setup();
+    render(<Harness initial={store.rows} random={seededRandom(3)} />);
+    const before = labels();
+    await user.click(screen.getByRole("button", { name: "Random freight" }));
+    const expected = randomFreight(reference, { random: seededRandom(3) });
+    expect(labels()).toEqual(expected.map((r) => r.label));
+    expect(store.rows.map((r) => r.dg)).toEqual(expected.map((r) => r.dg));
+    expect(screen.getAllByRole("listitem", { name: /^line \d/i })).toHaveLength(expected.length);
+    const status = screen.getAllByRole("status").find((s) => s.textContent?.includes("random"))!;
+    expect(status).toHaveTextContent(`Replaced the list with ${expected.length} random lines.`);
+    await user.click(within(status).getByRole("button", { name: "Undo" }));
+    expect(labels()).toEqual(before);
+  });
+
+  it("shows a read-only DG badge on DG rows and nothing on general freight", () => {
+    setup([
+      newRow(reference, { label: "Paint", dg: dg("3") }),
+      newRow(reference, { label: "Rice", dg: normalise({ food: true }) }),
+      newRow(reference, { label: "Timber" }),
+    ]);
+    expect(line(1)).toHaveTextContent("Dangerous goods: Class 3");
+    expect(within(line(1)).getByTitle("Flammable liquid")).toHaveTextContent("3Dangerous goods: Class 3");
+    expect(line(2)).toHaveTextContent("Dangerous goods: Food");
+    expect(line(3)).not.toHaveTextContent(/dangerous goods/i);
+    expect(within(line(1)).queryByRole("combobox", { name: /dangerous|class/i })).not.toBeInTheDocument();
+  });
+
+  it("warns early for Class 3 + 5.1 but not for Class 3 + 8", async () => {
+    const user = setup([
+      newRow(reference, { label: "Paint", dg: dg("3") }),
+      newRow(reference, { label: "Battery acid", dg: dg("8") }),
+    ]);
+    expect(screen.queryByText(/can't share a vehicle/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/dangerous goods to check/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Duplicate line 1" }));
+    expect(screen.queryByText(/can't share a vehicle/)).not.toBeInTheDocument();
+  });
+
+  it("shows the hint when a Class 5.1 line joins a Class 3 line", () => {
+    setup([
+      newRow(reference, { label: "Paint", dg: dg("3") }),
+      newRow(reference, { label: "Pool chlorine", dg: dg("5.1") }),
+    ]);
+    const hint = screen.getAllByRole("status").find((s) => s.textContent?.includes("can't share a vehicle"))!;
+    expect(hint).toHaveTextContent(
+      "Paint (Class 3) and Pool chlorine (Class 5.1) can't travel on the same vehicle (ADG Table 9.1).");
+  });
+
+  it("names the incompatible pair in plain language", () => {
+    setup([
+      newRow(reference, { label: "Paint", dg: dg("3") }),
+      newRow(reference, { label: "Timber" }),
+      newRow(reference, { label: "", dg: dg("5.1") }),
+    ]);
+    expect(screen.getByText("Dangerous goods that can't share a vehicle")).toBeInTheDocument();
+    expect(screen.getByText(
+      "Paint (Class 3) and Line 3 (Class 5.1) can't travel on the same vehicle (ADG Table 9.1).")).toBeInTheDocument();
+    expect(screen.getByText("The plan will show this as a problem.")).toBeInTheDocument();
+  });
+
+  it("gives a softer note when Table 9.2 goods aren't recorded", () => {
+    setup([
+      newRow(reference, { label: "Paint", dg: normalise({ dg_class: "3" }) }),
+      newRow(reference, { label: "Pesticide", dg: dg("6.1") }),
+    ]);
+    expect(screen.getByText("Dangerous goods to check")).toBeInTheDocument();
+    expect(screen.getByText(/Paint \(Class 3\) and Pesticide \(Class 6\.1\) may need a check against ADG Table 9\.2/))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/can't share a vehicle/)).not.toBeInTheDocument();
   });
 
   it("adds rows from pasted CSV and reports a bad line", async () => {

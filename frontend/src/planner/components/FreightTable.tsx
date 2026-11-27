@@ -1,10 +1,16 @@
 // Step 2: editable freight rows (a compact card per row, so it fits the narrow rail), quick-add
-// presets, duplicate / delete with undo, CSV paste or import, inline validation messages.
+// presets, random freight, duplicate / delete with undo, CSV paste or import, inline validation
+// messages. Rows with dangerous goods show a read-only placard badge, and an early hint above the
+// rows names pairs that can't share a vehicle (the plan result stays the authority).
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ReferenceData } from "../api/types.ts";
+import { checkAll, type DgPairResult } from "../../dg/rules.ts";
 import { parseCsv, toCsv, CSV_COLUMNS } from "../lib/csv.ts";
+import { dgLabel, dgName, placardCode } from "../lib/dg.ts";
 import { newRow, newRowId, type FreightRow, type RowErrors, type RowField } from "../lib/freight.ts";
+import { randomFreight } from "../lib/randomFreight.ts";
 import { useUnits } from "../lib/units.ts";
+import { AlertIcon, InfoIcon } from "./icons.tsx";
 import "./FreightTable.css";
 
 export interface FreightTableProps {
@@ -15,6 +21,8 @@ export interface FreightTableProps {
   errors: RowErrors;
   /** From validateRows: problems with the list as a whole. */
   listErrors: string[];
+  /** Random numbers in [0, 1) for "Random freight"; defaults to Math.random (tests pass a seeded one). */
+  random?: () => number;
 }
 
 const TOAST_MS = 6000;
@@ -49,6 +57,41 @@ function defaultContainer(ref: ReferenceData): string {
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// ---- Dangerous goods ------------------------------------------------------------
+
+/** Read-only placard-style badge: the code in a diamond, then "Class 3" / "Food". Nothing for general freight. */
+function DgBadge({ dg }: { dg: FreightRow["dg"] }) {
+  const code = placardCode(dg);
+  if (!code) return null;
+  const kind = dg?.dg_class ? "dg" : dg?.food ? "food" : "fire";
+  return (
+    <span className={`ft-dg-badge ft-dg-${kind}`} title={dgName(dg)}>
+      <span className="ft-dg-diamond" aria-hidden="true"><span>{code}</span></span>
+      <span className="visually-hidden">Dangerous goods: </span>
+      <span className="ft-dg-text">{dgLabel(dg)}</span>
+    </span>
+  );
+}
+
+interface Indexed { row: FreightRow; index: number }
+
+const lineName = ({ row, index }: Indexed) => `${row.label.trim() || `Line ${index + 1}`} (${dgLabel(row.dg)})`;
+
+/** A plain-language sentence for a pair of lines that conflict or need a check. */
+function pairMessage(p: DgPairResult<Indexed>): string {
+  const names = `${lineName(p.a)} and ${lineName(p.b)}`;
+  if (p.status === "incompatible") {
+    const table = p.reasons.length > 0 && p.reasons.every((r) => r.includes("Table 9.2")) ? "9.2" : "9.1";
+    return `${names} can't travel on the same vehicle (ADG Table ${table}).`;
+  }
+  if (p.reasons.some((r) => r.includes("Explosives Code"))) {
+    return `${names} may be able to travel together: check the Australian Explosives Code first.`;
+  }
+  return `${names} may need a check against ADG Table 9.2 for their specific goods.`;
+}
+
+const MAX_HINTS = 4;
 
 // ---- Icons -----------------------------------------------------------------------
 
@@ -118,7 +161,7 @@ interface Toast {
 
 // ---- Component -------------------------------------------------------------------------
 
-export default function FreightTable({ reference, rows, onRowsChange, errors, listErrors }: FreightTableProps) {
+export default function FreightTable({ reference, rows, onRowsChange, errors, listErrors, random }: FreightTableProps) {
   const units = useUnits();
   const uid = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -133,6 +176,9 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
   const [csvMode, setCsvMode] = useState<"append" | "replace">("append");
 
   const presets = useMemo(() => availablePresets(reference), [reference]);
+  const dgPairs = useMemo(() => checkAll(rows.map((row, index) => ({ row, index })), (x) => x.row.dg), [rows]);
+  const incompatible = dgPairs.filter((p) => p.status === "incompatible");
+  const toCheck = dgPairs.filter((p) => p.status === "check");
   const parsed = useMemo(() => (csvText.trim() ? parseCsv(csvText, reference) : null), [csvText, reference]);
 
   // The toast hides after a few seconds, but not while the pointer or focus is on it.
@@ -212,6 +258,13 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
     showToast({ message: `Added ${preset.label}.`, undo: (current) => current.filter((r) => !ids.has(r.id)) });
   };
 
+  const addRandom = () => {
+    const previous = rows;
+    const added = randomFreight(reference, { random });
+    onRowsChange(added);
+    showToast({ message: `Replaced the list with ${plural(added.length, "random line")}.`, undo: () => previous });
+  };
+
   const undo = () => {
     if (!toast?.undo) return;
     if (toast.focusId) pendingFocus.current = { id: toast.focusId };
@@ -279,6 +332,34 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
         </ul>
       )}
 
+      <div className="ft-dg-hints" role="status">
+        {incompatible.length > 0 && (
+          <div className="ft-dg-hint ft-dg-hint-error">
+            <AlertIcon size={18} className="ft-dg-hint-icon" />
+            <div className="ft-dg-hint-body">
+              <p className="ft-dg-hint-title">Dangerous goods that can't share a vehicle</p>
+              <ul>
+                {incompatible.slice(0, MAX_HINTS).map((p) => <li key={`${p.a.row.id}|${p.b.row.id}`}>{pairMessage(p)}</li>)}
+                {incompatible.length > MAX_HINTS && <li>And {plural(incompatible.length - MAX_HINTS, "more pair")}.</li>}
+              </ul>
+              <p className="ft-dg-hint-note">The plan will show this as a problem.</p>
+            </div>
+          </div>
+        )}
+        {toCheck.length > 0 && (
+          <div className="ft-dg-hint ft-dg-hint-check">
+            <InfoIcon size={18} className="ft-dg-hint-icon" />
+            <div className="ft-dg-hint-body">
+              <p className="ft-dg-hint-title">Dangerous goods to check</p>
+              <ul>
+                {toCheck.slice(0, MAX_HINTS).map((p) => <li key={`${p.a.row.id}|${p.b.row.id}`}>{pairMessage(p)}</li>)}
+                {toCheck.length > MAX_HINTS && <li>And {plural(toCheck.length - MAX_HINTS, "more pair")}.</li>}
+              </ul>
+            </div>
+          </div>
+        )}
+      </div>
+
       {rows.length === 0 ? (
         <div className="ft-empty">
           <p className="ft-empty-title">No freight yet: add a line or use a preset.</p>
@@ -299,6 +380,7 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
                   <h3 id={headingId} className="ft-row-title">
                     Line {i + 1}{row.label && <span className="ft-row-label">: {row.label}</span>}
                   </h3>
+                  <DgBadge dg={row.dg} />
                   {lineWeight != null && lineWeight > 0 && (
                     <span className="ft-row-total num" title="Line weight">{units.weight(lineWeight)}</span>
                   )}
@@ -437,6 +519,9 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
       <div className="ft-actions">
         <button type="button" className="btn btn-primary" onClick={addLine} data-add-line>
           <PlusIcon />Add line
+        </button>
+        <button type="button" className="btn" onClick={addRandom}>
+          <span aria-hidden="true">🎲</span>Random freight
         </button>
         <button type="button" className="btn" aria-expanded={csvOpen} aria-controls={csvPanelId}
                 onClick={() => (csvOpen ? closeCsv() : setCsvOpen(true))}>Paste CSV</button>
