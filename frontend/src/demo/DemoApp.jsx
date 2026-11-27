@@ -1,27 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import ShipmentForm from "../components/ShipmentForm.jsx";
-import ResultPanel from "../components/ResultPanel.jsx";
-import Summary from "../components/Summary.jsx";
-import { dgClassText } from "../components/capacity.ts";
+import ShipmentTable from "./components/ShipmentTable.jsx";
+import ResultPanel from "./components/ResultPanel.jsx";
+import Summary from "./components/Summary.jsx";
+import VehiclePicker from "../planner/components/VehiclePicker.tsx";
+import { fetchReference } from "../planner/api/client.ts";
 import { checkAll } from "../dg/rules.ts";
-import { demoDg, FFD_LOSES_EXAMPLE, randomShipments, shipmentsFromWeights } from "../shipments.js";
-import { NARROW_SCREEN, REDUCED_MOTION, SMALL_SCREEN, useMediaQuery } from "../useMediaQuery.js";
+import { demoDg, MAX_SHIPMENTS, RANDOM_COUNT, randomShipments, toRequest } from "./shipments.js";
+import { fitProblems, inputProblem, KNOWN_PALLETS, volumeOf } from "./components/sizes.ts";
+import { DEFAULT_VEHICLE, demoReference, vehicleFit, vehicleLine } from "./components/vehicle.ts";
+import { NARROW_SCREEN, REDUCED_MOTION, useMediaQuery } from "./useMediaQuery.js";
+import DemoHeader from "./DemoHeader.jsx";
+import { useTheme } from "./useTheme.js";
+import "./demo.css";
 
 const DROP_INTERVAL_MS = 150; // time between each shipment dropping in
 const SOLVER_TIME_LIMIT_S = 10; // matches TIME_LIMIT_SECONDS in backend/app/routers/demo.py
+// Dangerous goods are always checked against the ADG Code plus Northline's acceptance rules.
+const RULE_SET = "northline";
 
-// The capacity field is kept as text so it can be empty while typing.
-function capacityProblem(text) {
-  if (text.trim() === "") return "Enter the truck capacity in kg.";
-  const n = Number(text);
-  if (!(n > 0)) return "Truck capacity must be a positive number.";
-  if (!Number.isInteger(n)) return "Truck capacity must be a whole number of kg.";
-  return "";
+/** "'Pipes 04' (too long or wide), 'Tiles 07' (too heavy)" for the Solve error. */
+function listProblems(rows) {
+  const shown = rows.slice(0, 5).map(({ s, why }) => `'${s.name}' (${why})`).join(", ");
+  return rows.length > 5 ? `${shown} and ${rows.length - 5} more` : shown;
 }
 
 export default function App() {
-  const [capacityText, setCapacityText] = useState("1000");
-  const [capacityChecked, setCapacityChecked] = useState(false); // show field error after blur/Solve
+  const [theme, setTheme] = useTheme();
+  const [reference, setReference] = useState({ status: "loading", data: null, error: "" });
+  const [vehicleId, setVehicleId] = useState(DEFAULT_VEHICLE);
+  const [bodyType, setBodyType] = useState(null); // null = the vehicle's default body
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [shipments, setShipments] = useState(() => randomShipments());
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
@@ -29,23 +37,29 @@ export default function App() {
   const [elapsed, setElapsed] = useState(0); // seconds since Solve was pressed
   const [step, setStep] = useState(0); // how many shipments have "dropped" so far
   const [undoList, setUndoList] = useState(null); // shipments removed by "Clear all"
-  const [hoverId, setHoverId] = useState(null);
-  const [focusId, setFocusId] = useState(null);
-  const [view, setView] = useState("2d"); // "2d" bars or "3d" trucks
-  const [ruleSet, setRuleSet] = useState("adg"); // "adg" or "northline" (dangerous goods rules)
+  const [hoverIds, setHoverIds] = useState(null); // shipment ids under the pointer (a stack is several)
+  const [focusIds, setFocusIds] = useState(null);
+  const [hoverTruck, setHoverTruck] = useState(null); // truck card under the pointer
+  const [view, setView] = useState("2d"); // "2d" deck plans or "3d" trucks
   const timer = useRef(null);
-  const resultsRef = useRef(null);
   const errorRef = useRef(null);
+  const changeRef = useRef(null);
+  const panelRef = useRef(null);
+  const referenceRequest = useRef(null);
 
   const reducedMotion = useMediaQuery(REDUCED_MOTION);
-  const smallScreen = useMediaQuery(SMALL_SCREEN);
   const narrowScreen = useMediaQuery(NARROW_SCREEN);
 
-  const capError = capacityProblem(capacityText);
-  const capacity = capError ? null : Number(capacityText); // null while invalid
+  // The vehicles the demo offers, and what the chosen one holds (null until the reference is in).
+  const demoRef = useMemo(() => (reference.data ? demoReference(reference.data) : null), [reference.data]);
+  const fit = useMemo(() => (demoRef ? vehicleFit(demoRef, vehicleId, bodyType) : null), [demoRef, vehicleId, bodyType]);
+  const pallets = reference.data?.pallets ?? KNOWN_PALLETS;
+  const vehicleName = demoRef?.vehicles[vehicleId]?.name ?? "truck";
+
   const totalWeight = shipments.reduce((s, x) => s + (Number(x.weight) || 0), 0);
-  const lowerBound = capacity ? Math.ceil(totalWeight / capacity) : null;
-  const activeId = hoverId ?? focusId; // shipment highlighted in both panels
+  const totalVolume = shipments.reduce((s, x) => s + volumeOf(x, pallets), 0);
+  const weightBound = fit ? Math.ceil(totalWeight / fit.payloadKg) : null;
+  const activeIds = hoverIds ?? focusIds; // shipments highlighted in the table and the trucks
   const dgCount = shipments.filter((s) => s.dgClass).length;
   // Pairs of shipments that must travel apart (the server decides on Solve).
   const dgConflicts = useMemo(
@@ -53,11 +67,28 @@ export default function App() {
     [shipments, dgCount]
   );
 
+  // ---- Reference data: the vehicles and pallet types -----------------------
+  function loadReference() {
+    referenceRequest.current?.abort();
+    const ctrl = new AbortController();
+    referenceRequest.current = ctrl;
+    setReference({ status: "loading", data: null, error: "" });
+    fetchReference(ctrl.signal)
+      .then((data) => setReference({ status: "ready", data, error: "" }))
+      .catch((e) => {
+        if (e.name !== "AbortError") setReference({ status: "error", data: null, error: e.message });
+      });
+  }
+  useEffect(() => {
+    loadReference();
+    return () => referenceRequest.current?.abort();
+  }, []);
+
   // ---- Animation: bump `step` until every shipment has dropped ----------
   function startAnimation(n) {
     clearInterval(timer.current);
-    setHoverId(null);
-    setFocusId(null);
+    setHoverIds(null);
+    setFocusIds(null);
     if (reducedMotion) {
       setStep(n); // show the final loading at once
       return;
@@ -79,7 +110,7 @@ export default function App() {
   useEffect(() => {
     if (reducedMotion && result) {
       clearInterval(timer.current);
-      setStep(result.ffd.drop_order.length);
+      setStep(result.drop_order.length);
     }
   }, [reducedMotion, result]);
 
@@ -92,48 +123,48 @@ export default function App() {
     return () => clearInterval(id);
   }, [loading]);
 
-  // On small screens the results are below the fold: bring the progress card,
-  // and then the results that replace it, into view.
+  // Solve the random shipments straight away, so the page opens on an answer. The random
+  // shipments already fit the default vehicle, so this doesn't wait for the reference data.
   useEffect(() => {
-    if ((loading || result) && smallScreen) {
-      resultsRef.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
-    }
-    // only when a solve starts or a new result arrives, not on resize
-  }, [loading, result]);
+    solve();
+  }, []);
 
   // Keep a new error message visible (it lives next to the Solve button).
   useEffect(() => {
     if (error) errorRef.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "nearest" });
   }, [error, reducedMotion]);
 
+  // Opening the vehicle cards puts focus on the chosen one (arrow keys then move between them).
+  useEffect(() => {
+    if (pickerOpen) panelRef.current?.querySelector("input[type=radio]:checked")?.focus();
+  }, [pickerOpen, demoRef]);
+
   // ---- Validation done in the browser (the backend checks again) --------
   function validate() {
-    if (capError) return capError;
     if (shipments.length === 0) return "Add at least one shipment.";
-    const bad = shipments.find(
-      (s) => !s.name.trim() || !(Number(s.weight) > 0) || !Number.isInteger(Number(s.weight))
-    );
-    if (bad) return "Every shipment needs a name and a whole-number weight above 0 kg.";
-    const tooHeavy = shipments.filter((s) => Number(s.weight) > capacity);
-    if (tooHeavy.length) {
-      return (
-        `These shipments are heavier than the truck capacity (${capacity} kg) ` +
-        `and can never fit: ` +
-        tooHeavy.map((s) => `'${s.name}' (${s.weight} kg)`).join(", ")
-      );
-    }
+    if (shipments.length > MAX_SHIPMENTS) return `One solve takes at most ${MAX_SHIPMENTS} shipments; remove ${shipments.length - MAX_SHIPMENTS}.`;
+    const incomplete = shipments.map((s) => ({ s, why: inputProblem(s) })).filter((x) => x.why);
+    if (incomplete.length) return `Some shipments aren't complete yet: ${listProblems(incomplete)}.`;
+    const never = shipments
+      .map((s) => {
+        const p = fitProblems(s, fit, pallets);
+        const why = [p.tooLong && "too long or wide", p.tooTall && "too tall", p.tooHeavy && "too heavy"].filter(Boolean);
+        return { s, why: why.join(", ") };
+      })
+      .filter((x) => x.why);
+    if (never.length) return `These shipments can never go on a ${vehicleName}: ${listProblems(never)}. Choose a bigger vehicle or change them.`;
     return "";
   }
 
   function clearResult() {
     clearInterval(timer.current);
     setResult(null);
-    setHoverId(null);
-    setFocusId(null);
+    setHoverIds(null);
+    setFocusIds(null);
+    setHoverTruck(null);
   }
 
   async function solve() {
-    setCapacityChecked(true);
     const msg = validate();
     setError(msg);
     clearResult();
@@ -143,28 +174,18 @@ export default function App() {
       const res = await fetch("/api/solve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          capacity,
-          // dg_class / subsidiary only for dangerous goods, so a plain request looks as before
-          shipments: shipments.map((s) => ({
-            name: s.name.trim(),
-            weight: Number(s.weight),
-            ...(s.dgClass ? { dg_class: s.dgClass } : {}),
-            ...(s.subsidiary?.length ? { subsidiary: s.subsidiary } : {}),
-          })),
-          rule_set: ruleSet,
-        }),
+        body: JSON.stringify(toRequest({ vehicleId, bodyType, ruleSet: RULE_SET, shipments })),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         // FastAPI puts messages in `detail` (a string, or a list for type errors)
         const detail = Array.isArray(data.detail)
-          ? data.detail.map((d) => d.msg).join("; ")
+          ? data.detail.map((d) => String(d.msg).replace(/^Value error, /, "")).join("; ")
           : data.detail;
         throw new Error(detail || `Server error (${res.status})`);
       }
       setResult(data);
-      startAnimation(data.ffd.drop_order.length);
+      startAnimation(data.drop_order.length);
     } catch (e) {
       setError(
         e instanceof TypeError
@@ -194,120 +215,120 @@ export default function App() {
     setUndoList(null);
   }
 
-  function loadExample() {
-    setCapacityText(String(FFD_LOSES_EXAMPLE.capacity));
-    setCapacityChecked(false);
-    setError("");
-    changeShipments(shipmentsFromWeights(FFD_LOSES_EXAMPLE.weights));
+  function randomise() {
+    const longest = fit ? Math.max(...fit.decks.map((d) => d.length_mm)) : undefined;
+    const inside = fit ? Math.max(...fit.decks.map((d) => d.height_mm)) : undefined;
+    changeShipments(randomShipments(RANDOM_COUNT, Math.random, { maxLengthMm: longest, maxHeightMm: inside }));
   }
 
-  // Where each shipment ended up, per method: id -> { ffd, ortools } truck numbers
+  function chooseVehicle(id) {
+    setVehicleId(id);
+    setBodyType(null);
+    clearResult();
+  }
+
+  function closePicker() {
+    setPickerOpen(false);
+    requestAnimationFrame(() => changeRef.current?.focus());
+  }
+
+  // Where each shipment ended up: id -> { shipment, truck }
   const placement = useMemo(() => {
-    if (!result) return {};
     const map = {};
-    for (const key of ["ffd", "ortools"]) {
-      for (const t of result[key].trucks) {
-        for (const s of t.shipments) {
-          map[s.id] = { ...map[s.id], shipment: s, [key]: t.truck };
-        }
-      }
+    for (const t of result?.trucks ?? []) {
+      for (const s of t.shipments) map[s.id] = { shipment: s, truck: t.truck };
     }
     return map;
   }, [result]);
 
-  const showCapError = capacityChecked && capError;
-  const optimumTrucks = result ? result.ortools.num_trucks : null;
-  const linkProps = { activeId, onHover: setHoverId, onFocusBlock: setFocusId };
-  const active = activeId != null ? placement[activeId] : null;
+  const linkProps = { activeIds, onHover: setHoverIds, onFocusBlock: setFocusIds };
 
   return (
-    <div className="app">
-      <header>
-        <h1>🚚 Truck Loading Optimizer</h1>
-        <p className="subtitle">
-          The 1D bin packing problem: load every shipment using the fewest trucks.
-          We compare a quick rule of thumb (First-Fit Decreasing) with Google OR-Tools.
-        </p>
-      </header>
+    <div className="app demo">
+      <DemoHeader theme={theme} onTheme={setTheme} />
 
-      <section className="card controls" aria-label="Inputs">
-        <div className="capacity-row">
-          <div className="capacity-field">
-            <label htmlFor="capacity">Truck capacity (kg)</label>
-            <input
-              id="capacity"
-              type="number"
-              min="1"
-              inputMode="numeric"
-              value={capacityText}
-              aria-invalid={showCapError ? true : undefined}
-              aria-describedby={showCapError ? "capacity-error" : undefined}
-              onChange={(e) => {
-                setCapacityText(e.target.value);
-                setCapacityChecked(false); // no error while typing; checked again on blur or Solve
-                clearResult();
-              }}
-              onBlur={() => setCapacityChecked(true)}
-            />
-            {showCapError && <span id="capacity-error" className="field-error">{capError}</span>}
-          </div>
-          <div className="quick-stats">
-            <span><b>{shipments.length}</b> shipments</span>
-            <span><b>{totalWeight.toLocaleString()}</b> kg total</span>
-            <span>Lower bound: <b>{lowerBound ?? "—"}</b> trucks</span>
-            {dgCount > 0 && (
-              <span className="dg-quick">
-                <b>{dgCount}</b> dangerous goods · <b>{dgConflicts}</b> incompatible pair{dgConflicts === 1 ? "" : "s"}
-              </span>
-            )}
-          </div>
-          <fieldset className="rule-set">
-            <legend>Dangerous goods rules</legend>
-            <div className="rule-set-options">
-              {[["adg", "ADG Code"], ["northline", "ADG + Northline"]].map(([v, label]) => (
-                <label key={v} className={ruleSet === v ? "on" : ""}>
-                  <input
-                    type="radio"
-                    name="rule-set"
-                    value={v}
-                    checked={ruleSet === v}
-                    onChange={() => {
-                      setRuleSet(v);
-                      clearResult();
-                    }}
-                  />
-                  {label}
-                </label>
-              ))}
+      <main className="demo-main">
+        <section className="card toolbar" aria-label="Trucks">
+          <div className="toolbar-fields">
+            <div className="field vehicle-field">
+              <span className="field-label">Truck</span>
+              <div className="vehicle-line">
+                <span className="vehicle-text">
+                  {demoRef
+                    ? vehicleLine(demoRef, vehicleId, bodyType)
+                    : reference.status === "loading" ? "Loading vehicles…" : vehicleId}
+                </span>
+                <button
+                  ref={changeRef}
+                  type="button"
+                  className="btn btn-sm"
+                  aria-expanded={pickerOpen}
+                  aria-controls="vehicle-panel"
+                  onClick={() => (pickerOpen ? closePicker() : setPickerOpen(true))}
+                >
+                  Change<span className="sr-only"> truck</span>
+                </button>
+              </div>
             </div>
-          </fieldset>
-        </div>
-
-        <ShipmentForm shipments={shipments} capacity={capacity} onChange={changeShipments} ruleSet={ruleSet} />
-
-        <div className="actions">
-          <button type="button" onClick={() => changeShipments(randomShipments(capacity ?? undefined, 20))}>
-            🎲 Load random shipments
-          </button>
-          <button type="button" onClick={loadExample}>
-            🧪 Example where FFD loses
-          </button>
-          <button type="button" className="secondary" onClick={clearAll} disabled={!shipments.length}>
-            Clear all
-          </button>
-          <button type="button" className="primary" onClick={solve} disabled={loading}>
-            {loading ? "Solving…" : "▶ Solve"}
-          </button>
-          {result && (
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => startAnimation(result.ffd.drop_order.length)}
-            >
-              ↻ Replay animation
+            <div className="field">
+              <span className="field-label">Dangerous goods rules</span>
+              <span className="rule-set-value">ADG Code + Northline</span>
+            </div>
+          </div>
+          <div className="toolbar-actions">
+            <button type="button" className="btn" onClick={randomise}>
+              Random shipments
             </button>
+            <button type="button" className="btn btn-ghost" onClick={clearAll} disabled={!shipments.length}>
+              Clear
+            </button>
+            <button type="button" className="btn btn-primary" onClick={solve} disabled={loading}>
+              {loading ? "Solving…" : "Solve"}
+            </button>
+          </div>
+          {reference.status === "error" && (
+            <p className="toolbar-errors field-error" role="alert">
+              Couldn’t load the vehicles ({reference.error}). Solving uses the {vehicleId === DEFAULT_VEHICLE ? "default 8 t rigid" : vehicleId}.{" "}
+              <button type="button" className="link-button" onClick={loadReference}>Try again</button>
+            </p>
           )}
-        </div>
+          {pickerOpen && (
+            <div
+              id="vehicle-panel"
+              ref={panelRef}
+              className="vehicle-panel"
+              role="region"
+              aria-label="Choose the truck"
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  closePicker();
+                }
+              }}
+            >
+              {demoRef ? (
+                <VehiclePicker
+                  reference={demoRef}
+                  vehicleId={vehicleId}
+                  bodyType={bodyType}
+                  onVehicleChange={chooseVehicle}
+                  onBodyChange={(b) => {
+                    setBodyType(b);
+                    clearResult();
+                  }}
+                  allowSuggest={false}
+                />
+              ) : (
+                <p className="muted small">
+                  {reference.status === "loading" ? "Loading vehicles…" : "The vehicle list isn’t available right now."}
+                </p>
+              )}
+              <div className="vehicle-panel-actions">
+                <button type="button" className="btn btn-sm btn-primary" onClick={closePicker}>Done</button>
+              </div>
+            </div>
+          )}
+        </section>
 
         <div role="status" className="notice-slot">
           {undoList && (
@@ -317,79 +338,91 @@ export default function App() {
             </div>
           )}
         </div>
-
-        <div ref={errorRef} role="alert">
-          {error && <div className="error">⚠️ {error}</div>}
+        <div ref={errorRef} role="alert" className="alert-slot">
+          {error && <div className="error">{error}</div>}
         </div>
-      </section>
 
-      <div className="results" ref={resultsRef}>
-        {loading && <SolvingProgress elapsed={elapsed} count={shipments.length} />}
+        <div className="workspace">
+          <section className="card results" aria-labelledby="results-title">
+            {loading ? (
+              <SolvingProgress elapsed={elapsed} count={shipments.length} />
+            ) : result ? (
+              <>
+                <Summary result={result}>
+                  <div className="answer-tools">
+                    <fieldset className="segmented view-toggle" aria-label="Truck view">
+                      {[["2d", "2D"], ["3d", "3D"]].map(([v, label]) => (
+                        <label key={v}>
+                          <input type="radio" name="truck-view" value={v} checked={view === v} onChange={() => setView(v)} />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                    </fieldset>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => startAnimation(result.drop_order.length)}
+                    >
+                      <span aria-hidden="true">↻</span> Replay
+                    </button>
+                  </div>
+                </Summary>
+                <ResultPanel
+                  data={result}
+                  step={step}
+                  view={view}
+                  narrow={narrowScreen}
+                  activeTruck={hoverTruck}
+                  onHoverTruck={setHoverTruck}
+                  {...linkProps}
+                />
+              </>
+            ) : (
+              <div className="results-empty">
+                <h2 id="results-title">Ready to solve</h2>
+                <p className="muted">
+                  {shipments.length
+                    ? <>Press <b>Solve</b> to load {shipments.length} shipment{shipments.length === 1 ? "" : "s"} into
+                      the fewest trucks{weightBound ? <> (at least {weightBound} by weight)</> : null}.</>
+                    : <>Add shipments, or press <b>Random shipments</b>.</>}
+                </p>
+                <p className="muted small">
+                  Google OR-Tools (CP-SAT) places every shipment on the decks of the fewest identical trucks,
+                  stacking where it can, and proves when no better loading exists. Incompatible dangerous goods
+                  (ADG Code Table 9.1) never share a truck.
+                </p>
+              </div>
+            )}
+          </section>
 
-        {result && <Summary result={result} />}
-
-        {result && (
-          <>
-            <div className={`inspector${active ? " on" : ""}`} aria-hidden="true">
-              {active ? (
-                <>
-                  <span className="inspector-name">{active.shipment.name}</span>
-                  <span>{active.shipment.weight} kg</span>
-                  {active.shipment.dg_class && <span>DG: <b>{dgClassText(active.shipment.dg_class, active.shipment.subsidiary)}</b></span>}
-                  <span>FFD: <b>truck {active.ffd}</b></span>
-                  <span>OR-Tools: <b>truck {active.ortools}</b></span>
-                </>
-              ) : (
-                <span className="muted">
-                  Hover over a shipment, or Tab to it, to see where each method put it.
-                </span>
-              )}
+          <section className="card shipments" aria-labelledby="shipments-title">
+            <div className="shipments-head">
+              <h2 id="shipments-title">Shipments</h2>
+              <p className="shipments-stats">
+                <span className="num">{shipments.length}</span> · <span className="num">{totalWeight.toLocaleString()}</span> kg
+                · <span className="num">{totalVolume.toLocaleString(undefined, { maximumFractionDigits: 1 })}</span> m³
+              </p>
             </div>
-            <div className="view-toggle" role="group" aria-label="Truck view">
-              {[["2d", "2D bars"], ["3d", "3D trucks"]].map(([v, label]) => (
-                <button
-                  key={v}
-                  type="button"
-                  className={view === v ? "on" : ""}
-                  aria-pressed={view === v}
-                  onClick={() => setView(v)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="panels">
-              <ResultPanel
-                title="FFD (quick rule)"
-                explanation="Sort shipments heaviest → lightest. Put each one in the first truck with room; open a new truck if none fits."
-                data={result.ffd}
-                capacity={result.capacity}
-                step={step}
-                truckHeight={narrowScreen ? 200 : 280}
-                optimumTrucks={optimumTrucks}
-                badge={result.ffd.hits_lower_bound
-                  ? { text: "Optimal (hits lower bound)", kind: "good" }
-                  : { text: "Heuristic – not guaranteed best", kind: "neutral" }}
-                view={view}
-                {...linkProps}
-              />
-              <ResultPanel
-                title="OR-Tools (optimal)"
-                explanation="CP-SAT solver searches all possible loadings for the fewest trucks, and proves when no better answer exists."
-                data={result.ortools}
-                capacity={result.capacity}
-                step={step}
-                truckHeight={narrowScreen ? 200 : 280}
-                badge={result.ortools.optimal
-                  ? { text: "Proven optimal", kind: "good" }
-                  : { text: `Best found in ${result.ortools.time_limit_s} s (not proven)`, kind: "warn" }}
-                view={view}
-                {...linkProps}
-              />
-            </div>
-          </>
-        )}
-      </div>
+            {dgCount > 0 && (
+              <p className="dg-quick">
+                <b className="num">{dgCount}</b> dangerous goods · <b className="num">{dgConflicts}</b> incompatible
+                pair{dgConflicts === 1 ? "" : "s"}
+              </p>
+            )}
+            <ShipmentTable
+              shipments={shipments}
+              fit={fit}
+              pallets={pallets}
+              onChange={changeShipments}
+              ruleSet={RULE_SET}
+              placement={result ? placement : null}
+              activeIds={activeIds}
+              activeTruck={hoverTruck}
+              onHover={setHoverIds}
+            />
+          </section>
+        </div>
+      </main>
     </div>
   );
 }
@@ -397,18 +430,18 @@ export default function App() {
 function SolvingProgress({ elapsed, count }) {
   const shown = Math.min(elapsed, SOLVER_TIME_LIMIT_S);
   return (
-    <section className="card progress-card" aria-label="Solving">
-      <p className="progress-title" role="status">
+    <div className="progress">
+      <h2 id="results-title" className="progress-title" role="status">
         Solving {count} shipment{count === 1 ? "" : "s"}…
-      </p>
+      </h2>
       <p className="muted small">
-        FFD finishes almost instantly. OR-Tools keeps searching until it proves the
-        best answer, or stops at the {SOLVER_TIME_LIMIT_S} s limit.
+        OR-Tools keeps searching until it proves the best loading, or stops at
+        the {SOLVER_TIME_LIMIT_S} s limit with the best one found.
       </p>
       <progress max={SOLVER_TIME_LIMIT_S} value={shown} aria-label="Time used of the solver limit" />
       <p className="small progress-time" aria-hidden="true">
         {shown.toFixed(1)} s of up to {SOLVER_TIME_LIMIT_S} s
       </p>
-    </section>
+    </div>
   );
 }

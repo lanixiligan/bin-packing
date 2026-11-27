@@ -1,0 +1,171 @@
+/* Design tokens: the only place colours, type, spacing, radii, shadows and motion are defined.
+   Components use these variables and never hard-code values.
+
+   Direction: calm, logistics-industrial. Slate neutrals, one deep-teal accent kept for actions and
+   focus, semantic green / amber / red, and a colour-blind-safe categorical palette, so the deck's colour
+   coding is the loudest thing on screen. Text colours meet WCAG 2.1 AA (4.5:1) on the surfaces they
+   sit on, in both themes. Colour never carries meaning alone: add a label, icon or pattern too. */
+
+:root {
+  color-scheme: light;
+
+  /* Neutrals */
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-2: #f1f5f9;      /* table headers, inputs at rest, segmented controls */
+  --color-surface-3: #e2e8f0;      /* hover on surface-2, deck floor */
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  --color-text: #0f172a;
+  --color-text-muted: #475569;     /* 7.6:1 on surface */
+  --color-text-subtle: #64748b;    /* 4.8:1 on surface: captions only */
+
+  /* Accent (actions, focus, selection) */
+  --color-accent: #0f766e;         /* 5.5:1 on white */
+  --color-accent-hover: #115e59;
+  --color-accent-soft: #ccfbf1;
+  --color-on-accent: #ffffff;
+  --color-focus: #0f766e;
+
+  /* Semantic */
+  --color-success: #15803d;        /* 5.0:1 */
+  --color-success-soft: #dcfce7;
+  --color-warning: #b45309;        /* 5.0:1 */
+  --color-warning-soft: #fef3c7;
+  --color-error: #b91c1c;          /* 6.5:1 */
+  --color-error-soft: #fee2e2;
+  --color-info: #1d4ed8;
+  --color-info-soft: #dbeafe;
+
+  /* Categorical palette (DG classes): Okabe-Ito based, colour-blind safe; dark text (#0f172a) passes AA on all. */
+  --cat-1: #e69f00;
+  --cat-2: #56b4e9;
+  --cat-3: #2fbf8f;
+  --cat-4: #f0e442;
+  --cat-5: #7aa6d6;
+  --cat-6: #e8875a;
+  --cat-7: #d99cc1;
+  --cat-8: #b8b8b8;
+  --cat-none: #cbd5e1;
+  --on-cat: #0f172a;
+
+  /* Weight heat scale (light → heavy), single hue */
+  --heat-1: #ccfbf1;
+  --heat-2: #99f6e4;
+  --heat-3: #5eead4;
+  --heat-4: #2dd4bf;
+  --heat-5: #14b8a6;
+  --heat-6: #0d9488;
+  --on-heat-light: #0f172a;
+  --on-heat-dark: #ffffff;
+
+  /* Type */
+  --font-sans: "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  --text-xs: 0.75rem;   /* 12 */
+  --text-sm: 0.875rem;  /* 14 */
+  --text-md: 1rem;      /* 16 */
+  --text-lg: 1.25rem;   /* 20 */
+  --text-xl: 1.5rem;    /* 24 */
+  --text-2xl: 2rem;     /* 32 */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+
+  /* Spacing (4-pt scale) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* Shape */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-pill: 999px;
+  --border: 1px solid var(--color-border);
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.06);
+  --shadow-pop: 0 8px 24px rgb(15 23 42 / 0.14);
+
+  /* Motion: placement changes animate subtly; zero under reduced motion (below). */
+  --motion-fast: 150ms;
+  --motion-base: 250ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Layout */
+  --rail-width: 420px;
+  --content-max: 1440px;
+}
+
+/* Dark theme: by system preference unless the user picked light, or when they picked dark. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-bg: #0b1120;
+    --color-surface: #111827;
+    --color-surface-2: #1e293b;
+    --color-surface-3: #273449;
+    --color-border: #1e293b;
+    --color-border-strong: #334155;
+    --color-text: #e2e8f0;
+    --color-text-muted: #a3b1c6;
+    --color-text-subtle: #8b9ab0;
+    --color-accent: #2dd4bf;
+    --color-accent-hover: #5eead4;
+    --color-accent-soft: #134e4a;
+    --color-on-accent: #042f2e;
+    --color-focus: #5eead4;
+    --color-success: #4ade80;
+    --color-success-soft: #14321f;
+    --color-warning: #fbbf24;
+    --color-warning-soft: #3a2a0c;
+    --color-error: #f87171;
+    --color-error-soft: #3b1414;
+    --color-info: #93c5fd;
+    --color-info-soft: #172554;
+    --cat-none: #475569;
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.5);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #0b1120;
+  --color-surface: #111827;
+  --color-surface-2: #1e293b;
+  --color-surface-3: #273449;
+  --color-border: #1e293b;
+  --color-border-strong: #334155;
+  --color-text: #e2e8f0;
+  --color-text-muted: #a3b1c6;
+  --color-text-subtle: #8b9ab0;
+  --color-accent: #2dd4bf;
+  --color-accent-hover: #5eead4;
+  --color-accent-soft: #134e4a;
+  --color-on-accent: #042f2e;
+  --color-focus: #5eead4;
+  --color-success: #4ade80;
+  --color-success-soft: #14321f;
+  --color-warning: #fbbf24;
+  --color-warning-soft: #3a2a0c;
+  --color-error: #f87171;
+  --color-error-soft: #3b1414;
+  --color-info: #93c5fd;
+  --color-info-soft: #172554;
+  --cat-none: #475569;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+  }
+}

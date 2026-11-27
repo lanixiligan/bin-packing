@@ -5,9 +5,26 @@
 // Source: ADG Code Table 9.1 and Table 9.2 as published in Edition 7.8
 // (Edition 7.9 is mandatory from 1 October 2025: verify the matrix against the
 // edition that applies). Pure functions, no React, so node --test can run them.
-import type { components } from "../api/schema";
-
-export type DgInfo = components["schemas"]["DgInfo"];
+/** Dangerous goods data, as backend/app/dg.py models it (DgInfo). */
+export interface DgInfo {
+  dg_class?: "1" | "2.1" | "2.2" | "2.3" | "3" | "4.1" | "4.2" | "4.3" | "5.1" | "5.2" | "6.1" | "6.2" | "7" | "8" | "9" | null;
+  subsidiary?: ("2.1" | "2.3" | "3" | "4.1" | "4.2" | "4.3" | "5.1" | "6.1" | "8")[];
+  packing_group?: "I" | "II" | "III" | null;
+  /** 4 digits, e.g. "1263". */
+  un_number?: string | null;
+  /** Class 1 only: division and compatibility group, e.g. "1.4S". */
+  explosive_code?: string | null;
+  container: "package" | "drum" | "ibc" | "cylinder" | "aerosol" | "tank_over_500l";
+  /** Table 9.2 specific goods. null = not answered (a "check" warning against the classes it covers); [] = none apply. */
+  t92?: ("ammonium_nitrate" | "tetranitromethane" | "chloroisocyanuric_acid" | "chloroisocyanurate" | "bromate_chlorate_chlorite"
+    | "hypochlorite" | "inorganic_nitrite" | "calcium_hypochlorite" | "nitromethane" | "acid_strong" | "acid_other"
+    | "alkali_strong" | "cyanide")[] | null;
+  carrier_tags?: ("fuel" | "unodourised_lpg" | "peroxide_over_60" | "env_hazardous" | "lithium_battery")[];
+  /** Food or food packaging (not DG). */
+  food: boolean;
+  /** Fire-risk substance: a non-DG combustible liquid, or Class 6/9 goods (exception 5). */
+  fire_risk: boolean;
+}
 /** DG data as it may arrive: missing fields take the backend defaults. */
 export type DgLike = Partial<DgInfo> | null | undefined;
 export type DgClass = NonNullable<DgInfo["dg_class"]>;

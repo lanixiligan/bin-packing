@@ -1,6 +1,5 @@
-# Continuous integration: backend tests on Postgres, frontend checks, and the
-# end-to-end API walkthrough against a seeded stack. Mirrors the local targets
-# (`make test-backend`, `make lint`, `make build`, `make e2e`).
+# Continuous integration: backend lint and tests, frontend lint, tests and build.
+# Mirrors the local targets (`make lint`, `make test`, `make build`).
 name: CI
 
 on:
@@ -16,35 +15,11 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  PYTHON_VERSION: "3.12"
-  NODE_VERSION: "22"
-  # The app refuses the default JWT secret unless APP_ENV=dev; CI uses throwaway data only.
-  APP_ENV: dev
-  JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
-
 jobs:
   backend:
-    name: Backend (ruff, pytest, migrations, API schema)
+    name: Backend (ruff, pytest)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: freight
-          POSTGRES_PASSWORD: freight
-          POSTGRES_DB: freight
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U freight -d freight"
-          --health-interval 2s --health-timeout 3s --health-retries 30
-      redis:
-        image: redis:7-alpine
-        ports: ["6379:6379"]
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 2s --health-timeout 3s --health-retries 30
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: backend
@@ -52,23 +27,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: "3.12"
           cache: pip
           cache-dependency-path: backend/requirements*.txt
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
       - name: Ruff
         run: ruff check .
-      - name: Migrations apply cleanly and match the models
-        run: |
-          alembic upgrade head
-          alembic check
-          alembic downgrade base
-          alembic upgrade head
-      - name: OpenAPI schema is up to date (run `make api-types` if this fails)
-        run: |
-          python -m scripts.export_openapi
-          git diff --exit-code -- ../frontend/src/api/openapi.json
       - name: Pytest
         run: python -m pytest -q
 
@@ -83,84 +48,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
-      - name: API types match openapi.json (run `make api-types` if this fails)
-        run: |
-          npm run api:types
-          git diff --exit-code -- src/api/schema.d.ts
       - name: Lint and typecheck
         run: npm run lint
       - name: Tests
         run: npm test
       - name: Build
         run: npm run build
-
-  e2e:
-    name: End-to-end API walkthrough
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: [backend]
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: freight
-          POSTGRES_PASSWORD: freight
-          POSTGRES_DB: freight
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U freight -d freight"
-          --health-interval 2s --health-timeout 3s --health-retries 30
-      redis:
-        image: redis:7-alpine
-        ports: ["6379:6379"]
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 2s --health-timeout 3s --health-retries 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: backend/requirements*.txt
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: e2e/package-lock.json
-      - name: Install backend dependencies
-        working-directory: backend
-        run: pip install -r requirements.txt
-      - name: Migrate and seed the demo data
-        working-directory: backend
-        run: |
-          alembic upgrade head
-          python -m scripts.seed
-      - name: Start the API and the solver worker
-        working-directory: backend
-        run: |
-          nohup uvicorn app.main:app --port 8000 > "$RUNNER_TEMP/api.log" 2>&1 &
-          nohup arq app.workers.WorkerSettings > "$RUNNER_TEMP/worker.log" 2>&1 &
-          for i in $(seq 1 60); do
-            curl -sf http://127.0.0.1:8000/openapi.json > /dev/null && exit 0
-            sleep 1
-          done
-          echo "The API did not start:"; cat "$RUNNER_TEMP/api.log"; exit 1
-      - name: Install e2e dependencies
-        working-directory: e2e
-        run: npm ci
-      - name: Playwright walkthrough
-        working-directory: e2e
-        env:
-          E2E_API_URL: http://127.0.0.1:8000
-        run: npx playwright test
-      - name: Server logs
-        if: failure()
-        run: |
-          echo "::group::API"; cat "$RUNNER_TEMP/api.log" || true; echo "::endgroup::"
-          echo "::group::Worker"; cat "$RUNNER_TEMP/worker.log" || true; echo "::endgroup::"

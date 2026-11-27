@@ -1,249 +1,204 @@
-# 🚚 Freight Operations Platform
+# 🚚 Truck Load Planner
 
-A local web app for a small freight company. Customers place delivery orders, a dispatcher turns them
-into truck loads with an optimiser, and drivers deliver them with proof of delivery. It grew out of a
-**1D bin packing demo** (FFD vs OR-Tools CP-SAT), which still runs at `/demo`.
+Given freight (pallets or containers) and an Australian vehicle, the planner works out **whether the
+load fits, where each item goes, and what capacity is left**. It also estimates axle group loads
+against General or Higher Mass Limits, and warns about height, refrigeration, stacking and
+dangerous goods: segregation under the ADG Code, plus Northline's acceptance rules. It can also suggest the smallest vehicle that fits.
 
-| Role | What they do | Pages |
-|---|---|---|
-| **Customer** | Keep an item catalogue (with dangerous goods classes) and address book, build and submit orders with a price quote, track status and the full history | `/portal/*` |
-| **Dispatcher** | Accept or reject orders, zone addresses, run the optimiser per delivery date + zone (ADG or ADG + Northline dangerous goods rules), edit and lock load plans, check DG segregation at `/ops/dg`, assign vehicles and drivers, manage the fleet, export monthly invoices | `/ops/*` |
-| **Driver** | See today's run on a phone, mark pickups, deliver with a signature name and photo, report problems | `/driver/*` |
+> **Planning tool only.** Results are estimates. They are not compliance with the NTC Load Restraint
+> Guide or with mass and dimension limits, and every capacity is a typical value you can override.
+
+- **Reference data:** six pallet types (AU standard 1165 × 1165 by default), ISO and domestic
+  containers (reefers flagged), 12 body types, and seven vehicle configurations from a 4–6 t rigid to
+  a road train. The configurations carry deck geometry, axle groups with GML/HML limits, allowed
+  container combinations (a B-double takes 1 × 20' + 1 × 40', never 2 × 40'), and permit notes. All
+  of it lives in `backend/app/reference/`, which is the single source of truth. The UI reads it from
+  `GET /api/reference`.
+- **Optimizer:** a documented heuristic behind a `LoadPlanner` interface, so a better solver can
+  replace it.
+  - **Pallets:** stacks pallets of the same type and fills rows across the deck, rotating pallets
+    where that fits more. It then brings heavy rows towards the axles and centres each deck's load
+    where the axles have the most spare capacity.
+  - **Containers:** looks up the vehicle's allowed combinations.
+  - **Axle loads:** a static beam model, deck by deck through the kingpins.
+- **UI:** three steps.
+  1. Choose a vehicle from cards, or ask for a suggestion.
+  2. Add freight: editable lines with ADG dangerous goods data, or random freight, with undo.
+  3. Review the plan.
+
+  The plan shows a to-scale top-down deck view, coloured by DG class, weight or type, plus a side
+  elevation against the 4.3 m limit, axle load bars, utilisation, warnings with next steps, and CSV
+  and print export. It supports light and dark themes and works from phone width to desktop.
+
+Units are millimetres, kilograms and cubic metres everywhere. The UI converts only for display, and
+you can switch between mm · kg and m · t.
 
 ---
 
-## Architecture
+## Layout
 
 ```
 bin-packing/
-├── backend/                  Python 3.12, FastAPI, SQLModel / SQLAlchemy 2 (async), Alembic
+├── backend/                     Python 3.12, FastAPI, pydantic (no database)
 │   ├── app/
-│   │   ├── main.py           app, routers under /api, error handlers
-│   │   ├── models.py         all tables and status enums
-│   │   ├── schemas.py        request / response models (the API contract)
-│   │   ├── auth.py           fastapi-users, JWT, role dependencies
-│   │   ├── lifecycle.py      the ONLY place that changes Order.status (+ writes OrderEvent)
-│   │   ├── pricing.py        quotes (cubic weight × zone rate) and monthly invoices / CSV
-│   │   ├── dg.py             dangerous goods: ADG Table 9.1/9.2 segregation, Northline acceptance
-│   │   ├── solver/           1D demo solver + multi-dimension FFD and CP-SAT (weight, m³, pallets)
-│   │   ├── workers.py        arq worker: runs solver jobs in the background
-│   │   └── routers/          portal (customer), ops (dispatcher), driver, jobs, demo
-│   ├── alembic/              migrations
-│   ├── scripts/seed.py       demo data
-│   └── tests/                pytest on a real Postgres (one test database per checkout)
-├── frontend/                 React 19 + Vite, React Router, TanStack Query, plain CSS
-│   └── src/
-│       ├── api/              typed client generated from the OpenAPI schema, mock API for dev
-│       ├── auth/, shell/     login, role guards, layout, shared UI
-│       ├── portal/           customer pages
-│       ├── ops/              dispatcher pages
-│       ├── driver/           phone-first driver pages
-│       ├── components/       2D and 3D truck views (weight / volume / pallet fill)
-│       └── demo/             the original 1D bin packing demo
-├── e2e/                      Playwright walkthrough of the whole order loop over real HTTP
-├── docs/api.md               API contract: every endpoint, lifecycle, planning and driver flows
-├── docker-compose.yml        Postgres 16 + Redis 7
-├── scripts/                  services.sh (Postgres + Redis with or without Docker), dev.sh
-└── Makefile                  `make help` lists every target
+│   │   ├── main.py              GET /api/health, mounts the planner and demo routers
+│   │   ├── routers/planner.py   GET /api/reference, POST /api/plan
+│   │   ├── routers/demo.py      POST /api/solve (bin-packing demo)
+│   │   ├── reference/           reference data (schemas + pallets, containers, bodies, vehicles)
+│   │   ├── planner/             models, LoadPlanner interface, heuristic, checks, axles, suggest
+│   │   ├── solver.py            OR-Tools CP-SAT bin packing for the demo
+│   │   └── dg.py                ADG dangerous goods segregation
+│   ├── scripts/export_fixtures.py   sample API responses for the frontend tests
+│   └── tests/                   pytest (factories.py has small test vehicles)
+├── frontend/                    React 19 + Vite + TypeScript, plain CSS, Vitest
+│   ├── src/planner/
+│   │   ├── PlannerApp.tsx       the page: state, auto-planning, layout
+│   │   ├── api/                 typed client and types mirroring the backend models
+│   │   ├── components/          VehiclePicker, FreightTable, LoadPlanView (deck, elevation,
+│   │   │                        legend, table), PlanStatus, UtilisationSummary, AxleLoadPanel,
+│   │   │                        WarningsList, ExportMenu, EmptyState, Disclaimer
+│   │   ├── lib/                 units, freight validation, random freight, DG, colours, export
+│   │   └── styles/              design tokens, base styles, print styles
+│   ├── src/demo/                the bin-packing demo page (demo.html), its own entry point
+│   └── src/dg/                  ADG segregation rules port, DG class diamonds
+├── scripts/dev.sh               runs the API and the web app together
+└── Makefile                     `make help` lists every target
 ```
-
-**How a plan is made.** `POST /api/ops/plans` reserves the accepted orders for one delivery date and
-zone, checks every unit fits the chosen vehicle profile, and queues a job in Redis. The arq worker
-expands order lines into units and packs them twice: **FFD** (fast rule of thumb) and **CP-SAT**
-(optimiser, warm-started from FFD, 10 s limit, one capacity constraint per limited dimension). The UI
-polls `GET /api/jobs/{id}` and shows both answers side by side in the truck views, with the lower bound
-(the maximum over dimensions of `ceil(total / capacity)`).
-
-**Dangerous goods.** Items can carry an ADG class, subsidiary hazards, packing group, UN number and
-Table 9.2 details. Both methods keep incompatible goods (ADG Code Table 9.1 / 9.2) on separate loads,
-moves onto a conflicting load are refused, and a plan with a conflict can't be locked. A plan can also
-use the Northline rule set (prohibited goods, quantity limits, HSEQ approvals). The matrix comes from
-ADG Edition 7.8: check it against Edition 7.9 (mandatory from 1 October 2025). See
-[Dangerous goods](docs/api.md#dangerous-goods).
-
-See [`docs/api.md`](docs/api.md) for the full API, and `/docs` on a running backend for Swagger.
 
 ---
 
 ## Setup (once)
 
-### 1. System packages (Linux Mint / Ubuntu)
+You need Python 3.12+ and Node.js 20.19+ or 22.12+.
 
 ```bash
-sudo apt update
-sudo apt install -y python3 python3-venv python3-pip curl git make
+make install      # backend/.venv + frontend/node_modules
 ```
-
-Docker is optional. With it, Postgres and Redis run from `docker-compose.yml`. Without it,
-`scripts/services.sh` downloads Postgres and Redis binaries from pip packages into `.tools/` the first
-time (no `sudo` needed).
-
-### 2. Node.js 20.19+ or 22.12+
-
-Check with `node --version`. If it's missing or older (the `apt` version often is), install it with nvm:
-
-```bash
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-source ~/.bashrc
-nvm install --lts
-nvm use --lts
-```
-
-### 3. The project
-
-```bash
-cd ~/Projects/bin-packing
-cp .env.example .env        # local defaults (APP_ENV=dev); change JWT_SECRET outside development
-make install                # backend/.venv with the Python packages + frontend/node_modules
-make seed                   # starts Postgres + Redis, applies migrations, loads the demo data
-```
-
-<details>
-<summary>The same steps without <code>make</code></summary>
-
-```bash
-cd ~/Projects/bin-packing
-cp .env.example .env
-
-# Backend: virtual environment and packages (OR-Tools is ~25 MB)
-python3 -m venv backend/.venv
-backend/.venv/bin/pip install -r backend/requirements-dev.txt
-
-# Frontend packages
-cd frontend && npm install && cd ..
-
-# Postgres + Redis, database tables, demo data
-scripts/services.sh start
-cd backend
-.venv/bin/alembic upgrade head
-.venv/bin/python -m scripts.seed
-cd ..
-```
-
-</details>
 
 ## Run
 
 ```bash
-cd ~/Projects/bin-packing
 make dev
 ```
 
-This starts three processes together, and Ctrl+C stops all three:
-
-| Process | Address |
-|---|---|
-| API | <http://localhost:8000> (Swagger at `/docs`) |
-| Solver worker | runs the optimiser jobs in the background |
-| Web app | **<http://localhost:5173>**, open this one |
-
-Other ports: `API_PORT=8010 WEB_PORT=5180 scripts/dev.sh`.
-
-> `npm run dev` on its own only starts the web app. Without the API you can't log in, and without the
-> worker a plan stays "queued". Use `make dev`, or start all three yourself.
-
-To start them in separate terminals instead (Postgres and Redis must be running: `make services`):
-
-```bash
-# Terminal 1: API
-cd ~/Projects/bin-packing/backend && .venv/bin/uvicorn app.main:app --reload --port 8000
-
-# Terminal 2: solver worker
-cd ~/Projects/bin-packing/backend && .venv/bin/arq app.workers.WorkerSettings
-
-# Terminal 3: web app
-cd ~/Projects/bin-packing/frontend && npm run dev
-```
-
-Run only one worker at a time: a worker that starts up fails any job another worker is still running.
-
-Other commands:
-
-| Command | What it does |
-|---|---|
-| `make seed` | Reset the database to the demo data (also fixes a failed login after testing) |
-| `make services-status` / `make services-stop` | Check or stop Postgres and Redis |
-| `cd frontend && npm run dev:mock` | The UI with an in-browser mock API, no backend needed. Any password works; an e-mail containing "dispatch" or "driver" picks that role |
-
-## Seed logins
-
-**In development you don't need to type these.** The login page shows a **Log in as…** panel with one
-button per seed account: click a name and you're in. Log out to switch roles. The panel only exists in
-the Vite dev server (`make dev`, `npm run dev`, `npm run dev:mock`), never in a production build
-(`npm run build`), so the known password isn't shipped.
-
-To type them instead, all passwords are `demo-pass-123`:
-
-| Role | E-mail |
-|---|---|
-| Customer (Acme Hardware Pty Ltd) | `alice@acme.example.com`, `bob@acme.example.com` |
-| Dispatcher | `dispatch@freightco.example.com` |
-| Driver | `driver1@freightco.example.com`, `driver2@freightco.example.com` |
-
-The seed has about 36 orders in every status, three zones (NORTH, SOUTH, WEST), four vehicles with
-different capacity mixes, accepted orders for today and tomorrow ready to plan, a run today for both
-drivers, and delivered orders last month for the invoices page. `make seed` resets the database.
-
----
-
-## The workflow
-
-```
-draft ─► submitted ─► accepted ─► planned ─► picked_up ─► in_transit ─► delivered
-            └─► rejected                └──────────┴────────────┴─► exception
-draft / submitted ─► cancelled
-```
-
-1. **Customer** creates an order (items and quantities, pickup and delivery address, date and time
-   window), sees the quote, and submits it. Price = `max(kg, m³ × 250)` × the delivery zone's rate.
-2. **Dispatcher** accepts it (or rejects it with a reason) and makes sure the delivery address has a zone.
-3. **Dispatcher** opens *Plans*, picks the batch (date + zone) and a vehicle profile, and runs the
-   optimiser. When the job finishes, they compare FFD and OR-Tools, save one as a draft, move lines
-   between loads if needed (the server re-checks capacity), lock the plan, and assign a vehicle and a
-   driver to each load. Locking moves the orders to `planned`.
-4. **Driver** opens today's run, marks the pickup, then delivers with the receiver's name and a photo
-   (or reports a problem with a note).
-5. **Customer** sees `delivered`, the proof of delivery and every step in the order's history.
-6. **Dispatcher** downloads the month's invoice CSV per customer company.
-
-Every status change goes through `backend/app/lifecycle.py`, which allows only valid transitions for the
-right role and writes an event with the time, the actor and an optional note.
-
----
+The API runs on <http://localhost:8000> (Swagger at `/docs`) and the web app on
+**<http://localhost:5173>**. The web app forwards `/api` to the API. Other ports:
+`API_PORT=8010 WEB_PORT=5180 scripts/dev.sh`.
 
 ## Tests
 
 ```bash
-make test          # ruff + pytest (needs Postgres; starts it if needed)
-make lint          # backend ruff + frontend ESLint and tsc
-make build         # production build of the web app
-make e2e           # Playwright walkthrough against a running stack (make dev first)
-cd frontend && npm test   # frontend unit tests (pure helpers and the mock API)
+make test       # pytest + Vitest component tests + node tests (DG rules port, demo helpers)
+make lint       # ruff + ESLint and tsc
+make build      # production build of the web app
+make fixtures   # regenerate the frontend's sample API responses after planner changes
 ```
-
-`make e2e` drives the whole loop over real HTTP with the real worker: customer submits → dispatcher
-accepts → plans → locks → assigns → driver picks up and delivers with POD → customer sees the timeline →
-the order is on the month's invoice CSV. Point it elsewhere with `E2E_API_URL` and `E2E_WEB_URL`.
-
-After changing an endpoint or schema, run `make api-types` to regenerate `frontend/src/api/schema.d.ts`.
 
 ---
 
-## The 1D bin packing demo (`/demo`)
+## API
 
-The original demo is still there: shipments (items with a weight) go into trucks (bins with the same
-capacity) using the fewest trucks. It solves the same input with **FFD** (sort heaviest first, put each
-in the first truck with room) and **OR-Tools CP-SAT** (searches for the fewest trucks and can prove it's
-optimal), and animates both in 2D bars or 3D trucks. `POST /api/solve` is its API. Shipments can be
-given a dangerous goods class (or food / fire-risk) and up to 4 subsidiary hazards with the hazard
-picker (click the chip in a shipment's row); incompatible ones never share a truck, and the picker lists
-which shipments a choice conflicts with. 🎲 Load random shipments draws from a small item catalogue in
-which each item carries its own DG data (Paint = Class 3, Methanol = 3 + sub 6.1, Oxygen cylinders =
-2.2 + sub 5.1, Rice = food, …); typing a catalogue name in the add row fills its DG data in too.
+### `POST /api/plan`
 
-**A case where FFD loses:** capacity 1000, shipments `560, 490, 440, 370, 360, 340, 190, 150` kg. The
-lower bound is 3. FFD needs 4 trucks (560+440, 490+370, 360+340+190, then 150 fits nowhere); CP-SAT
-finds 3, for example 560+440, 490+340+150, 370+360+190.
+```json
+{
+  "vehicle_id": "SEMI_TRAILER",
+  "body_type": null,
+  "mass_scheme": "GML",
+  "items": [
+    { "id": "bev", "label": "Beverages", "kind": "pallet", "type_id": "AU_STD", "quantity": 6,
+      "gross_weight_kg": 820, "height_mm": 1200, "stackable": false },
+    { "id": "dry", "kind": "pallet", "type_id": "EURO", "quantity": 4, "gross_weight_kg": 400,
+      "height_mm": 900, "stackable": true }
+  ],
+  "overrides": { "vehicles": { "SEMI_TRAILER": { "max_payload_kg": 22000 } } }
+}
+```
+
+| Field | Notes |
+|---|---|
+| `vehicle_id` | A vehicle id from `/api/reference`, or `"suggest"` for the smallest vehicle that fits |
+| `body_type` | A body id, or `null` for the vehicle's default. In suggest mode, vehicles without it are skipped |
+| `mass_scheme` | `"GML"` (default) or `"HML"` |
+| `rule_set` | Optional: `"northline"` (default, ADG Code plus Northline's acceptance rules) or `"adg"` (ADG Code only). The page always uses the default |
+| `items[]` | Up to 500 units in total. `gross_weight_kg` is per unit, including the pallet. `height_mm` applies to pallets only. `dg` is optional dangerous goods data |
+| `overrides` | Optional partial reference data, deep-merged and re-validated (lists replace) |
+
+The response includes:
+- `fits`, `reasons` and `warnings`: each warning has a code, severity, plain-language message,
+  suggestion and the item ids it concerns.
+- `placements`: deck, x/y/z in mm, size, rotation, stack and level for every unit.
+- `unplaced`, `utilisation` (pallet spaces, TEU, payload, volume), `axle_loads` (load, limit, status),
+  `total_weight_kg` and `max_load_height_mm`.
+- `tried`: every vehicle tried, in suggest mode.
+
+Errors are 400 for an unknown vehicle or body, or for invalid overrides, and 422 for invalid input
+(e.g. repeated line ids or more than 500 units).
+
+### `GET /api/reference`
+
+Returns all pallets, pallet defaults, containers, bodies and vehicles.
+
+Set `CORS_ORIGINS` (comma-separated) to allow other browser origins to call the API directly.
+
+---
+
+## Bin packing demo
+
+A separate page at **<http://localhost:5173/demo.html>** (linked from the planner header) shows the
+**bin packing problem**: load every shipment into identical trucks using the fewest trucks. The
+trucks are a vehicle from the planner's list (a medium rigid by default; *Change* opens the same
+vehicle cards), and every shipment has a real size:
+
+- **On a pallet:** a pallet type (AU 1165 × 1165, Euro 1200 × 800, …), the total height and the
+  weight. **Loose:** its own length × width × height, for long or odd items such as pipes.
+- **Stackable** shipments can stand on others with the same footprint while the column fits under
+  the truck's inside height. Everything else stands on the deck floor.
+
+Google OR-Tools CP-SAT places every footprint on a deck (turned 90° when that fits better, never
+overlapping), keeps each truck within its payload, refuses goods Northline won't carry and keeps
+incompatible dangerous goods (ADG Code Table 9.1) apart. It searches for 10 s at most, starting from a quick greedy packing, and proves
+when no packing uses fewer trucks. The summary compares the answer with lower bounds for weight,
+volume and the floor area of non-stackable items. The page draws each truck's decks to scale from
+the returned positions, with a 3D view (three.js loads only when it's opened). *Random shipments*
+draws from a small catalogue where each item has its own size and DG data (Paint = AU pallet,
+1.2 m, stackable, Class 3; Pipes = loose, 4.6 × 0.4 × 0.3 m; …). The page has its own entry point
+(`frontend/demo.html`, `src/demo/`) and shares the design tokens, base styles, DG rules, reference
+data and vehicle picker with the planner.
+
+### `POST /api/solve`
+
+```json
+{
+  "vehicle_id": "RIGID_MEDIUM",
+  "body_type": null,
+  "shipments": [
+    { "name": "Paint 01", "weight": 420, "pallet_type": "AU_STD", "height_mm": 1200,
+      "stackable": true, "dg_class": "3" },
+    { "name": "Pipes 02", "weight": 250, "kind": "loose", "length_mm": 4600, "width_mm": 400,
+      "height_mm": 300 }
+  ]
+}
+```
+
+| Field | Notes |
+|---|---|
+| `vehicle_id`, `body_type` | A vehicle and body from `/api/reference` (the body must carry pallets) |
+| `rule_set` | Optional: `"northline"` (default, ADG Code plus Northline's acceptance rules) or `"adg"` (ADG Code only). The page always uses the default |
+| `shipments[]` | Up to 40. `weight` in kg, `height_mm` the total height |
+| `shipments[].kind` | `"pallet"` (default, with `pallet_type`, default AU_STD) or `"loose"` (with `length_mm` and `width_mm`) |
+| `shipments[].stackable` | Optional, default false |
+| `shipments[].dg_class`, `subsidiary` | Optional: a DG class (`"1"`…`"9"`), `"food"` or `"fire_risk"`, and up to 4 subsidiary hazards |
+
+The full request and response models are in `backend/app/demo_models.py`. The response has the
+vehicle and its per-truck capacity (payload, decks, floor area, volume), `num_trucks` and `trucks`
+(each with its shipments and their deck, x/y/z position, rotation and stack level, plus weight and
+floor use), `optimal` and the CP-SAT `status`, `lower_bound` and `lower_bounds`, `segregated`,
+`solve_time_ms` and `drop_order` for the loading animation.
+
+Errors: 400 for an unknown vehicle, body or pallet type, a body that doesn't carry pallets,
+shipments that can never fit (too long, too wide, too tall or too heavy, each named) or that
+Northline refuses; 422 for invalid input; 429 while 2 solves are already running.
 
 ---
 
@@ -251,9 +206,7 @@ finds 3, for example 560+440, 490+340+150, 370+360+190.
 
 | Problem | Fix |
 |---|---|
-| `make seed` or `make test` can't connect to Postgres | `make services-status`, then `make services` |
-| The web app says it can't reach the backend | Start it with `make dev` (or `make api`) and check the port |
-| A plan stays "queued" | The worker isn't running: `make worker` (or use `make dev`, which starts it) |
+| The page says it can't reach the planner | Start it with `make dev` (or `make api`) and check the port |
 | `externally-managed-environment` from pip | Use `make install`, which installs into `backend/.venv` |
 | `npm run dev` fails with a Node version error | Install a newer Node with nvm |
 | Port 8000 or 5173 is in use | `API_PORT=8010 WEB_PORT=5180 scripts/dev.sh` |

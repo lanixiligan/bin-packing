@@ -5,7 +5,7 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "src/api/schema.d.ts"] },
+  { ignores: ["dist"] },
   {
     files: ["**/*.{js,jsx,ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
@@ -18,8 +18,8 @@ export default tseslint.config(
     },
   },
   {
-    // The original demo predates the lint setup; keep its rules relaxed.
-    files: ["src/demo/**", "src/components/**", "src/shipments.js", "src/useMediaQuery.js"],
+    // The bin-packing demo predates the lint setup; keep its rules relaxed.
+    files: ["src/demo/**"],
     rules: { "react-hooks/exhaustive-deps": "off", "react-hooks/set-state-in-effect": "off", "react-hooks/refs": "off", "react-hooks/immutability": "off" },
   },
   { files: ["*.config.js"], languageOptions: { globals: globals.node } },

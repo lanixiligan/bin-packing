@@ -1,71 +1,51 @@
 """
-The original stateless 1D bin packing demo: POST /api/solve (public).
-Owner: Agent B. Keep its request and response backward compatible (new fields
-are optional in the request and only added to the response).
+The stateless truck loading demo: POST /api/solve (public).
+
+Shipments have real sizes (pallets of a reference pallet type, or loose items
+with their own length x width) and are packed onto the cargo decks of a vehicle
+from the planner's reference data (app/reference): each footprint is placed on a
+deck, stackable shipments with the same footprint may form columns, and the
+fewest trucks of that vehicle are used. The request and response models, with
+the coordinate conventions, are in app/demo_models.py.
 
 Dangerous goods: a shipment may carry a `dg_class` (or "food" / "fire_risk")
 and, with a class, up to 4 `subsidiary` hazards; incompatible shipments (ADG
-Table 9.1, app/dg.py, which also pairs subsidiary hazards) never share a truck. With
-`rule_set: "northline"`, classes Northline never accepts are rejected (400).
+Table 9.1, app/dg.py, which also pairs subsidiary hazards) never share a truck.
+With the default `rule_set: "northline"`, classes Northline never accepts are
+rejected (400); `rule_set: "adg"` applies the ADG Code only.
 
-It runs on the multi-dimension solver (app/solver/multi.py) with weight as
-the only limited dimension, so the demo and load planning share one model.
+It packs with Google OR-Tools CP-SAT (app/solver.py) and returns the fewest
+trucks it finds, with whether that is proven optimal.
 """
 
 import threading
-from typing import Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app import dg as dgrules
-from app.schemas import Capacity, PackUnit
-from app.solver.multi import solve as solve_units
+from app.demo_models import (
+    DeckOut,
+    Placement,
+    ShipmentOut,
+    SolveRequest,
+    SolveResponse,
+    TruckCapacity,
+    TruckOut,
+)
+from app.reference import load_reference
+from app.solver import DeckSpec, Item, Truck, loose_key, pallet_key
+from app.solver import solve as solve_items
 
 TIME_LIMIT_SECONDS = 10.0
-MAX_SHIPMENTS = 200
 # The endpoint is public and each solve can use 8 solver threads for up to
 # TIME_LIMIT_SECONDS, so only this many run at once; the rest get 429.
 MAX_CONCURRENT_SOLVES = 2
 _solve_slots = threading.BoundedSemaphore(MAX_CONCURRENT_SOLVES)
 
-router = APIRouter()
-
-
-DemoDg = Literal["1", "2.1", "2.2", "2.3", "3", "4.1", "4.2", "4.3", "5.1", "5.2", "6.1", "6.2",
-                 "7", "8", "9", "food", "fire_risk"]
 # Class 1 in the demo means small arms ammunition (1.4S), the only explosive with wide acceptance.
 DEMO_EXPLOSIVE = "1.4S"
 
-
-class Shipment(BaseModel):
-    name: str = Field(min_length=1, max_length=50)
-    weight: int = Field(gt=0, le=1_000_000, description="Weight in kg (whole number)")
-    dg_class: DemoDg | None = Field(default=None, description="DG class, 'food', 'fire_risk', or "
-                                                              "null for general freight")
-    subsidiary: list[dgrules.Subsidiary] = Field(
-        default_factory=list, max_length=4,
-        description="Subsidiary hazards (only with a DG class, never the class itself)")
-
-    @field_validator("subsidiary")
-    @classmethod
-    def _sorted_unique(cls, v: list[str]) -> list[str]:
-        return sorted(set(v))
-
-    @model_validator(mode="after")
-    def _subsidiary_needs_class(self) -> "Shipment":
-        if self.subsidiary:
-            if self.dg_class in (None, "food", "fire_risk"):
-                raise ValueError("Subsidiary hazards need a DG class.")
-            if self.dg_class in self.subsidiary:
-                raise ValueError(f"A subsidiary hazard can't be the same as the class ({self.dg_class}).")
-        return self
-
-
-class SolveRequest(BaseModel):
-    capacity: int = Field(gt=0, le=1_000_000, description="Truck max capacity in kg")
-    shipments: list[Shipment]
-    rule_set: dgrules.RuleSet = "adg"
+router = APIRouter()
 
 
 def demo_dg(value: str | None, subsidiary: list[str] | tuple[str, ...] = ()) -> dgrules.DgInfo | None:
@@ -80,37 +60,44 @@ def demo_dg(value: str | None, subsidiary: list[str] | tuple[str, ...] = ()) -> 
                           explosive_code=DEMO_EXPLOSIVE if value == "1" else None)
 
 
-def build_result(trucks, shipments, capacity):
-    """Turn lists of shipment indices into a friendly JSON structure."""
-    out = []
-    for t, idxs in enumerate(trucks):
-        load = sum(shipments[i]["weight"] for i in idxs)
-        out.append({
-            "truck": t + 1,
-            "shipments": [shipments[i] for i in idxs],
-            "load": load,
-            "empty": capacity - load,
-            "fill_percent": round(100 * load / capacity, 1),
-        })
-    return out
+def _truck(req: SolveRequest):
+    """(reference, vehicle, body id, Truck) for the request; HTTPException 400 for a vehicle or
+    body that is unknown, not allowed together, or doesn't carry pallets."""
+    ref = load_reference()
+    vehicle = ref.vehicles.get(req.vehicle_id)
+    if vehicle is None:
+        raise HTTPException(400, f"Unknown vehicle '{req.vehicle_id}'.")
+    body_id = req.body_type or vehicle.default_body
+    body = ref.bodies.get(body_id)
+    if body is None:
+        raise HTTPException(400, f"Unknown body type '{body_id}'.")
+    if body_id not in vehicle.allowed_bodies:
+        raise HTTPException(400, f"A {vehicle.name} can't have a {body.name} body.")
+    if not body.carries_pallets or not body.in_scope:
+        raise HTTPException(400, f"A {body.name} body doesn't carry pallets or loose freight; "
+                                 f"choose another body.")
+    decks = tuple(
+        DeckSpec(id=d.id, name=d.name, length=d.length_mm, width=d.width_mm,
+                 height=body.internal_height_mm if body.internal_height_mm is not None
+                 else vehicle.overall_height_limit_mm - d.deck_height_mm)
+        for d in vehicle.cargo_decks)
+    if not decks or any(d.length <= 0 or d.width <= 0 or d.height <= 0 for d in decks):
+        raise HTTPException(400, f"A {vehicle.name} has no usable cargo deck.")
+    truck = Truck(payload_kg=int(vehicle.max_payload_kg), decks=decks, name=vehicle.name)
+    return ref, vehicle, body_id, truck
 
 
-@router.post("/solve", tags=["demo"])
-def solve(req: SolveRequest):
+@router.post("/solve", tags=["demo"], response_model=SolveResponse)
+def solve(req: SolveRequest) -> SolveResponse:
     # ---- Validation -------------------------------------------------------
     if not req.shipments:
         raise HTTPException(400, "Add at least one shipment.")
-    if len(req.shipments) > MAX_SHIPMENTS:
-        raise HTTPException(400, f"Too many shipments (max {MAX_SHIPMENTS}).")
+    ref, vehicle, body_id, truck = _truck(req)
 
-    too_heavy = [s for s in req.shipments if s.weight > req.capacity]
-    if too_heavy:
-        names = ", ".join(f"'{s.name}' ({s.weight} kg)" for s in too_heavy)
-        raise HTTPException(
-            400,
-            f"These shipments are heavier than the truck capacity "
-            f"({req.capacity} kg) and can never fit: {names}",
-        )
+    unknown = sorted({s.pallet_type for s in req.shipments
+                      if s.pallet_type is not None and s.pallet_type not in ref.pallets})
+    if unknown:
+        raise HTTPException(400, "Unknown pallet type: " + ", ".join(f"'{p}'" for p in unknown) + ".")
 
     dgs = [demo_dg(s.dg_class, s.subsidiary) for s in req.shipments]
     if req.rule_set == "northline":
@@ -119,59 +106,79 @@ def solve(req: SolveRequest):
         if refused:
             raise HTTPException(400, "Northline does not accept these shipments: " + ", ".join(refused))
 
-    # Give each shipment an id so the frontend can track it across panels.
-    shipments = [
-        {"id": i, "name": s.name, "weight": s.weight, "dg_class": s.dg_class, "subsidiary": s.subsidiary}
-        for i, s in enumerate(req.shipments)
-    ]
-    weights = [s["weight"] for s in shipments]
-    units = [
-        PackUnit(id=s["id"], order_id=0, order_reference="", order_line_id=s["id"],
-                 item_name=s["name"], item_sku="", weight_kg=s["weight"], volume_m3=0, pallets=0,
-                 dg=d)
-        for s, d in zip(shipments, dgs, strict=True)
-    ]
+    # Each shipment's id is its position in the request, so the frontend can track it.
+    items: list[Item] = []
+    pallet_types: list[str | None] = []
+    for i, (s, d) in enumerate(zip(req.shipments, dgs, strict=True)):
+        if s.kind == "pallet":
+            pid = s.pallet_type or ref.pallet_defaults.default_pallet
+            pallet = ref.pallets[pid]
+            length, width, key = pallet.length_mm, pallet.width_mm, pallet_key(pid)
+        else:
+            pid = None
+            length, width, key = s.length_mm, s.width_mm, loose_key(s.length_mm, s.width_mm)
+        pallet_types.append(pid)
+        items.append(Item(id=i, name=s.name, weight=s.weight, length=length, width=width, height=s.height_mm,
+                          stackable=s.stackable, footprint=key, dg=d))
     segregated = any(c.status == "incompatible" for c in dgrules.check_all(list({
         d.key(): d for d in dgs if not dgrules.is_general(d)}.values())))
 
-    # ---- FFD, then CP-SAT warm-started with the FFD answer ---------------
+    # ---- OR-Tools CP-SAT ------------------------------------------------
     if not _solve_slots.acquire(blocking=False):
         raise HTTPException(429, "The solver is busy with other requests. Try again in a few seconds.")
     try:
-        result, status = solve_units(units, Capacity(weight_kg=req.capacity), TIME_LIMIT_SECONDS)
+        result = solve_items(items, truck, TIME_LIMIT_SECONDS)
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(500, str(exc)) from exc
     finally:
         _solve_slots.release()
-    if result.ortools is None:
-        raise HTTPException(500, f"Solver did not find a solution (status: {status}).")
-    lb = result.lower_bound
-    ffd_trucks = [load.unit_ids for load in result.ffd.loads]
-    cp_trucks = [load.unit_ids for load in result.ortools.loads]
 
-    return {
-        "capacity": req.capacity,
-        "total_weight": sum(weights),
-        "lower_bound": lb,
-        # True when some shipments must travel apart (the lower bound ignores that).
-        "segregated": segregated,
-        "ffd": {
-            "num_trucks": len(ffd_trucks),
-            "trucks": build_result(ffd_trucks, shipments, req.capacity),
-            "solve_time_ms": round(result.ffd.solve_time_ms, 3),
-            # FFD can't prove anything by itself, but if it hits the lower
-            # bound, nobody can do better -> it is optimal.
-            "hits_lower_bound": len(ffd_trucks) == lb,
-            # Order FFD actually loaded shipments (heaviest first) -> animation.
-            "drop_order": result.ffd.drop_order,
-        },
-        "ortools": {
-            "num_trucks": len(cp_trucks),
-            "trucks": build_result(cp_trucks, shipments, req.capacity),
-            "solve_time_ms": round(result.ortools.solve_time_ms, 1),
-            "optimal": result.ortools.optimal,
-            "status": result.ortools.status,
-            "time_limit_s": TIME_LIMIT_SECONDS,
-            "drop_order": [i for truck in cp_trucks for i in truck],
-        },
-    }
+    # ---- Response -------------------------------------------------------
+    floor_mm2 = truck.floor_mm2
+    trucks: list[TruckOut] = []
+    for number, placed in enumerate(result.trucks, start=1):
+        shipments = []
+        for p in placed:
+            s, it = req.shipments[p.id], items[p.id]
+            shipments.append(ShipmentOut(
+                id=p.id, name=s.name, weight=s.weight, kind=s.kind, pallet_type=pallet_types[p.id],
+                length_mm=it.length, width_mm=it.width, height_mm=it.height, stackable=s.stackable,
+                dg_class=s.dg_class, subsidiary=s.subsidiary,
+                placement=Placement(
+                    deck_id=truck.decks[p.deck].id, x_mm=p.x, y_mm=p.y, z_mm=p.z, length_mm=p.length,
+                    width_mm=p.width, height_mm=p.height, rotated=p.rotated, stack_base=p.base,
+                    level=p.level)))
+        load = sum(s.weight for s in shipments)
+        used = sum(p.length * p.width for p in placed if p.level == 0)
+        trucks.append(TruckOut(
+            truck=number, shipments=shipments, load=load, empty=truck.payload_kg - load,
+            fill_percent=round(100 * load / truck.payload_kg, 1),
+            floor_used_m2=round(used / 1e6, 2), floor_percent=round(100 * used / floor_mm2, 1),
+            max_height_mm=max(p.z + p.height for p in placed)))
+
+    return SolveResponse(
+        vehicle_id=vehicle.id,
+        vehicle_name=vehicle.name,
+        body_type=body_id,
+        capacity=TruckCapacity(
+            weight_kg=truck.payload_kg,
+            decks=[DeckOut(id=d.id, name=d.name, length_mm=d.length, width_mm=d.width, height_mm=d.height)
+                   for d in truck.decks],
+            floor_m2=round(floor_mm2 / 1e6, 2),
+            volume_m3=round(truck.volume_mm3 / 1e9, 2)),
+        total_weight=sum(s.weight for s in req.shipments),
+        total_volume_m3=round(sum(it.area * it.height for it in items) / 1e9, 2),
+        lower_bound=result.lower_bound,
+        lower_bounds=result.lower_bounds,
+        segregated=segregated,
+        num_trucks=len(result.trucks),
+        trucks=trucks,
+        solve_time_ms=result.solve_time_ms,
+        optimal=result.optimal,
+        status=result.status,
+        time_limit_s=TIME_LIMIT_SECONDS,
+        # Truck by truck, the order the shipments drop in (animation).
+        drop_order=[s.id for t in trucks for s in t.shipments],
+    )

@@ -1,0 +1,288 @@
+// The load planner page: 1) choose a vehicle (or "suggest one"), 2) add freight, 3) review the plan.
+//
+// Owns the state and the API calls; every panel is driven purely by the planner's response and
+// never recalculates placement. A plan is requested automatically (debounced) whenever the inputs
+// are valid, so a first result appears in seconds from the defaults (AU pallets on a semi-trailer).
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ApiError, fetchReference, postPlan } from "./api/client.ts";
+import type { MassScheme, PlanRequest, PlanResult, ReferenceData, RuleSet } from "./api/types.ts";
+import { SUGGEST } from "./api/types.ts";
+import { sampleRows, validateRows, type FreightRow } from "./lib/freight.ts";
+import { useUnits, type UnitSystem } from "./lib/units.ts";
+import { UnitsProvider } from "./lib/UnitsProvider.tsx";
+import AxleLoadPanel from "./components/AxleLoadPanel.tsx";
+import Disclaimer from "./components/Disclaimer.tsx";
+import EmptyState from "./components/EmptyState.tsx";
+import ExportMenu from "./components/ExportMenu.tsx";
+import FreightTable from "./components/FreightTable.tsx";
+import LoadPlanView from "./components/LoadPlanView.tsx";
+import PlanStatus from "./components/PlanStatus.tsx";
+import UtilisationSummary from "./components/UtilisationSummary.tsx";
+import VehiclePicker from "./components/VehiclePicker.tsx";
+import WarningsList from "./components/WarningsList.tsx";
+import "./styles/tokens.css";
+import "./styles/base.css";
+import "./PlannerApp.css";
+
+export const DEFAULT_VEHICLE = "SEMI_TRAILER";
+/** Dangerous goods are always checked against the ADG Code plus Northline's acceptance rules. */
+const RULE_SET: RuleSet = "northline";
+const PLAN_DEBOUNCE_MS = 350;
+
+// ---- Theme -------------------------------------------------------------------
+
+type Theme = "system" | "light" | "dark";
+const THEME_KEY = "load-planner.theme";
+
+function useTheme(): [Theme, (t: Theme) => void] {
+  const [theme, setTheme] = useState<Theme>(() => {
+    try {
+      const t = localStorage.getItem(THEME_KEY);
+      return t === "light" || t === "dark" ? t : "system";
+    } catch {
+      return "system";
+    }
+  });
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === "system") delete root.dataset.theme;
+    else root.dataset.theme = theme;
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // storage blocked: the choice lasts for this page only
+    }
+  }, [theme]);
+  return [theme, setTheme];
+}
+
+// ---- Header ------------------------------------------------------------------
+
+function Header({ theme, onTheme }: { theme: Theme; onTheme(t: Theme): void }) {
+  const units = useUnits();
+  return (
+    <header className="app-header">
+      <div className="app-header-inner">
+        <div className="brand">
+          <svg className="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M2 6h12v9H2zM14 9h4l3 3v3h-7z" fill="none" stroke="currentColor" strokeWidth="1.8"
+                  strokeLinejoin="round" />
+            <circle cx="6" cy="17" r="1.8" fill="currentColor" />
+            <circle cx="17" cy="17" r="1.8" fill="currentColor" />
+          </svg>
+          <div>
+            <h1>Load planner</h1>
+            <p className="subtle">Fit freight onto Australian trucks and trailers</p>
+          </div>
+        </div>
+        <div className="header-controls">
+          <a className="btn btn-ghost btn-sm" href="/demo.html">Bin packing demo</a>
+          <fieldset className="segmented" aria-label="Display units">
+            {([["mm-kg", "mm · kg"], ["m-t", "m · t"]] as [UnitSystem, string][]).map(([value, label]) => (
+              <label key={value}>
+                <input type="radio" name="units" value={value} checked={units.system === value}
+                       onChange={() => units.setSystem(value)} />
+                <span>{label}</span>
+              </label>
+            ))}
+          </fieldset>
+          <fieldset className="segmented" aria-label="Colour theme">
+            {([["system", "Auto"], ["light", "Light"], ["dark", "Dark"]] as [Theme, string][]).map(([value, label]) => (
+              <label key={value}>
+                <input type="radio" name="theme" value={value} checked={theme === value}
+                       onChange={() => onTheme(value)} />
+                <span>{label}</span>
+              </label>
+            ))}
+          </fieldset>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+// ---- Page ----------------------------------------------------------------------
+
+function Step({ n, title, hint, children, id }: {
+  n: number; title: string; hint?: string; children: React.ReactNode; id: string;
+}) {
+  return (
+    <section className="step card" aria-labelledby={`${id}-title`}>
+      <div className="step-header">
+        <span className="step-number" aria-hidden="true">{n}</span>
+        <div>
+          <h2 id={`${id}-title`} className="step-title"><span className="visually-hidden">Step {n}: </span>{title}</h2>
+          {hint && <p className="subtle">{hint}</p>}
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export function Planner({ initialReference = null }: { initialReference?: ReferenceData | null }) {
+  const [theme, setTheme] = useTheme();
+  const [reference, setReference] = useState<ReferenceData | null>(initialReference);
+  const [refError, setRefError] = useState<string>("");
+  const [vehicleId, setVehicleId] = useState<string>(DEFAULT_VEHICLE);
+  const [bodyType, setBodyType] = useState<string | null>(null);
+  const [massScheme, setMassScheme] = useState<MassScheme>("GML");
+  const [rows, setRows] = useState<FreightRow[]>(() => sampleRows(initialReference));
+  const [result, setResult] = useState<PlanResult | null>(null);
+  const [resultRequest, setResultRequest] = useState<PlanRequest | null>(null);
+  const [planError, setPlanError] = useState<string>("");
+  const [planning, setPlanning] = useState(false);
+  const abort = useRef<AbortController | null>(null);
+
+  // Reference data, loaded once (again on "Try again").
+  const [refAttempt, setRefAttempt] = useState(0);
+  useEffect(() => {
+    if (initialReference) return;
+    const ctrl = new AbortController();
+    fetchReference(ctrl.signal)
+      .then(setReference)
+      .catch((err) => {
+        if (err.name !== "AbortError") setRefError(err instanceof ApiError ? err.message : String(err));
+      });
+    return () => ctrl.abort();
+  }, [initialReference, refAttempt]);
+  const retryReference = () => {
+    setRefError("");
+    setRefAttempt((n) => n + 1);
+  };
+
+  const validation = useMemo(() => validateRows(rows, reference), [rows, reference]);
+  const request = useMemo<PlanRequest | null>(() => (validation.items
+    ? { items: validation.items, vehicle_id: vehicleId, body_type: bodyType, mass_scheme: massScheme, rule_set: RULE_SET }
+    : null), [validation.items, vehicleId, bodyType, massScheme]);
+  const requestKey = request ? JSON.stringify(request) : "";
+
+  // Plan whenever the request changes (debounced); the latest request wins.
+  useEffect(() => {
+    if (!reference || !request) return;
+    const timer = setTimeout(() => {
+      abort.current?.abort();
+      const ctrl = new AbortController();
+      abort.current = ctrl;
+      setPlanning(true);
+      setPlanError("");
+      postPlan(request, ctrl.signal)
+        .then((res) => {
+          setResult(res);
+          setResultRequest(request);
+        })
+        .catch((err) => {
+          if (err.name === "AbortError") return;
+          setPlanError(err instanceof ApiError ? err.message : String(err));
+        })
+        .finally(() => {
+          if (abort.current === ctrl) setPlanning(false);
+        });
+    }, PLAN_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+    // requestKey stands for `request`
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reference, requestKey]);
+
+  useEffect(() => () => abort.current?.abort(), []);
+
+  const stale = Boolean(result && resultRequest && JSON.stringify(resultRequest) !== requestKey);
+
+  return (
+    <div className="app">
+      <a className="skip-link" href="#load-plan">Skip to the load plan</a>
+      <Header theme={theme} onTheme={setTheme} />
+      <div className="app-disclaimer"><Disclaimer variant="banner" /></div>
+
+      {!reference ? (
+        <main className="app-main app-main-single">
+          <h2 className="visually-hidden">Getting started</h2>
+          {refError ? (
+            <EmptyState title="Can't load the vehicle and pallet data" tone="error"
+                        action={<button type="button" className="btn btn-primary" onClick={retryReference}>Try again</button>}>
+              <p>{refError}</p>
+            </EmptyState>
+          ) : (
+            <div className="loading" role="status">Loading vehicles and pallet types…</div>
+          )}
+        </main>
+      ) : (
+        <main className="app-main">
+          <div className="rail">
+            <Step n={1} id="step-vehicle" title="Choose a vehicle" hint="Or let the planner suggest the smallest that fits.">
+              <VehiclePicker reference={reference} vehicleId={vehicleId} bodyType={bodyType}
+                             onVehicleChange={(id) => { setVehicleId(id); setBodyType(null); }}
+                             onBodyChange={setBodyType}
+                             suggestedVehicleId={vehicleId === SUGGEST ? result?.vehicle_id ?? null : null} />
+              <fieldset className="segmented mass-scheme" aria-label="Mass limits">
+                {([["GML", "General Mass Limits"], ["HML", "Higher Mass Limits"]] as [MassScheme, string][]).map(([value, label]) => (
+                  <label key={value}>
+                    <input type="radio" name="mass-scheme" value={value} checked={massScheme === value}
+                           onChange={() => setMassScheme(value)} />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </fieldset>
+            </Step>
+            <Step n={2} id="step-freight" title="Add freight" hint="Weights are per unit, including the pallet.">
+              <FreightTable reference={reference} rows={rows} onRowsChange={setRows}
+                            errors={validation.errors} listErrors={validation.listErrors} />
+              <p className="rule-set">Dangerous goods are checked against the ADG Code and Northline&rsquo;s rules.</p>
+            </Step>
+          </div>
+
+          <div className="workspace" id="load-plan" tabIndex={-1}>
+            <section className="step card" aria-labelledby="step-plan-title" aria-busy={planning}>
+              <div className="step-header">
+                <span className="step-number" aria-hidden="true">3</span>
+                <div className="step-header-text">
+                  <h2 id="step-plan-title" className="step-title"><span className="visually-hidden">Step 3: </span>Review the load plan</h2>
+                  <p className="subtle" role="status" aria-live="polite">
+                    {planning ? "Planning…" : stale ? "Fix the freight lines to update the plan." : result ? `Planned on the ${result.vehicle_name}.` : ""}
+                  </p>
+                </div>
+                {result && resultRequest && <ExportMenu result={result} request={resultRequest} reference={reference} />}
+              </div>
+
+              {planError && (
+                <EmptyState title="The planner couldn't make a plan" tone="error">
+                  <p>{planError}</p>
+                </EmptyState>
+              )}
+              {!result && !planError && (
+                validation.items ? (
+                  <div className="loading" role="status">Working out the load…</div>
+                ) : (
+                  <EmptyState title="Add some freight to see a load plan"
+                              action={<button type="button" className="btn" onClick={() => setRows(sampleRows(reference))}>Load sample freight</button>}>
+                    <p>Fix or add lines in step 2. A plan appears here as soon as every line is complete.</p>
+                  </EmptyState>
+                )
+              )}
+              {result && resultRequest && (
+                <div className={`plan ${stale || planning ? "plan-stale" : ""}`}>
+                  <PlanStatus result={result} reference={reference} />
+                  <LoadPlanView result={result} reference={reference} request={resultRequest} />
+                  <div className="plan-panels">
+                    <UtilisationSummary utilisation={result.utilisation} />
+                    <AxleLoadPanel axleLoads={result.axle_loads} massScheme={result.mass_scheme} />
+                  </div>
+                  <WarningsList warnings={result.warnings} request={resultRequest} />
+                </div>
+              )}
+            </section>
+          </div>
+        </main>
+      )}
+    </div>
+  );
+}
+
+export default function PlannerApp() {
+  return (
+    <UnitsProvider>
+      <Planner />
+    </UnitsProvider>
+  );
+}

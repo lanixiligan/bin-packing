@@ -1,0 +1,6 @@
+/* Inline icons sit on the text baseline and never shrink in a flex row. */
+.icon { flex: none; display: inline-block; vertical-align: -0.2em; }
+
+/* A disclosure chevron turns down when its button is expanded. */
+.chevron { transition: transform var(--motion-fast) var(--ease); }
+[aria-expanded="true"] > .chevron { transform: rotate(90deg); }
