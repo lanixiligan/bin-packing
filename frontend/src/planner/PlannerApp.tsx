@@ -26,6 +26,8 @@ import "./styles/base.css";
 import "./PlannerApp.css";
 
 export const DEFAULT_VEHICLE = "SEMI_TRAILER";
+/** Dangerous goods are always checked against the ADG Code plus Northline's acceptance rules. */
+const RULE_SET: RuleSet = "northline";
 const PLAN_DEBOUNCE_MS = 350;
 
 // ---- Theme -------------------------------------------------------------------
@@ -126,7 +128,6 @@ export function Planner({ initialReference = null }: { initialReference?: Refere
   const [vehicleId, setVehicleId] = useState<string>(DEFAULT_VEHICLE);
   const [bodyType, setBodyType] = useState<string | null>(null);
   const [massScheme, setMassScheme] = useState<MassScheme>("GML");
-  const [ruleSet, setRuleSet] = useState<RuleSet>("adg");
   const [rows, setRows] = useState<FreightRow[]>(() => sampleRows(initialReference));
   const [result, setResult] = useState<PlanResult | null>(null);
   const [resultRequest, setResultRequest] = useState<PlanRequest | null>(null);
@@ -153,8 +154,8 @@ export function Planner({ initialReference = null }: { initialReference?: Refere
 
   const validation = useMemo(() => validateRows(rows, reference), [rows, reference]);
   const request = useMemo<PlanRequest | null>(() => (validation.items
-    ? { items: validation.items, vehicle_id: vehicleId, body_type: bodyType, mass_scheme: massScheme, rule_set: ruleSet }
-    : null), [validation.items, vehicleId, bodyType, massScheme, ruleSet]);
+    ? { items: validation.items, vehicle_id: vehicleId, body_type: bodyType, mass_scheme: massScheme, rule_set: RULE_SET }
+    : null), [validation.items, vehicleId, bodyType, massScheme]);
   const requestKey = request ? JSON.stringify(request) : "";
 
   // Plan whenever the request changes (debounced); the latest request wins.
@@ -227,18 +228,7 @@ export function Planner({ initialReference = null }: { initialReference?: Refere
             <Step n={2} id="step-freight" title="Add freight" hint="Weights are per unit, including the pallet.">
               <FreightTable reference={reference} rows={rows} onRowsChange={setRows}
                             errors={validation.errors} listErrors={validation.listErrors} />
-              <div className="rule-set">
-                <span className="field-label" id="rule-set-label">Dangerous goods rules</span>
-                <fieldset className="segmented" aria-labelledby="rule-set-label">
-                  {([["adg", "ADG Code"], ["northline", "ADG + Northline"]] as [RuleSet, string][]).map(([value, label]) => (
-                    <label key={value}>
-                      <input type="radio" name="rule-set" value={value} checked={ruleSet === value}
-                             onChange={() => setRuleSet(value)} />
-                      <span>{label}</span>
-                    </label>
-                  ))}
-                </fieldset>
-              </div>
+              <p className="rule-set">Dangerous goods are checked against the ADG Code and Northline&rsquo;s rules.</p>
             </Step>
           </div>
 

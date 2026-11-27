@@ -19,6 +19,10 @@ describe("Planner shell", () => {
     const body = JSON.parse(String(fetch.mock.calls[0][1]?.body));
     expect(body.vehicle_id).toBe("SEMI_TRAILER");
     expect(body.items).toHaveLength(2);
+    // Always ADG + Northline: a note says so instead of a toggle.
+    expect(body.rule_set).toBe("northline");
+    expect(screen.getByText(/checked against the ADG Code and Northline/)).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /ADG/ })).not.toBeInTheDocument();
   });
 
   it("shows the API's message when planning fails", async () => {

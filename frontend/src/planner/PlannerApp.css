@@ -30,8 +30,7 @@
   font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--color-accent); background: var(--color-accent-soft); }
 .step-title { font-size: var(--text-lg); }
 .mass-scheme { margin-top: var(--space-4); }
-.rule-set { margin-top: var(--space-4); display: flex; flex-direction: column; gap: var(--space-1); }
-.rule-set fieldset { margin: 0; align-self: flex-start; }
+.rule-set { margin-top: var(--space-4); font-size: var(--text-sm); color: var(--color-text-muted); }
 
 .plan { display: flex; flex-direction: column; gap: var(--space-5); transition: opacity var(--motion-base) var(--ease); }
 .plan-stale { opacity: 0.6; }
