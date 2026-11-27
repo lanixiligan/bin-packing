@@ -2,7 +2,15 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import WarningsList from "./WarningsList.tsx";
 import type { PlanWarning } from "../api/types.ts";
-import { planMultidrop, planOverCapacity, planSuggest } from "../test/fixtures.ts";
+import { planOverCapacity, planSuggest } from "../test/fixtures.ts";
+
+// The planner's over-capacity sample, plus a hand-written axle note naming both lines, so the tests
+// don't depend on how the planner happens to balance the sample.
+const axleNear: PlanWarning = {
+  code: "AXLE_NEAR_LIMIT", severity: "warning", message: "The drive tandem is at 92 % of its GML limit.",
+  suggestion: "It fits, but this is an estimate: leave margin.", item_ids: ["chill", "gen"],
+};
+const overCapacity = [...planOverCapacity.result.warnings.filter((w) => w.code !== "AXLE_NEAR_LIMIT"), axleNear];
 
 const info: PlanWarning = {
   code: "ROUTE_RESTRICTED", severity: "info", message: "This vehicle is limited to approved routes.",
@@ -11,7 +19,7 @@ const info: PlanWarning = {
 
 describe("WarningsList", () => {
   it("groups errors, then warnings, then info", () => {
-    render(<WarningsList warnings={[...planOverCapacity.result.warnings, info]} request={planOverCapacity.request} />);
+    render(<WarningsList warnings={[...overCapacity, info]} request={planOverCapacity.request} />);
     const groups = screen.getAllByRole("heading", { level: 4 });
     expect(groups.map((h) => h.textContent)).toEqual(["Errors (1)", "Warnings (2)", "Information (1)"]);
 
@@ -26,7 +34,7 @@ describe("WarningsList", () => {
   });
 
   it("shows the suggestion as 'Try: ...' and names the freight lines by label", () => {
-    render(<WarningsList warnings={planOverCapacity.result.warnings} request={planOverCapacity.request} />);
+    render(<WarningsList warnings={overCapacity} request={planOverCapacity.request} />);
     const error = screen.getAllByRole("listitem")[0];
     // The planner's suggestion already starts with "Try", so no "Try:" prefix is added.
     expect(within(error).getByText("Try a B-double or split into 2 loads.")).toBeInTheDocument();
@@ -40,9 +48,9 @@ describe("WarningsList", () => {
   });
 
   it("falls back to the item id when a line has no label", () => {
-    const request = { ...planMultidrop.request, items: planMultidrop.request.items.map((it) => ({ ...it, label: "" })) };
-    render(<WarningsList warnings={planMultidrop.result.warnings} request={request} />);
-    expect(screen.getByText(/Freight lines:/)).toHaveTextContent("Freight lines: bev, dry, euro, hw");
+    const request = { ...planOverCapacity.request, items: planOverCapacity.request.items.map((it) => ({ ...it, label: "" })) };
+    render(<WarningsList warnings={[axleNear]} request={request} />);
+    expect(screen.getByText(/Freight lines:/)).toHaveTextContent("Freight lines: gen, chill");
   });
 
   it("leaves out the suggestion when there is none", () => {
