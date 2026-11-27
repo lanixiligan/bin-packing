@@ -6,28 +6,25 @@ import { addUsage, emptyUsage, limitedDims, sizeOf } from "./capacity.ts";
 const TruckScene3D = lazy(() => import("./TruckScene3D.jsx"));
 
 // One method's result: title, badge, stats and its trucks in 2D or 3D.
-// `capacity` is a number for the 1D demo, or { weight_kg, volume_m3, pallets }
-// for multi-dimension loads (see Truck.jsx); `noun` names the trucks in the
-// stats line ("truck" in the demo, "load" for plans). `badge` and
-// `explanation` are optional; `headingLevel` defaults to h2.
+// `capacity` is kg, or { weight_kg, pallets } when the trucks have a pallet
+// limit (see capacity.ts). `badge` and `explanation` are optional.
 
-/** "2 loads · average fill: weight 81%, volume 64%" for multi-dimension panels. */
-function multiStats(data, capacity, noun) {
+/** "2 trucks · average fill: weight 81%, pallets 64%" with a pallet limit. */
+function multiStats(data, capacity) {
   const n = data.trucks.length;
   const parts = limitedDims(capacity).map((d) => {
     let used = 0;
     let limit = 0;
     for (const t of data.trucks) {
-      const cap = t.capacity ?? capacity;
       const u = t.shipments.reduce((acc, s) => addUsage(acc, sizeOf(s)), emptyUsage());
       used += u[d.field];
-      limit += cap[d.field] ?? 0;
+      limit += capacity[d.field] ?? 0;
     }
     return limit > 0 ? `${d.label.toLowerCase()} ${Math.round((100 * used) / limit)}%` : null;
   }).filter(Boolean);
   return (
     <>
-      <b>{n}</b> {n === 1 ? noun : `${noun}s`}
+      <b>{n}</b> {n === 1 ? "truck" : "trucks"}
       {parts.length > 0 && <> · average fill: {parts.join(", ")}</>}
     </>
   );
@@ -38,15 +35,14 @@ function multiStats(data, capacity, noun) {
  *   title: string, explanation?: string | null, data: any, capacity: any, step: number,
  *   badge?: { text: string, kind: string } | null, truckHeight: number,
  *   activeId?: number | null, onHover?: (id: number | null) => void, onFocusBlock?: (id: number | null) => void,
- *   optimumTrucks?: number | null, view?: string, noun?: string, headingLevel?: number,
+ *   optimumTrucks?: number | null, view?: string,
  * }} props
  */
 export default function ResultPanel({
   title, explanation = null, data, capacity, step, badge = null, truckHeight,
-  activeId, onHover, onFocusBlock, optimumTrucks = null, view = "2d", noun = "truck", headingLevel = 2,
+  activeId, onHover, onFocusBlock, optimumTrucks = null, view = "2d",
 }) {
   const multi = typeof capacity === "object" && capacity !== null;
-  const Heading = `h${headingLevel}`;
   // position of each shipment id in the drop sequence -> used for animation
   const dropIndex = {};
   data.drop_order.forEach((id, k) => (dropIndex[id] = k));
@@ -58,13 +54,13 @@ export default function ResultPanel({
   return (
     <section className={`card panel${activeId != null ? " linking" : ""}`} aria-label={title}>
       <div className="panel-head">
-        <Heading>{title}</Heading>
+        <h2>{title}</h2>
         {badge && <span className={`badge ${badge.kind}`}>{badge.text}</span>}
       </div>
       {explanation && <p className="muted small">{explanation}</p>}
       <p className="panel-stats">
         {multi
-          ? multiStats(data, capacity, noun)
+          ? multiStats(data, capacity)
           : <><b>{data.num_trucks}</b> trucks · {totalEmpty.toLocaleString()} kg empty space in total</>}
         {extraCount > 0 && (
           <span className="panel-extra">

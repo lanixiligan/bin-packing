@@ -13,10 +13,8 @@ export const PALLET_MM = 1165;
 export const DECK_WIDTH_MM = 2400;
 /** Clearance between rows (and at the cab and rear ends). */
 export const ROW_GAP_MM = 50;
-/** Load height on a pallet when the shipment has no volume to derive it from. */
-export const DEFAULT_LOAD_MM = 1200;
-export const MIN_LOAD_MM = 300;
-export const MAX_LOAD_MM = 2000;
+/** Height of the load on a pallet in the 3D view. */
+export const LOAD_MM = 1200;
 /** Rows drawn for an unlimited deck, at least (so a tiny load doesn't look like a ute). */
 const MIN_ROWS = 2;
 
@@ -136,17 +134,6 @@ export function layoutPallets<S extends ShipmentLike>(shipments: S[], deck: Deck
 
   const lastRow = pieces.reduce((m, pc) => Math.max(m, pc.row), -1);
   return { pieces, loose, rows: Math.max(deck.rows, lastRow + 1) };
-}
-
-/**
- * Height of the load on a shipment's pallets in mm: its volume spread over its
- * pallet footprint, clamped to 300–2000 mm; 1200 mm when no volume is known.
- */
-export function loadHeightMm(s: ShipmentLike): number {
-  const p = palletsOf(s);
-  if (!p || !(s.volume && s.volume > 0)) return DEFAULT_LOAD_MM;
-  const mm = (s.volume * 1e9) / (p * PALLET_MM * PALLET_MM);
-  return Math.min(MAX_LOAD_MM, Math.max(MIN_LOAD_MM, mm));
 }
 
 /** "2 pallet spaces of 1165 × 1165 mm", or "" for loose freight. */

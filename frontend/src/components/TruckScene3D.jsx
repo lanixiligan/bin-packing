@@ -1,12 +1,7 @@
-// 3D view of one method's trucks. Each truck is a trailer with a cab, and each
-// shipment is a crate whose LENGTH is proportional to its weight, so a crate
-// row that reaches the back door means a full truck (the problem is still 1D:
-// only weight counts, the crate shape is just a picture of it).
-//
-// With a multi-dimension capacity ({ weight_kg, volume_m3, pallets }, see
-// Truck.jsx) each crate's length is its share of the truck's binding
-// dimension (shipmentFractions in capacity.ts), and the labels show the fill
-// of every limited dimension.
+// 3D view of one method's trucks. Each truck is a trailer with a cab. With
+// weight only, each shipment is a crate whose LENGTH is proportional to its
+// weight, so a crate row that reaches the back door means a full truck (only
+// weight counts, the crate shape is just a picture of it).
 //
 // Trucks with a pallet limit, or carrying shipments on pallets, are drawn at
 // real proportions instead (deck.ts): the trailer is as long as its pallet deck
@@ -20,8 +15,8 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Vector3 } from "three";
 import { Edges, OrbitControls } from "@react-three/drei";
-import { colorFor, describeSize, describeUsage, dgTextOf, limitedDims, shipmentFractions, sizeOf, truckFill } from "./capacity.ts";
-import { describeDeck, layoutPallets, loadHeightMm, PALLET_MM, ROW_GAP_MM, truckDeck, usesDeck } from "./deck.ts";
+import { colorFor, describeSize, describeUsage, dgTextOf, limitedDims, sizeOf, truckFill } from "./capacity.ts";
+import { describeDeck, layoutPallets, LOAD_MM, PALLET_MM, ROW_GAP_MM, truckDeck, usesDeck } from "./deck.ts";
 import { DARK_SCHEME, REDUCED_MOTION, useMediaQuery } from "../useMediaQuery.js";
 
 // Scene units (roughly metres, scaled down).
@@ -69,9 +64,8 @@ function slot(i, n, spacing) {
 
 /** Deck mode for a truck: its deck and pallet layout, or null for the crate view. */
 function deckOf(truck, capacity) {
-  const cap = truck.capacity ?? capacity;
-  if (!usesDeck(truck.shipments, cap)) return null;
-  const deck = truckDeck(truck.shipments, cap);
+  if (!usesDeck(truck.shipments, capacity)) return null;
+  const deck = truckDeck(truck.shipments, capacity);
   const layout = layoutPallets(truck.shipments, deck);
   return { deck, layout, len: mm(deck.lengthMm), over: layout.pieces.some((p) => p.over) };
 }
@@ -123,13 +117,13 @@ function Crate({ shipment, x, z = 0, size, base = 0, over = false, colors, activ
       <mesh position={[0, FLOOR + base + ly / 2, 0]} castShadow={!dim}>
         <boxGeometry args={[lx, ly, lz]} />
         <meshStandardMaterial
-          color={colorFor(shipment.colorKey ?? shipment.id)}
+          color={colorFor(shipment.id)}
           roughness={0.75}
           // always transparent: three.js doesn't recompile when this flag flips
           transparent
           depthWrite={!dim}
           opacity={dim ? 0.25 : 1}
-          emissive={active ? colorFor(shipment.colorKey ?? shipment.id) : "#000000"}
+          emissive={active ? colorFor(shipment.id) : "#000000"}
           emissiveIntensity={active ? 0.35 : 0}
         />
         <Edges
@@ -152,11 +146,11 @@ function Wheel({ x, z, colors }) {
 }
 
 const isMulti = (cap) => typeof cap === "object" && cap !== null;
-const truckName = (t) => t.label ?? `Truck ${t.truck}`;
+const truckName = (t) => `Truck ${t.truck}`;
 
 /** Fill and state of a truck at this point of the drop animation. */
 function truckStatus(truck, capacity, step, dropIndex, activeId) {
-  const cap = truck.capacity ?? capacity;
+  const cap = capacity;
   const d = deckOf(truck, capacity);
   const loose = d && d.layout.loose.length ? ` · +${d.layout.loose.length} loose` : "";
   if (isMulti(cap)) {
@@ -185,12 +179,11 @@ function truckStatus(truck, capacity, step, dropIndex, activeId) {
   };
 }
 
-/** Crate mode: crates loaded from the cab end towards the back door, in list order. */
+/** Crate mode (`capacity` in kg): crates loaded from the cab end towards the back door, in list order. */
 function crateLayout(truck, capacity) {
-  const sizes = shipmentFractions(truck.shipments, truck.capacity ?? capacity);
   let offset = -L / 2;
   return truck.shipments.map((s) => {
-    const length = Math.min(sizes.get(s.id), 1) * L;
+    const length = Math.min(s.weight / capacity, 1) * L;
     const x = offset + length / 2;
     offset += length;
     return { key: s.id, s, x, z: 0, size: [Math.max(0.02, length - GAP), H - 0.1, W - 0.14], base: 0, over: false };
@@ -207,7 +200,7 @@ function palletLayout(truck, { deck, layout }, len) {
     const startMm = ROW_GAP_MM + p.row * (PALLET_MM + ROW_GAP_MM) + p.from * PALLET_MM;
     const lengthMm = (p.to - p.from) * PALLET_MM;
     const zMm = margin + p.col * (PALLET_MM + margin) + PALLET_MM / 2;
-    const loadH = Math.min(H - PALLET_BASE - 0.04, mm(loadHeightMm(s)));
+    const loadH = Math.min(H - PALLET_BASE - 0.04, mm(LOAD_MM));
     return {
       key: `${p.id}-${p.slot}-${p.from}`,
       s,
@@ -457,7 +450,7 @@ export default function TruckScene3D({
           content is listed here. Tabbing through it highlights each crate. */}
       <ul className="sr-only">
         {data.trucks.map((t) => {
-          const cap = t.capacity ?? capacity;
+          const cap = capacity;
           const multi = isMulti(cap);
           const full = multi ? truckFill(t, cap, Infinity, {}) : null;
           const d = deckOf(t, capacity);
@@ -475,7 +468,7 @@ export default function TruckScene3D({
                     onFocus={() => onFocusBlock(s.id)}
                     onBlur={() => onFocusBlock(null)}
                   >
-                    {`${s.name}${dgTextOf(s) ? `, ${dgTextOf(s)}` : ""}${s.detail ? `, ${s.detail}` : ""}, `}
+                    {`${s.name}${dgTextOf(s) ? `, ${dgTextOf(s)}` : ""}, `}
                     {multi
                       ? `${describeSize(sizeOf(s))}, ${truckName(t).toLowerCase()} of ${data.num_trucks}`
                       : `${s.weight} kg, truck ${t.truck} of ${data.num_trucks}`}

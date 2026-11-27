@@ -2,11 +2,9 @@
 // Run: node --test src/components/deck.test.mjs
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  DEFAULT_LOAD_MM, deckFor, describeDeck, layoutPallets, loadHeightMm, MAX_LOAD_MM, palletFootprint, truckDeck, usesDeck,
-} from "./deck.ts";
+import { deckFor, describeDeck, layoutPallets, palletFootprint, truckDeck, usesDeck } from "./deck.ts";
 
-const s = (id, pallets, volume = 0) => ({ id, name: `S${id}`, weight: 100, pallets, volume });
+const s = (id, pallets) => ({ id, name: `S${id}`, weight: 100, pallets });
 
 test("a 22-pallet deck is 2 across by 11 rows, about 13.4 m long", () => {
   const d = deckFor(22);
@@ -58,15 +56,11 @@ test("loose freight is kept apart", () => {
 
 test("usesDeck: a pallet limit, or any shipment on pallets", () => {
   assert.equal(usesDeck([s(1, 0)], 1000), false);
-  assert.equal(usesDeck([s(1, 0)], { weight_kg: 1000 }), false);
   assert.equal(usesDeck([s(1, 0)], { weight_kg: 1000, pallets: 8 }), true);
   assert.equal(usesDeck([s(1, 1)], 1000), true);
 });
 
-test("load height from volume over the pallet footprint, clamped", () => {
-  assert.equal(loadHeightMm(s(1, 1)), DEFAULT_LOAD_MM);
-  assert.equal(Math.round(loadHeightMm(s(1, 1, 1.165 * 1.165))), 1000);
-  assert.equal(loadHeightMm(s(1, 1, 10)), MAX_LOAD_MM);
+test("pallet footprint text", () => {
   assert.equal(palletFootprint(2), "2 pallet spaces of 1165 × 1165 mm");
   assert.equal(palletFootprint(0), "");
 });

@@ -38,8 +38,8 @@ const rowY = (row) => ROW_GAP_MM + row * (PALLET_MM + ROW_GAP_MM);
 export default function DeckTruck({
   truck, numTrucks, cap, height, step, dropIndex, activeId, onHover, onFocusBlock, extra,
 }) {
-  const name = truck.label ?? `Truck ${truck.truck}`;
-  // The 1D demo passes a number: weight is then the only limited dimension.
+  const name = `Truck ${truck.truck}`;
+  // A number is kg only: weight is then the only limited dimension.
   const limits = typeof cap === "number" ? { weight_kg: cap } : cap;
   const { usage, full, fill, done, over: overLimits } = truckFill(truck, limits, step, dropIndex);
   const deck = truckDeck(truck.shipments, cap);
@@ -58,7 +58,7 @@ export default function DeckTruck({
 
   const label = (s) => {
     const dg = dgTextOf(s);
-    return `${s.name}${dg ? `, ${dg}` : ""}${s.detail ? `, ${s.detail}` : ""}, ${describeSize(sizeOf(s))}, ${name.toLowerCase()} of ${numTrucks}`;
+    return `${s.name}${dg ? `, ${dg}` : ""}, ${describeSize(sizeOf(s))}, ${name.toLowerCase()} of ${numTrucks}`;
   };
   const handlers = (id) => ({
     onPointerEnter: () => onHover(id),
@@ -110,7 +110,7 @@ export default function DeckTruck({
               style={{
                 top: pct((rowY(p.row) + p.from * PALLET_MM) / totalMm), height: pct(pieceH / totalMm),
                 left: pct(colX(p.col, deck.across, deck.widthMm) / deck.widthMm), width: pct(PALLET_MM / deck.widthMm),
-                background: colorFor(s.colorKey ?? s.id),
+                background: colorFor(s.id),
               }}
               {...handlers(p.id)}
             >
@@ -130,7 +130,7 @@ export default function DeckTruck({
               tabIndex={0}
               aria-label={`${label(s)}, loose`}
               className={`block deck-chip${s.id === activeId ? " active" : ""}`}
-              style={{ background: colorFor(s.colorKey ?? s.id) }}
+              style={{ background: colorFor(s.id) }}
               {...handlers(s.id)}
             >
               <span aria-hidden="true">{s.name}</span>
