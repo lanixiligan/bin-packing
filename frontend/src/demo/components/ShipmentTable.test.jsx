@@ -28,15 +28,16 @@ describe("ShipmentTable", () => {
   it("shows one read-only line per shipment: size, kg, whether it stacks, DG", () => {
     render(<Harness />);
     expect(screen.getAllByRole("columnheader").map((h) => h.textContent))
-      .toEqual(["Shipment", "Size", "kg", "Stack", "DG", "Remove"]);
+      .toEqual(["Shipment", "kg", "Stack", "DG", "Remove"]);
     const rows = bodyRows();
     expect(rows).toHaveLength(4);
     const cells = (r) => within(r).getAllByRole("cell");
-    expect(cells(rows[0])[1]).toHaveTextContent("AU · 1.2 m");
-    expect(cells(rows[0])[1]).toHaveTextContent("AU pallet, 1.2 m high");
-    expect(cells(rows[0])[2]).toHaveTextContent("534");
-    expect(cells(rows[2])[1]).toHaveTextContent("Euro · 1.6 m");
-    expect(cells(rows[3])[1]).toHaveTextContent("4.6 × 0.4 × 0.3 m");
+    // The size sits under the name, in the first cell.
+    expect(cells(rows[0])[0]).toHaveTextContent("AU · 1.2 m");
+    expect(cells(rows[0])[0]).toHaveTextContent("AU pallet, 1.2 m high");
+    expect(cells(rows[0])[1]).toHaveTextContent("534");
+    expect(cells(rows[2])[0]).toHaveTextContent("Euro · 1.6 m");
+    expect(cells(rows[3])[0]).toHaveTextContent("4.6 × 0.4 × 0.3 m");
     expect(within(rows[1]).getByRole("img", { name: "Stackable" })).toBeInTheDocument();
     expect(within(rows[0]).getByRole("img", { name: "Not stackable" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Shipment name" })).not.toBeInTheDocument();
@@ -77,7 +78,7 @@ describe("ShipmentTable", () => {
     await user.clear(height);
     await user.type(height, "300");
     await user.click(screen.getByRole("button", { name: "Done" }));
-    expect(within(bodyRows()[0]).getAllByRole("cell")[1]).toHaveTextContent("3.0 × 0.5 × 0.3 m");
+    expect(within(bodyRows()[0]).getAllByRole("cell")[0]).toHaveTextContent("3.0 × 0.5 × 0.3 m");
   });
 
   it("flags shipments that can never go on the vehicle", () => {
@@ -95,8 +96,8 @@ describe("ShipmentTable", () => {
       .toHaveAccessibleDescription("Heavier than the 8,000 kg payload.");
     expect(screen.getByRole("button", { name: "Edit Books 04" })).not.toHaveAttribute("aria-describedby");
     const cells = within(screen.getByRole("button", { name: "Edit Pipes 01" }).closest("tr")).getAllByRole("cell");
-    expect(cells[1]).toHaveClass("bad");
-    expect(cells[2]).not.toHaveClass("bad");
+    expect(cells[0].querySelector(".name-size")).toHaveClass("bad"); // the size
+    expect(cells[1]).not.toHaveClass("bad"); // the weight
   });
 
   it("checks nothing against the vehicle until it is known", () => {
@@ -125,7 +126,7 @@ describe("ShipmentTable", () => {
     expect(screen.getByRole("spinbutton", { name: "New shipment length in mm" })).toHaveValue(4600);
     await user.type(screen.getByRole("spinbutton", { name: "New shipment weight in kg" }), "200");
     await user.click(screen.getByRole("button", { name: "Add" }));
-    expect(within(bodyRows()[4]).getAllByRole("cell")[1]).toHaveTextContent("4.6 × 0.4 × 0.3 m");
+    expect(within(bodyRows()[4]).getAllByRole("cell")[0]).toHaveTextContent("4.6 × 0.4 × 0.3 m");
   });
 
   it(`stops adding at ${MAX_SHIPMENTS} shipments`, () => {

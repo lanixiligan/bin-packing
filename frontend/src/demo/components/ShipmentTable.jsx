@@ -49,7 +49,6 @@ export default function ShipmentTable({
           <thead>
             <tr>
               <th scope="col" className="col-name">Shipment</th>
-              <th scope="col" className="col-size">Size</th>
               <th scope="col" className="n col-kg">kg</th>
               <th scope="col" className="col-stack"><abbr title="Stackable">Stack</abbr></th>
               <th scope="col" className="col-dg">DG</th>
@@ -134,12 +133,13 @@ export default function ShipmentTable({
                             {s.name || <span className="muted">(no name)</span>}
                           </button>
                         </div>
-                        {/* Narrow screens hide the Size column and show the size here instead. */}
-                        <span className={`name-size${checks.tooLong || checks.tooTall ? " bad" : ""}`}>{size}</span>
-                      </td>
-                      <td className={`size-cell${checks.tooLong || checks.tooTall ? " bad" : ""}`}>
-                        <span aria-hidden="true">{size}</span>
-                        {!missing && <span className="sr-only">{sizeSpoken(s)}</span>}
+                        {/* The size sits under the name, so the name keeps the full column. */}
+                        <span className={`name-size${checks.tooLong || checks.tooTall ? " bad" : ""}`}>
+                          <span aria-hidden="true">{size}</span>
+                          {!missing && <span className="sr-only">{sizeSpoken(s)}</span>}
+                          {/* Phones hide the Stack column; this says it here instead. */}
+                          {s.stackable && <span className="name-stack" aria-hidden="true"> · stacks</span>}
+                        </span>
                       </td>
                       <td className={`n${checks.tooHeavy ? " bad" : ""}`}>{Number(s.weight).toLocaleString()}</td>
                       <td className="stack-cell"><StackMark on={s.stackable} /></td>
