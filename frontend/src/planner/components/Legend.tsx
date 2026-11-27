@@ -187,7 +187,7 @@ function TypeLegend({ stacks }: { stacks: PlanStack[] }) {
   }
   return (
     <>
-      <h3 className="legend-title">Pallet or container type</h3>
+      <h3 className="legend-title">Freight type</h3>
       <svg width="0" height="0" className="legend-defs" aria-hidden="true"><PatternDefs prefix={prefix} /></svg>
       <ul className="legend-list">
         {[...types.entries()].map(([id, t]) => (

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { normalise, type DgClass } from "../../dg/rules.ts";
-import { newRow, validateRows, type FreightRow } from "../lib/freight.ts";
+import { newLooseRow, newRow, validateRows, type FreightRow } from "../lib/freight.ts";
 import { randomFreight, seededRandom } from "../lib/randomFreight.ts";
 import { reference } from "../test/fixtures.ts";
 import FreightTable from "./FreightTable.tsx";
@@ -70,6 +70,59 @@ describe("FreightTable", () => {
     expect(options).not.toContain(expect.stringMatching(/australian/i));
     expect(within(line(1)).queryByLabelText("Height (mm)")).not.toBeInTheDocument();
     expect(within(line(1)).queryByLabelText("Stackable")).not.toBeInTheDocument();
+  });
+
+  it("turns a line into a loose item from the type list and shows its size fields", async () => {
+    const user = setup();
+    const row = () => within(line(1));
+    expect(row().queryByLabelText("Length (mm)")).not.toBeInTheDocument();
+    await user.selectOptions(row().getByLabelText("Type"), "Loose item (enter size)");
+    expect(store.rows[0]).toMatchObject({ kind: "loose", type_id: "LOOSE", length_mm: 3000, width_mm: 1000, height_mm: 1200 });
+    expect(row().getByLabelText("Type")).toHaveDisplayValue("Loose item (enter size)");
+    expect(row().getByLabelText("Length (mm)")).toHaveValue(3000);
+    expect(row().getByLabelText("Width (mm)")).toHaveValue(1000);
+    expect(row().getByLabelText("Height (mm)")).toHaveValue(1200);
+    expect(row().getByLabelText("Stackable")).toBeInTheDocument();
+    expect(screen.getByText(/8 pallets · 10 loose items · 12,500 kg/)).toBeInTheDocument();
+
+    const length = row().getByLabelText("Length (mm)");
+    await user.clear(length);
+    await user.type(length, "6000");
+    expect(store.rows[0].length_mm).toBe(6000);
+    const item = validateRows(store.rows, reference).items![0];
+    expect(item).toMatchObject({ kind: "loose", type_id: "LOOSE", length_mm: 6000, width_mm: 1000, height_mm: 1200 });
+
+    // Back to a pallet type: the size fields go and the request drops the length and width.
+    await user.selectOptions(row().getByLabelText("Type"), "EURO");
+    expect(store.rows[0]).toMatchObject({ kind: "pallet", type_id: "EURO" });
+    expect(row().queryByLabelText("Length (mm)")).not.toBeInTheDocument();
+    expect(validateRows(store.rows, reference).items![0]).not.toHaveProperty("length_mm");
+  });
+
+  it("validates a loose item's size inline", async () => {
+    const user = setup([newLooseRow(reference, { label: "Pipes" })]);
+    const width = within(line(1)).getByLabelText("Width (mm)");
+    expect(width).not.toHaveAttribute("aria-invalid");
+    await user.clear(width);
+    expect(width).toHaveAttribute("aria-invalid", "true");
+    expect(width).toHaveAccessibleDescription("Enter the item's width in mm.");
+    await user.type(width, "25000");
+    expect(width).toHaveAccessibleDescription("That's 25 m; the width can be at most 20 m.");
+    const height = within(line(1)).getByLabelText("Height (mm)");
+    await user.clear(height);
+    await user.type(height, "2400");
+    expect(height).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("offers a loose preset and keeps a loose line's size when it becomes a container and back", async () => {
+    const user = setup([]);
+    await user.click(screen.getByRole("button", { name: "4 × 6 m pipe bundles, 600 kg" }));
+    expect(store.rows[0]).toMatchObject({ kind: "loose", type_id: "LOOSE", quantity: 4, length_mm: 6000, width_mm: 800 });
+    expect(within(line(1)).getByRole("radio", { name: "Pallet" })).toBeChecked();
+    await user.click(within(line(1)).getByRole("radio", { name: "Container" }));
+    expect(store.rows[0].kind).toBe("container");
+    expect(within(line(1)).queryByLabelText("Length (mm)")).not.toBeInTheDocument();
+    expect(within(within(line(1)).getByLabelText("Type")).queryByRole("option", { name: /loose item/i })).not.toBeInTheDocument();
   });
 
   it("duplicates a row right after it, with a new id", async () => {
