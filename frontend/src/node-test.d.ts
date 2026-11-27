@@ -1,5 +1,5 @@
-// Minimal types for the Node built-ins the portal tests use (@types/node is not
-// installed). Run the tests with: node --test src/portal/tests/
+// Minimal types for the Node built-ins the unit tests use (@types/node is not
+// installed). Run the tests with: npm test
 declare module "node:test" {
   type Fn = () => void | Promise<void>;
   export function test(name: string, fn: Fn): Promise<void>;
