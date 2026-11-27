@@ -194,6 +194,7 @@ export function Planner({ initialReference = null }: { initialReference?: Refere
 
       {!reference ? (
         <main className="app-main app-main-single">
+          <h2 className="visually-hidden">Getting started</h2>
           {refError ? (
             <EmptyState title="Can't load the vehicle and pallet data" tone="error"
                         action={<button type="button" className="btn btn-primary" onClick={retryReference}>Try again</button>}>
