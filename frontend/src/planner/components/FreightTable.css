@@ -73,7 +73,7 @@
   border-top: var(--border); }
 .ft-row-done { display: flex; justify-content: flex-end; margin-top: var(--space-3); }
 
-/* Read-only DG badge: a small placard (square turned 45°, code upright) and the label. */
+/* Read-only DG badge: the placard diamond (src/dg/DgBadge.tsx) and the label. */
 .ft-dg-badge { flex: none; display: inline-flex; align-items: center; gap: var(--space-1);
   padding: 1px var(--space-2) 1px 2px; font-size: var(--text-xs); font-weight: var(--weight-medium);
   color: var(--color-text); white-space: nowrap; background: var(--ft-dg-fill);
@@ -81,11 +81,6 @@
 .ft-dg-dg { --ft-dg-edge: var(--color-warning); --ft-dg-fill: var(--color-warning-soft); }
 .ft-dg-food { --ft-dg-edge: var(--color-success); --ft-dg-fill: var(--color-success-soft); }
 .ft-dg-fire { --ft-dg-edge: var(--color-error); --ft-dg-fill: var(--color-error-soft); }
-.ft-dg-diamond { flex: none; display: inline-flex; align-items: center; justify-content: center;
-  width: 16px; height: 16px; margin: 2px 3px; transform: rotate(45deg);
-  background: var(--color-surface); border: 1.5px solid var(--ft-dg-edge); border-radius: 2px; }
-.ft-dg-diamond > span { transform: rotate(-45deg); font-size: 8px; font-weight: var(--weight-semibold); line-height: 1;
-  letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
 .ft-row-total { order: 1; flex: none; font-size: var(--text-xs); font-weight: var(--weight-medium); color: var(--color-text);
   font-variant-numeric: tabular-nums; }
 .ft-row-actions { order: 2; flex: none; display: flex; gap: 0; }

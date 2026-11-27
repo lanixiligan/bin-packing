@@ -39,6 +39,8 @@
   stroke-linejoin: round; }
 .dg-diamond-inner { fill: none; stroke: var(--color-text); stroke-opacity: 0.6; stroke-width: 1px; vector-effect: non-scaling-stroke; }
 .dg-diamond text { fill: var(--color-text); font-weight: var(--weight-semibold); }
+/* Placards: the colour comes from the polygons under the outline (DgDiamond in DeckView.tsx). */
+.dg-diamond-outer.is-placard { fill: none; }
 
 /* Incompatible DG (plan warnings): a thick dashed outline and a warning triangle with "!". */
 .deck-conflict-outline { fill: none; stroke-width: 3.5px; stroke-dasharray: 8 5; vector-effect: non-scaling-stroke; }

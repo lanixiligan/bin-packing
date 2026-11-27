@@ -1,14 +1,14 @@
 // A DG class diamond plus the class as text (the diamond alone never carries the meaning).
 import { dgLabel, isGeneral, type DgLike } from "./rules";
-import { DG_FILL, DG_ICON } from "./colors";
+import { DG_FILL, DG_ICON, placardKey } from "./colors";
 import "./dg.css";
 
-/** Just the diamond for a class code ("3", "6", "F" = food, "R" = fire-risk). Decorative. */
+/** Just the diamond for a class code ("3", "6", "1.4S", "F" = food, "R" = fire-risk). Decorative. */
 export function DgDiamond({ code, size }: { code: string; size?: "sm" | "lg" }) {
   if (code === "F" || code === "R") {
     return <span className={`dg-dia sq${size ? ` ${size}` : ""}`} aria-hidden="true"><i>{DG_ICON[code]}</i></span>;
   }
-  return <span className={`dg-dia${size ? ` ${size}` : ""}`} aria-hidden="true"><i style={{ "--fill": DG_FILL[code] } as React.CSSProperties} /></span>;
+  return <span className={`dg-dia${size ? ` ${size}` : ""}`} aria-hidden="true"><i style={{ "--fill": DG_FILL[placardKey(code)] } as React.CSSProperties} /></span>;
 }
 
 /** Diamond + "Class 3" (+ UN number). Renders nothing for general freight unless `showGeneral`. */

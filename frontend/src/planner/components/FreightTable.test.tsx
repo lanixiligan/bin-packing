@@ -72,7 +72,7 @@ describe("FreightTable", () => {
     expect(summary(1)).toBe("3 × loose 6,000 × 400 × 300 mm · 600 kg each Stackable");
     expect(summary(2)).toBe("1 × 40' High cube container · 20,000 kg each Temp-controlled");
     expect(summary(3)).toBe(
-      "1 × Australian Standard pallet · 500 kg each · 1,200 mm high Temp-controlled 3Dangerous goods: Class 3");
+      "1 × Australian Standard pallet · 500 kg each · 1,200 mm high Temp-controlled Dangerous goods: Class 3");
   });
 
   it("opens a line's form in place and closes it with Done, one line at a time", async () => {
@@ -325,7 +325,7 @@ describe("FreightTable", () => {
       newRow(reference, { label: "Timber" }),
     ]);
     expect(line(1)).toHaveTextContent("Dangerous goods: Class 3");
-    expect(within(line(1)).getByTitle("Flammable liquid")).toHaveTextContent("3Dangerous goods: Class 3");
+    expect(within(line(1)).getByTitle("Flammable liquid")).toHaveTextContent(/^Dangerous goods: Class 3$/);
     expect(line(2)).toHaveTextContent("Dangerous goods: Food");
     expect(line(3)).not.toHaveTextContent(/dangerous goods/i);
     expect(within(line(1)).queryByRole("combobox", { name: /dangerous|class/i })).not.toBeInTheDocument();

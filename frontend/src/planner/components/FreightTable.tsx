@@ -8,6 +8,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { LOOSE_TYPE, MAX_UNITS, type ReferenceData } from "../api/types.ts";
 import { checkAll, dgKey, type DgPairResult } from "../../dg/rules.ts";
+import { DgDiamond } from "../../dg/DgBadge.tsx";
 import { dgFromHazard, dgLabel, dgName, hazardOf, placardCode, type Hazard } from "../lib/dg.ts";
 import {
   exampleRows, LOOSE_DEFAULTS, MAX_LINES, newRow, newRowId, parseWeights, weightRows,
@@ -84,14 +85,14 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 
 // ---- Dangerous goods ------------------------------------------------------------
 
-/** Read-only placard-style badge: the code in a diamond, then "Class 3" / "Food". Nothing for general freight. */
+/** Read-only badge: the class's placard diamond, then "Class 3" / "Food". Nothing for general freight. */
 function DgBadge({ dg }: { dg: FreightRow["dg"] }) {
   const code = placardCode(dg);
   if (!code) return null;
   const kind = dg?.dg_class ? "dg" : dg?.food ? "food" : "fire";
   return (
     <span className={`ft-dg-badge ft-dg-${kind}`} title={dgName(dg)}>
-      <span className="ft-dg-diamond" aria-hidden="true"><span>{code}</span></span>
+      <DgDiamond code={code} size="sm" />
       <span className="visually-hidden">Dangerous goods: </span>
       <span className="ft-dg-text">{dgLabel(dg)}</span>
     </span>

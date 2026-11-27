@@ -5,6 +5,7 @@
 import { useId, useRef, type KeyboardEvent } from "react";
 import type { AxleGroup, VehicleConfig } from "../api/types.ts";
 import { useUnits } from "../lib/units.ts";
+import { DG_PLACARD, placardKey } from "../../dg/colors.ts";
 import { AxleTicks, PatternDefs } from "./Legend.tsx";
 import type { ColorMode, Frame, PlanStack, StackEvents } from "./LoadPlanView.tsx";
 import "./DeckView.css";
@@ -318,16 +319,53 @@ function StackShape({ stack: s, mode, prefix, weightText }: {
   );
 }
 
-/** A placard-style diamond with the DG code ("3", "5.1", "1.4S", "F"), centred on (cx, cy), in mm. */
+/** A DG placard diamond with the DG code ("3", "5.1", "1.4S", "F"), centred on (cx, cy), in mm.
+ *  The fill is the class's placard (colors.ts, as on the checker page); food and fire-risk goods,
+ *  which have no placard, keep a plain diamond. The code is always written on it. */
 export function DgDiamond({ code, cx, cy, size }: { code: string; cx: number; cy: number; size: number }) {
   const r = size / 2;
   const font = size * (code.length <= 2 ? 0.4 : code.length === 3 ? 0.33 : 0.27);
+  const p = DG_PLACARD[placardKey(code)];
+  const diamond = (k: number) => `M ${cx} ${cy - r * k} L ${cx + r * k} ${cy} L ${cx} ${cy + r * k} L ${cx - r * k} ${cy} Z`;
+  const ink = p?.ink;
+  const halo = ink ? (ink === "#FFFFFF" ? "#111111" : "#FFFFFF") : undefined;
   return (
     <g className="dg-diamond">
-      <path d={`M ${cx} ${cy - r} L ${cx + r} ${cy} L ${cx} ${cy + r} L ${cx - r} ${cy} Z`} className="dg-diamond-outer" />
-      <path d={`M ${cx} ${cy - r * 0.8} L ${cx + r * 0.8} ${cy} L ${cx} ${cy + r * 0.8} L ${cx - r * 0.8} ${cy} Z`}
-            className="dg-diamond-inner" />
-      <text x={cx} y={cy + font * 0.36} textAnchor="middle" fontSize={font}>{code}</text>
+      {p && <PlacardFill p={p} cx={cx} cy={cy} r={r} />}
+      <path d={diamond(1)} className={`dg-diamond-outer${p ? " is-placard" : ""}`} />
+      <path d={diamond(0.8)} className="dg-diamond-inner" />
+      <text x={cx} y={cy + font * 0.36} textAnchor="middle" fontSize={font}
+            style={ink ? { fill: ink, stroke: halo, strokeWidth: font * 0.16, paintOrder: "stroke", strokeLinejoin: "round" } : undefined}>
+        {code}
+      </text>
+    </g>
+  );
+}
+
+/** Polygon for the part of the diamond (half-diagonal r, centre cx, cy) between x0 and x1:
+ *  the full height there, or only the top half. Lets the placard be drawn without a clipPath. */
+function diamondBand(cx: number, cy: number, r: number, x0: number, x1: number, topOnly: boolean): string {
+  const xs = [x0, ...(x0 < cx && cx < x1 ? [cx] : []), x1];
+  const h = (x: number) => r - Math.abs(x - cx);
+  const top = xs.map((x) => `${x},${cy - h(x)}`);
+  const bottom = [...xs].reverse().map((x) => `${x},${topOnly ? cy : cy + h(x)}`);
+  return [...top, ...bottom].join(" ");
+}
+
+const STRIPES = 13; // 7 coloured, 6 white, as on the 4.1 placard
+
+function PlacardFill({ p, cx, cy, r }: { p: (typeof DG_PLACARD)[string]; cx: number; cy: number; r: number }) {
+  const half = (top: boolean) =>
+    `M ${cx - r} ${cy} L ${cx} ${top ? cy - r : cy + r} L ${cx + r} ${cy} Z`;
+  const w = (2 * r) / STRIPES;
+  return (
+    <g className="dg-placard">
+      <path d={half(true)} fill={p.top} />
+      <path d={half(false)} fill={p.bottom} />
+      {p.stripes && Array.from({ length: Math.ceil(STRIPES / 2) }, (_, i) => {
+        const x0 = cx - r + 2 * i * w;
+        return <polygon key={i} points={diamondBand(cx, cy, r, x0, x0 + w, p.stripes!.half)} fill={p.stripes!.color} />;
+      })}
     </g>
   );
 }
