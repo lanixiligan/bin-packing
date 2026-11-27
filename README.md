@@ -3,7 +3,7 @@
 Given freight (pallets or containers) and an Australian vehicle, the planner works out **whether the
 load fits, where each item goes, and what capacity is left**. It also estimates axle group loads
 against General or Higher Mass Limits, and warns about height, refrigeration, stacking and
-multi-drop order. It can also suggest the smallest vehicle that fits.
+dangerous goods segregation. It can also suggest the smallest vehicle that fits.
 
 > **Planning tool only.** Results are estimates. They are not compliance with the NTC Load Restraint
 > Guide or with mass and dimension limits, and every capacity is a typical value you can override.
@@ -16,17 +16,17 @@ multi-drop order. It can also suggest the smallest vehicle that fits.
   `GET /api/reference`.
 - **Optimizer:** a documented heuristic behind a `LoadPlanner` interface, so a better solver can
   replace it.
-  - **Pallets:** stacks pallets of the same type and stop, loads the last drop at the front (LIFO),
-    and fills rows across the deck, rotating pallets where that fits more. It then reorders rows
-    within each stop to bring heavy rows towards the axle centre.
+  - **Pallets:** stacks pallets of the same type and fills rows across the deck, rotating pallets
+    where that fits more. It then brings heavy rows towards the axles and centres each deck's load
+    where the axles have the most spare capacity.
   - **Containers:** looks up the vehicle's allowed combinations.
   - **Axle loads:** a static beam model, deck by deck through the kingpins.
 - **UI:** three steps.
   1. Choose a vehicle from cards, or ask for a suggestion.
-  2. Add freight: editable lines, presets, CSV paste or import, undo.
+  2. Add freight: editable lines with ADG dangerous goods data, or random freight, with undo.
   3. Review the plan.
 
-  The plan shows a to-scale top-down deck view, coloured by stop, weight or type, plus a side
+  The plan shows a to-scale top-down deck view, coloured by DG class, weight or type, plus a side
   elevation against the 4.3 m limit, axle load bars, utilisation, warnings with next steps, and CSV
   and print export. It supports light and dark themes and works from phone width to desktop.
 
@@ -57,7 +57,7 @@ bin-packing/
 │   │   ├── components/          VehiclePicker, FreightTable, LoadPlanView (deck, elevation,
 │   │   │                        legend, table), PlanStatus, UtilisationSummary, AxleLoadPanel,
 │   │   │                        WarningsList, ExportMenu, EmptyState, Disclaimer
-│   │   ├── lib/                 units, freight validation, CSV, colours, export
+│   │   ├── lib/                 units, freight validation, random freight, DG, colours, export
 │   │   └── styles/              design tokens, base styles, print styles
 │   ├── src/demo/                the bin-packing demo page (demo.html), its own entry point
 │   └── src/dg/                  ADG segregation rules port, DG class diamonds
@@ -107,9 +107,9 @@ make fixtures   # regenerate the frontend's sample API responses after planner c
   "mass_scheme": "GML",
   "items": [
     { "id": "bev", "label": "Beverages", "kind": "pallet", "type_id": "AU_STD", "quantity": 6,
-      "gross_weight_kg": 820, "height_mm": 1200, "stackable": false, "stop": 2 },
+      "gross_weight_kg": 820, "height_mm": 1200, "stackable": false },
     { "id": "dry", "kind": "pallet", "type_id": "EURO", "quantity": 4, "gross_weight_kg": 400,
-      "height_mm": 900, "stackable": true, "stop": 1 }
+      "height_mm": 900, "stackable": true }
   ],
   "overrides": { "vehicles": { "SEMI_TRAILER": { "max_payload_kg": 22000 } } }
 }
@@ -120,7 +120,7 @@ make fixtures   # regenerate the frontend's sample API responses after planner c
 | `vehicle_id` | A vehicle id from `/api/reference`, or `"suggest"` for the smallest vehicle that fits |
 | `body_type` | A body id, or `null` for the vehicle's default. In suggest mode, vehicles without it are skipped |
 | `mass_scheme` | `"GML"` (default) or `"HML"` |
-| `items[]` | Up to 500 units in total. `gross_weight_kg` is per unit, including the pallet. `height_mm` applies to pallets only. `stop` 1 is the first drop |
+| `items[]` | Up to 500 units in total. `gross_weight_kg` is per unit, including the pallet. `height_mm` applies to pallets only. `dg` is optional dangerous goods data |
 | `overrides` | Optional partial reference data, deep-merged and re-validated (lists replace) |
 
 The response includes:
@@ -145,50 +145,60 @@ Set `CORS_ORIGINS` (comma-separated) to allow other browser origins to call the 
 ## Bin packing demo
 
 A separate page at **<http://localhost:5173/demo.html>** (linked from the planner header) shows the
-**bin packing problem**: load every shipment into identical trucks using the fewest trucks. Google
-OR-Tools CP-SAT searches for the best loading (10 s limit, warm-started from first-fit decreasing) and
-proves when no better one exists, then the loading drops into a 2D deck plan or a 3D view of the trucks.
-The summary compares the answer with the lower bound, ⌈total ÷ capacity⌉ per dimension.
+**bin packing problem**: load every shipment into identical trucks using the fewest trucks. The
+trucks are a vehicle from the planner's list (a medium rigid by default; *Change* opens the same
+vehicle cards), and every shipment has a real size:
 
-Shipments can take pallet spaces (the trucks can have a pallet limit) and carry an ADG class (or food /
-fire-risk) with up to 4 subsidiary hazards. Incompatible goods (ADG Code Table 9.1) never share a truck,
-and the *ADG + Northline* rule set also refuses goods Northline won't carry. *Load random shipments*
-draws from a small catalogue where each item has its own DG data (Paint = Class 3, Methanol = 3 +
-sub 6.1, Rice = food, …). The page has its own entry point (`frontend/demo.html`, `src/demo/`) and
-shares only the design tokens, base styles and DG rules with the planner. three.js loads only when the
-3D view is opened.
+- **On a pallet:** a pallet type (AU 1165 × 1165, Euro 1200 × 800, …), the total height and the
+  weight. **Loose:** its own length × width × height, for long or odd items such as pipes.
+- **Stackable** shipments can stand on others with the same footprint while the column fits under
+  the truck's inside height. Everything else stands on the deck floor.
+
+Google OR-Tools CP-SAT places every footprint on a deck (turned 90° when that fits better, never
+overlapping), keeps each truck within its payload and keeps incompatible dangerous goods (ADG Code
+Table 9.1) apart. It searches for 10 s at most, starting from a quick greedy packing, and proves
+when no packing uses fewer trucks. The summary compares the answer with lower bounds for weight,
+volume and the floor area of non-stackable items. The page draws each truck's decks to scale from
+the returned positions, with a 3D view (three.js loads only when it's opened). *Random shipments*
+draws from a small catalogue where each item has its own size and DG data (Paint = AU pallet,
+1.2 m, stackable, Class 3; Pipes = loose, 4.6 × 0.4 × 0.3 m; …). The page has its own entry point
+(`frontend/demo.html`, `src/demo/`) and shares the design tokens, base styles, DG rules, reference
+data and vehicle picker with the planner.
 
 ### `POST /api/solve`
 
 ```json
 {
-  "capacity": 1000,
-  "max_pallets": 8,
+  "vehicle_id": "RIGID_MEDIUM",
+  "body_type": null,
   "rule_set": "adg",
   "shipments": [
-    { "name": "Paint 01", "weight": 300, "pallets": 1, "dg_class": "3" },
-    { "name": "Oxygen cylinders 02", "weight": 200, "dg_class": "2.2", "subsidiary": ["5.1"] }
+    { "name": "Paint 01", "weight": 420, "pallet_type": "AU_STD", "height_mm": 1200,
+      "stackable": true, "dg_class": "3" },
+    { "name": "Pipes 02", "weight": 250, "kind": "loose", "length_mm": 4600, "width_mm": 400,
+      "height_mm": 300 }
   ]
 }
 ```
 
 | Field | Notes |
 |---|---|
-| `capacity` | Truck capacity in kg (whole number) |
-| `max_pallets` | Optional pallet spaces per truck (1–100); omit for no pallet limit |
+| `vehicle_id`, `body_type` | A vehicle and body from `/api/reference` (the body must carry pallets) |
 | `rule_set` | `"adg"` (default) or `"northline"` |
-| `shipments[].weight` | kg, whole number, at most `capacity` |
-| `shipments[].pallets` | Optional pallet spaces (0–100, default 0 = loose freight) |
-| `shipments[].dg_class` | Optional: a DG class (`"1"`…`"9"`), `"food"` or `"fire_risk"` |
-| `shipments[].subsidiary` | Optional, with a DG class only: up to 4 subsidiary hazards |
+| `shipments[]` | Up to 40. `weight` in kg, `height_mm` the total height |
+| `shipments[].kind` | `"pallet"` (default, with `pallet_type`, default AU_STD) or `"loose"` (with `length_mm` and `width_mm`) |
+| `shipments[].stackable` | Optional, default false |
+| `shipments[].dg_class`, `subsidiary` | Optional: a DG class (`"1"`…`"9"`), `"food"` or `"fire_risk"`, and up to 4 subsidiary hazards |
 
-The response has `num_trucks` and `trucks` (each with its `shipments`, `load`, `empty` and
-`fill_percent`), `optimal` and the CP-SAT `status`, `lower_bound` and `lower_bounds` per dimension,
-`segregated` (some dangerous goods must travel apart), the input totals, `solve_time_ms`,
-`time_limit_s`, and `drop_order` for the loading animation.
+The full request and response models are in `backend/app/demo_models.py`. The response has the
+vehicle and its per-truck capacity (payload, decks, floor area, volume), `num_trucks` and `trucks`
+(each with its shipments and their deck, x/y/z position, rotation and stack level, plus weight and
+floor use), `optimal` and the CP-SAT `status`, `lower_bound` and `lower_bounds`, `segregated`,
+`solve_time_ms` and `drop_order` for the loading animation.
 
-Errors: 400 for shipments that can never fit (too heavy, too many pallets) or that Northline refuses,
-422 for invalid input, 429 while 2 solves are already running.
+Errors: 400 for an unknown vehicle, body or pallet type, a body that doesn't carry pallets,
+shipments that can never fit (too long, too wide, too tall or too heavy, each named) or that
+Northline refuses; 422 for invalid input; 429 while 2 solves are already running.
 
 ---
 
