@@ -1,123 +1,70 @@
-# 🚚 Freight Operations Platform
+# 🚚 Truck Loading Optimizer
 
-A local web app for a small freight company. Customers place delivery orders, a dispatcher turns them
-into truck loads with an optimiser, and drivers deliver them with proof of delivery. It grew out of a
-**1D bin packing demo** (FFD vs OR-Tools CP-SAT), which still runs at `/demo`.
+A small demo of the **bin packing problem**: load every shipment into trucks of the same capacity using
+the fewest trucks. It solves the same input two ways and animates both side by side:
 
-| Role | What they do | Pages |
-|---|---|---|
-| **Customer** | Keep an item catalogue (with dangerous goods classes) and address book, build and submit orders with a price quote, track status and the full history | `/portal/*` |
-| **Dispatcher** | Accept or reject orders, zone addresses, run the optimiser per delivery date + zone (ADG or ADG + Northline dangerous goods rules), edit and lock load plans, check DG segregation at `/ops/dg`, assign vehicles and drivers, manage the fleet, export monthly invoices | `/ops/*` |
-| **Driver** | See today's run on a phone, mark pickups, deliver with a signature name and photo, report problems | `/driver/*` |
+- **FFD (First-Fit Decreasing):** sort shipments heaviest first, put each one in the first truck with
+  room, open a new truck when none fits. Instant, but not always the best.
+- **OR-Tools CP-SAT:** searches for the fewest trucks (warm-started from FFD, 10 s limit) and can prove
+  the answer is optimal.
+
+Extras:
+
+- **Pallets.** Each shipment can take pallet spaces, and the trucks can have a pallet limit. Pallets are
+  drawn at real size (Australian 1165 × 1165 mm pallets, two across a 2.4 m deck) as a top-down deck
+  plan in 2D and on real-length trailers in 3D.
+- **Dangerous goods.** Shipments can carry an ADG class (or food / fire-risk) and up to 4 subsidiary
+  hazards. Incompatible goods (ADG Code Table 9.1) never share a truck, in either method. The *ADG +
+  Northline* rule set also refuses goods Northline won't carry. The matrix comes from ADG Edition 7.8:
+  check it against Edition 7.9 (mandatory from 1 October 2025).
+- 🎲 **Random shipments** come from a small catalogue where each item has its own DG data (Paint =
+  Class 3, Methanol = 3 + sub 6.1, Rice = food, …).
+
+**A case where FFD loses:** capacity 1000, shipments `560, 490, 440, 370, 360, 340, 190, 150` kg. The
+lower bound is 3. FFD needs 4 trucks; CP-SAT finds 3 (for example 560+440, 490+340+150, 370+360+190).
 
 ---
 
-## Architecture
+## Layout
 
 ```
 bin-packing/
-├── backend/                  Python 3.12, FastAPI, SQLModel / SQLAlchemy 2 (async), Alembic
+├── backend/                 Python 3.12, FastAPI, OR-Tools (no database)
 │   ├── app/
-│   │   ├── main.py           app, routers under /api, error handlers
-│   │   ├── models.py         all tables and status enums
-│   │   ├── schemas.py        request / response models (the API contract)
-│   │   ├── auth.py           fastapi-users, JWT, role dependencies
-│   │   ├── lifecycle.py      the ONLY place that changes Order.status (+ writes OrderEvent)
-│   │   ├── pricing.py        quotes (cubic weight × zone rate) and monthly invoices / CSV
-│   │   ├── dg.py             dangerous goods: ADG Table 9.1/9.2 segregation, Northline acceptance
-│   │   ├── solver/           1D demo solver + multi-dimension FFD and CP-SAT (weight, m³, pallets)
-│   │   ├── workers.py        arq worker: runs solver jobs in the background
-│   │   └── routers/          portal (customer), ops (dispatcher), driver, jobs, demo
-│   ├── alembic/              migrations
-│   ├── scripts/seed.py       demo data
-│   └── tests/                pytest on a real Postgres (one test database per checkout)
-├── frontend/                 React 19 + Vite, React Router, TanStack Query, plain CSS
+│   │   ├── main.py          the app: GET /api/health, POST /api/solve
+│   │   ├── routers/demo.py  the /api/solve endpoint
+│   │   ├── solver/          FFD and CP-SAT over weight (and pallets), with DG segregation
+│   │   ├── dg.py            dangerous goods: ADG Table 9.1/9.2 segregation, Northline acceptance
+│   │   └── schemas.py       solver input/output models
+│   └── tests/               pytest
+├── frontend/                React 19 + Vite, three.js for the 3D view, plain CSS
 │   └── src/
-│       ├── api/              typed client generated from the OpenAPI schema, mock API for dev
-│       ├── auth/, shell/     login, role guards, layout, shared UI
-│       ├── portal/           customer pages
-│       ├── ops/              dispatcher pages
-│       ├── driver/           phone-first driver pages
-│       ├── components/       2D and 3D truck views (weight / volume / pallet fill)
-│       └── demo/             the original 1D bin packing demo
-├── e2e/                      Playwright walkthrough of the whole order loop over real HTTP
-├── docs/api.md               API contract: every endpoint, lifecycle, planning and driver flows
-├── docker-compose.yml        Postgres 16 + Redis 7
-├── scripts/                  services.sh (Postgres + Redis with or without Docker), dev.sh
-└── Makefile                  `make help` lists every target
+│       ├── demo/            the page
+│       ├── components/      shipment form, hazard picker, 2D and 3D truck views, deck geometry
+│       └── dg/              the same DG rules in TypeScript (for the hazard picker)
+├── scripts/dev.sh           runs the API and the web app together
+└── Makefile                 `make help` lists every target
 ```
-
-**How a plan is made.** `POST /api/ops/plans` reserves the accepted orders for one delivery date and
-zone, checks every unit fits the chosen vehicle profile, and queues a job in Redis. The arq worker
-expands order lines into units and packs them twice: **FFD** (fast rule of thumb) and **CP-SAT**
-(optimiser, warm-started from FFD, 10 s limit, one capacity constraint per limited dimension). The UI
-polls `GET /api/jobs/{id}` and shows both answers side by side in the truck views, with the lower bound
-(the maximum over dimensions of `ceil(total / capacity)`).
-
-**Dangerous goods.** Items can carry an ADG class, subsidiary hazards, packing group, UN number and
-Table 9.2 details. Both methods keep incompatible goods (ADG Code Table 9.1 / 9.2) on separate loads,
-moves onto a conflicting load are refused, and a plan with a conflict can't be locked. A plan can also
-use the Northline rule set (prohibited goods, quantity limits, HSEQ approvals). The matrix comes from
-ADG Edition 7.8: check it against Edition 7.9 (mandatory from 1 October 2025). See
-[Dangerous goods](docs/api.md#dangerous-goods).
-
-See [`docs/api.md`](docs/api.md) for the full API, and `/docs` on a running backend for Swagger.
 
 ---
 
 ## Setup (once)
 
-### 1. System packages (Linux Mint / Ubuntu)
-
-```bash
-sudo apt update
-sudo apt install -y python3 python3-venv python3-pip curl git make
-```
-
-Docker is optional. With it, Postgres and Redis run from `docker-compose.yml`. Without it,
-`scripts/services.sh` downloads Postgres and Redis binaries from pip packages into `.tools/` the first
-time (no `sudo` needed).
-
-### 2. Node.js 20.19+ or 22.12+
-
-Check with `node --version`. If it's missing or older (the `apt` version often is), install it with nvm:
-
-```bash
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-source ~/.bashrc
-nvm install --lts
-nvm use --lts
-```
-
-### 3. The project
+You need Python 3.12+ and Node.js 20.19+ or 22.12+ (`node --version`; install a newer one with
+[nvm](https://github.com/nvm-sh/nvm) if needed).
 
 ```bash
 cd ~/Projects/bin-packing
-cp .env.example .env        # local defaults (APP_ENV=dev); change JWT_SECRET outside development
-make install                # backend/.venv with the Python packages + frontend/node_modules
-make seed                   # starts Postgres + Redis, applies migrations, loads the demo data
+make install      # backend/.venv with the Python packages + frontend/node_modules
 ```
 
 <details>
-<summary>The same steps without <code>make</code></summary>
+<summary>The same without <code>make</code></summary>
 
 ```bash
-cd ~/Projects/bin-packing
-cp .env.example .env
-
-# Backend: virtual environment and packages (OR-Tools is ~25 MB)
 python3 -m venv backend/.venv
 backend/.venv/bin/pip install -r backend/requirements-dev.txt
-
-# Frontend packages
-cd frontend && npm install && cd ..
-
-# Postgres + Redis, database tables, demo data
-scripts/services.sh start
-cd backend
-.venv/bin/alembic upgrade head
-.venv/bin/python -m scripts.seed
-cd ..
+cd frontend && npm install
 ```
 
 </details>
@@ -125,125 +72,58 @@ cd ..
 ## Run
 
 ```bash
-cd ~/Projects/bin-packing
 make dev
 ```
 
-This starts three processes together, and Ctrl+C stops all three:
-
-| Process | Address |
-|---|---|
-| API | <http://localhost:8000> (Swagger at `/docs`) |
-| Solver worker | runs the optimiser jobs in the background |
-| Web app | **<http://localhost:5173>**, open this one |
-
-Other ports: `API_PORT=8010 WEB_PORT=5180 scripts/dev.sh`.
-
-> `npm run dev` on its own only starts the web app. Without the API you can't log in, and without the
-> worker a plan stays "queued". Use `make dev`, or start all three yourself.
-
-To start them in separate terminals instead (Postgres and Redis must be running: `make services`):
-
-```bash
-# Terminal 1: API
-cd ~/Projects/bin-packing/backend && .venv/bin/uvicorn app.main:app --reload --port 8000
-
-# Terminal 2: solver worker
-cd ~/Projects/bin-packing/backend && .venv/bin/arq app.workers.WorkerSettings
-
-# Terminal 3: web app
-cd ~/Projects/bin-packing/frontend && npm run dev
-```
-
-Run only one worker at a time: a worker that starts up fails any job another worker is still running.
-
-Other commands:
-
-| Command | What it does |
-|---|---|
-| `make seed` | Reset the database to the demo data (also fixes a failed login after testing) |
-| `make services-status` / `make services-stop` | Check or stop Postgres and Redis |
-| `cd frontend && npm run dev:mock` | The UI with an in-browser mock API, no backend needed. Any password works; an e-mail containing "dispatch" or "driver" picks that role |
-
-## Seed logins
-
-**In development you don't need to type these.** The login page shows a **Log in as…** panel with one
-button per seed account: click a name and you're in. Log out to switch roles. The panel only exists in
-the Vite dev server (`make dev`, `npm run dev`, `npm run dev:mock`), never in a production build
-(`npm run build`), so the known password isn't shipped.
-
-To type them instead, all passwords are `demo-pass-123`:
-
-| Role | E-mail |
-|---|---|
-| Customer (Acme Hardware Pty Ltd) | `alice@acme.example.com`, `bob@acme.example.com` |
-| Dispatcher | `dispatch@freightco.example.com` |
-| Driver | `driver1@freightco.example.com`, `driver2@freightco.example.com` |
-
-The seed has about 36 orders in every status, three zones (NORTH, SOUTH, WEST), four vehicles with
-different capacity mixes, accepted orders for today and tomorrow ready to plan, a run today for both
-drivers, and delivered orders last month for the invoices page. `make seed` resets the database.
-
----
-
-## The workflow
-
-```
-draft ─► submitted ─► accepted ─► planned ─► picked_up ─► in_transit ─► delivered
-            └─► rejected                └──────────┴────────────┴─► exception
-draft / submitted ─► cancelled
-```
-
-1. **Customer** creates an order (items and quantities, pickup and delivery address, date and time
-   window), sees the quote, and submits it. Price = `max(kg, m³ × 250)` × the delivery zone's rate.
-2. **Dispatcher** accepts it (or rejects it with a reason) and makes sure the delivery address has a zone.
-3. **Dispatcher** opens *Plans*, picks the batch (date + zone) and a vehicle profile, and runs the
-   optimiser. When the job finishes, they compare FFD and OR-Tools, save one as a draft, move lines
-   between loads if needed (the server re-checks capacity), lock the plan, and assign a vehicle and a
-   driver to each load. Locking moves the orders to `planned`.
-4. **Driver** opens today's run, marks the pickup, then delivers with the receiver's name and a photo
-   (or reports a problem with a note).
-5. **Customer** sees `delivered`, the proof of delivery and every step in the order's history.
-6. **Dispatcher** downloads the month's invoice CSV per customer company.
-
-Every status change goes through `backend/app/lifecycle.py`, which allows only valid transitions for the
-right role and writes an event with the time, the actor and an optional note.
-
----
+This starts the API on <http://localhost:8000> (Swagger at `/docs`) and the web app on
+**<http://localhost:5173>**; Ctrl+C stops both. Other ports: `API_PORT=8010 WEB_PORT=5180 scripts/dev.sh`.
+The web app forwards `/api` to the API, so it needs both running.
 
 ## Tests
 
 ```bash
-make test          # ruff + pytest (needs Postgres; starts it if needed)
-make lint          # backend ruff + frontend ESLint and tsc
-make build         # production build of the web app
-make e2e           # Playwright walkthrough against a running stack (make dev first)
-cd frontend && npm test   # frontend unit tests (pure helpers and the mock API)
+make test     # pytest + frontend unit tests
+make lint     # ruff + ESLint and tsc
+make build    # production build of the web app
 ```
-
-`make e2e` drives the whole loop over real HTTP with the real worker: customer submits → dispatcher
-accepts → plans → locks → assigns → driver picks up and delivers with POD → customer sees the timeline →
-the order is on the month's invoice CSV. Point it elsewhere with `E2E_API_URL` and `E2E_WEB_URL`.
-
-After changing an endpoint or schema, run `make api-types` to regenerate `frontend/src/api/schema.d.ts`.
 
 ---
 
-## The 1D bin packing demo (`/demo`)
+## API
 
-The original demo is still there: shipments (items with a weight) go into trucks (bins with the same
-capacity) using the fewest trucks. It solves the same input with **FFD** (sort heaviest first, put each
-in the first truck with room) and **OR-Tools CP-SAT** (searches for the fewest trucks and can prove it's
-optimal), and animates both in 2D bars or 3D trucks. `POST /api/solve` is its API. Shipments can be
-given a dangerous goods class (or food / fire-risk) and up to 4 subsidiary hazards with the hazard
-picker (click the chip in a shipment's row); incompatible ones never share a truck, and the picker lists
-which shipments a choice conflicts with. 🎲 Load random shipments draws from a small item catalogue in
-which each item carries its own DG data (Paint = Class 3, Methanol = 3 + sub 6.1, Oxygen cylinders =
-2.2 + sub 5.1, Rice = food, …); typing a catalogue name in the add row fills its DG data in too.
+`POST /api/solve` (public, stateless)
 
-**A case where FFD loses:** capacity 1000, shipments `560, 490, 440, 370, 360, 340, 190, 150` kg. The
-lower bound is 3. FFD needs 4 trucks (560+440, 490+370, 360+340+190, then 150 fits nowhere); CP-SAT
-finds 3, for example 560+440, 490+340+150, 370+360+190.
+```json
+{
+  "capacity": 1000,
+  "max_pallets": 8,
+  "rule_set": "adg",
+  "shipments": [
+    { "name": "Paint 01", "weight": 300, "pallets": 1, "dg_class": "3" },
+    { "name": "Oxygen cylinders 02", "weight": 200, "dg_class": "2.2", "subsidiary": ["5.1"] }
+  ]
+}
+```
+
+| Field | Notes |
+|---|---|
+| `capacity` | Truck capacity in kg (whole number) |
+| `max_pallets` | Optional pallet spaces per truck (1–100); omit for no pallet limit |
+| `rule_set` | `"adg"` (default) or `"northline"` |
+| `shipments[].weight` | kg, whole number, at most `capacity` |
+| `shipments[].pallets` | Optional pallet spaces (0–100, default 0 = loose freight) |
+| `shipments[].dg_class` | Optional: a DG class (`"1"`…`"9"`), `"food"` or `"fire_risk"` |
+| `shipments[].subsidiary` | Optional, with a DG class only: up to 4 subsidiary hazards |
+
+The response has `capacity`, `total_weight`, `lower_bound`, `segregated` (some goods must travel apart)
+and, for `ffd` and `ortools`, `num_trucks`, `trucks` (each with its `shipments`, `load`, `empty` and
+`fill_percent`), `solve_time_ms` and `drop_order` (for the animation). `ortools` also has `optimal`,
+`status` and `time_limit_s`. `max_pallets` and per-shipment `pallets` are echoed only when sent.
+
+Errors: 400 for shipments that can never fit (too heavy, too many pallets) or that Northline refuses,
+422 for invalid input, 429 while 2 solves are already running.
+
+Set `CORS_ORIGINS` (comma-separated) to allow other browser origins to call the API directly.
 
 ---
 
@@ -251,9 +131,7 @@ finds 3, for example 560+440, 490+340+150, 370+360+190.
 
 | Problem | Fix |
 |---|---|
-| `make seed` or `make test` can't connect to Postgres | `make services-status`, then `make services` |
-| The web app says it can't reach the backend | Start it with `make dev` (or `make api`) and check the port |
-| A plan stays "queued" | The worker isn't running: `make worker` (or use `make dev`, which starts it) |
+| The page says it can't reach the backend | Start it with `make dev` (or `make api`) and check the port |
 | `externally-managed-environment` from pip | Use `make install`, which installs into `backend/.venv` |
 | `npm run dev` fails with a Node version error | Install a newer Node with nvm |
 | Port 8000 or 5173 is in use | `API_PORT=8010 WEB_PORT=5180 scripts/dev.sh` |
