@@ -1,0 +1,39 @@
+/* The load plan: toolbar, the two drawings (horizontally scrollable below their minimum scale),
+   legend, unplaced units and the table. The details popover is positioned against .lp. */
+
+.lp { position: relative; display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+
+.lp-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); }
+.lp-toolbar-group { display: flex; align-items: center; gap: var(--space-2); }
+.lp-toolbar-group fieldset { margin: 0; min-width: 0; }
+.lp-toolbar-label { font-size: var(--text-sm); color: var(--color-text-muted); }
+.lp-toolbar .btn-icon { font-size: var(--text-md); }
+.lp-zoom { min-width: 4.5ch; text-align: center; font-size: var(--text-xs); color: var(--color-text-muted); }
+
+.lp-figure { margin: 0; min-width: 0; }
+.lp-scroll {
+  overflow-x: auto; overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y; /* the drawing handles pinch-zoom itself */
+  border: var(--border); border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  padding: var(--space-2) 0;
+}
+.lp-caption { margin-top: var(--space-1); }
+
+.lp-unplaced { padding: var(--space-3) var(--space-4); border: 1px solid var(--color-error); border-radius: var(--radius-sm);
+  background: var(--color-error-soft); }
+.lp-unplaced-title { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); margin-bottom: var(--space-2); }
+.lp-unplaced-list { margin: 0 0 var(--space-2); padding-left: var(--space-5); font-size: var(--text-sm); }
+.lp-unplaced-list .subtle { overflow-wrap: anywhere; }
+
+@media (max-width: 600px) {
+  .lp-toolbar { align-items: stretch; }
+}
+
+@media print {
+  .lp-toolbar { display: none; }
+  .lp-scroll { overflow: visible; border: none; }
+  .lp svg { width: 100% !important; }
+}

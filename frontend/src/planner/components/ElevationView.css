@@ -1,0 +1,31 @@
+/* Side elevation. Geometry in mm (viewBox); crisp strokes use non-scaling px widths. */
+
+.elevation-view { display: block; height: auto; max-width: none; font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums; user-select: none; }
+
+.elev-ground { stroke: var(--color-border-strong); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.elev-chassis { fill: var(--color-surface-3); }
+.elev-cab { fill: var(--color-surface-2); stroke: var(--color-border-strong); stroke-width: 1.5px; vector-effect: non-scaling-stroke;
+  stroke-linejoin: round; }
+.elev-cab-window { fill: var(--color-surface-3); }
+.elev-deck { fill: var(--color-text-subtle); }
+
+.elev-stack { cursor: pointer; transition: transform var(--motion-base) var(--ease), opacity var(--motion-fast) var(--ease); }
+.elev-stack.is-dimmed { opacity: 0.45; }
+.elev-unit { fill-opacity: 0.88; }
+.elev-unit-edge { fill: none; stroke: var(--color-text); stroke-opacity: 0.4; stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.elev-stack.is-highlighted .elev-unit-edge { stroke: var(--color-focus); stroke-opacity: 1; stroke-width: 2.5px; }
+.elev-stack.is-over .elev-unit-edge { stroke: var(--color-error); stroke-opacity: 1; stroke-width: 2.5px; }
+.elev-warning path { fill: var(--color-error); }
+.elev-warning text { fill: var(--color-surface); font-size: 240px; font-weight: var(--weight-semibold); }
+
+.elev-limit { stroke: var(--color-text-muted); stroke-width: 1.5px; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }
+.elev-tallest { stroke: var(--color-text); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.elev-label { font-size: 200px; font-weight: var(--weight-medium); paint-order: stroke; stroke: var(--color-surface);
+  stroke-width: 60px; stroke-linejoin: round; }
+.elev-limit-label { fill: var(--color-text-muted); }
+.elev-tallest-label { fill: var(--color-text); }
+
+@media print {
+  .elev-stack.is-dimmed { opacity: 1; }
+}

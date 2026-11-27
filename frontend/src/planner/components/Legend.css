@@ -1,0 +1,29 @@
+/* Legend under the deck view: the colour key on the left, the axle marker key on the right. */
+
+.legend {
+  display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between;
+  gap: var(--space-3) var(--space-6);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-2);
+  border-radius: var(--radius-sm);
+}
+.legend-main { flex: 1 1 320px; min-width: 0; }
+.legend-title { font-size: var(--text-xs); font-weight: var(--weight-semibold); color: var(--color-text-muted);
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: var(--space-2); }
+.legend-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-5); }
+.legend-item { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+.legend-note { margin-top: var(--space-2); }
+.legend-defs { position: absolute; }
+
+.legend-swatch { flex: none; display: inline-grid; place-items: center; border-radius: var(--radius-sm); }
+.legend-swatch-stop { width: 22px; height: 22px; font-size: var(--text-xs); font-weight: var(--weight-semibold);
+  color: var(--on-stop); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--on-stop) 25%, transparent); }
+.legend-swatch-type { width: 36px; height: 22px; }
+
+.legend-heat { display: flex; align-items: center; gap: var(--space-3); }
+.legend-heat-bar { display: flex; flex: 0 1 240px; height: 14px; border-radius: var(--radius-pill); overflow: hidden;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 12%, transparent); }
+.legend-heat-bar > span { flex: 1; }
+
+.legend-axle { display: flex; align-items: center; gap: var(--space-2); }
+.legend-axle-glyph { width: 52px; height: 14px; }
