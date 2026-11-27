@@ -265,7 +265,7 @@ def _smallest_vehicle_for(weight_kg: float, current: VehicleConfig,
                default=None)
 
 
-def _feeding_decks(vehicle: VehicleConfig, group_id: str) -> set[str]:
+def feeding_decks(vehicle: VehicleConfig, group_id: str) -> set[str]:
     """Decks whose load reaches the axle group (directly, or through decks resting on them)."""
     decks = {d.id for d in vehicle.decks
              if group_id in (d.front_support.axle_group, d.rear_support.axle_group)}
@@ -332,7 +332,7 @@ def postcheck(placements: list[Placement], vehicle: VehicleConfig, body: BodyTyp
     # Axle groups.
     for a in axle_loads:
         group = vehicle.axle_group(a.group_id)
-        decks = _feeding_decks(vehicle, a.group_id)
+        decks = feeding_decks(vehicle, a.group_id)
         item_ids = sorted({p.item_id for p in placements if p.deck_id in decks})
         if a.status == "over":
             direction = _axle_direction(vehicle, a.group_id)

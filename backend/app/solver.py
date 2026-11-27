@@ -18,7 +18,20 @@ The CP-SAT model (all integers: mm and kg):
     on one deck they never overlap (NoOverlap2D with optional intervals per deck)
   - dangerous goods: z[g][t] = "DG group g is in truck t", and
     z[g][t] + z[h][t] <= 1 for every incompatible pair (ADG Table 9.1/9.2)
+  - optional axle limits (`Truck.axle_limits`, see "Axle limits" below)
   Minimise sum(y).
+
+Axle limits: an axle group's load is linear in each item's weight and position, so a limit is a
+linear constraint. For an item of weight w whose centre is x mm from the front of deck d, the
+group takes w * (alpha_d + beta_d * x) (`AxleLimit.coef`, from the planner's beam model). With
+c2[i] = twice the centre of item i's column (2x + length for a floor item, its base's for a
+stacked one) and g[i][t][d] = c2[i] if a[i][t][d] else 0, per truck and group:
+    sum_i sum_d  A[i][d] * a[i][t][d] + B[i][d] * g[i][t][d]  <=  cap * y[t]
+where A = ceil(w * alpha * AXLE_SCALE), B = ceil(w * beta * AXLE_SCALE / 2) and
+cap = floor(cap_kg * AXLE_SCALE). Every variable is >= 0, so rounding the coefficients up and the
+cap down makes the integer model at least as tight as the real one: a packing it accepts never
+overloads a group. The greedy start uses the same integers, so its packing is a valid hint.
+Without axle limits none of this is built and the model is exactly the one above.
 
 Symmetry breaking: the k-th item (largest footprint first) only goes in trucks
 0..k, identical neighbours go in non-decreasing truck order, and a column's base
@@ -32,8 +45,9 @@ the time limit, the greedy packing is returned. Every answer is re-checked
 geometrically (`_check`) before it is returned.
 """
 
+import math
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from ortools.sat.python import cp_model
@@ -41,6 +55,9 @@ from ortools.sat.python import cp_model
 from app import dg as dgrules
 
 NUM_WORKERS = 8
+# Axle constraints are scaled to integers: 1 kg = AXLE_SCALE. Rounding costs each item at most
+# (1 + twice the deck length in mm) / AXLE_SCALE kg of a group's capacity (under 0.03 kg).
+AXLE_SCALE = 1_000_000
 
 
 @dataclass(frozen=True)
@@ -53,14 +70,32 @@ class DeckSpec:
 
 
 @dataclass(frozen=True)
+class AxleLimit:
+    """One axle group's limit on the freight. An item of weight w with its centre x mm from the
+    front of deck d adds w * (alpha + beta * x) kg to the group, (alpha, beta) = coef[d]."""
+    name: str
+    cap_kg: float                             # the group's limit minus its unladen (tare) load
+    coef: tuple[tuple[float, float], ...]     # per Truck.decks: (alpha, beta)
+
+    def share(self, deck: int, centre_mm: float) -> float:
+        """The part of a load at `centre_mm` on `deck` that this group carries (can be negative)."""
+        alpha, beta = self.coef[deck]
+        return alpha + beta * centre_mm
+
+
+@dataclass(frozen=True)
 class Truck:
     payload_kg: int
     decks: tuple[DeckSpec, ...]
     name: str = "truck"
+    axle_limits: tuple[AxleLimit, ...] = ()   # empty: axle loads are not limited
+    max_floor_mm2: int | None = None          # cap on the floor area in use (None: the decks' area)
 
     @property
     def floor_mm2(self) -> int:
-        return sum(d.length * d.width for d in self.decks)
+        """Usable floor area: the decks', or `max_floor_mm2` when that is less."""
+        area = sum(d.length * d.width for d in self.decks)
+        return area if self.max_floor_mm2 is None else min(area, self.max_floor_mm2)
 
     @property
     def volume_mm3(self) -> int:
@@ -157,31 +192,98 @@ def _fits(item: Item, deck: DeckSpec) -> bool:
     return item.height <= deck.height and bool(_orientations(item, deck))
 
 
+# ---------------------------------------------------------------------------
+# Axle limits (integers, see the module docstring)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class _Axle:
+    """One axle group's constraint in integers: sum(A[d] + B[d] * c2) <= cap over a truck's items,
+    c2 = twice the centre of the item's column on deck d."""
+    name: str
+    cap: int
+    a: tuple[tuple[int, ...], ...]   # [item][deck]
+    b: tuple[tuple[int, ...], ...]   # [item][deck]
+
+
+def _axles(items: Sequence[Item], truck: Truck) -> list[_Axle]:
+    """The integer axle constraints, without the groups that the payload alone keeps under their
+    limit (wherever the freight stands)."""
+    out = []
+    for lim in truck.axle_limits:
+        worst = max(max(lim.share(d, 0), lim.share(d, deck.length)) for d, deck in enumerate(truck.decks))
+        if max(worst, 0.0) * truck.payload_kg <= lim.cap_kg:
+            continue
+        out.append(_Axle(
+            name=lim.name, cap=math.floor(lim.cap_kg * AXLE_SCALE),
+            a=tuple(tuple(math.ceil(it.weight * alpha * AXLE_SCALE) for alpha, _ in lim.coef)
+                    for it in items),
+            b=tuple(tuple(math.ceil(it.weight * beta * AXLE_SCALE / 2) for _, beta in lim.coef)
+                    for it in items)))
+    return out
+
+
+def _axle_x_range(axles: Sequence[_Axle], loads: Sequence[int], i: int, d: int, lx: int,
+                  deck: DeckSpec) -> tuple[int, int] | None:
+    """(lowest, highest) x at which item `i`, `lx` long, may stand on deck `d` of a truck whose
+    groups already carry `loads`, or None when no x keeps every group within its limit."""
+    lo, hi = 0, deck.length - lx
+    for ax, load in zip(axles, loads, strict=True):
+        spare, slope = ax.cap - load - ax.a[i][d], ax.b[i][d]   # need slope * (2x + lx) <= spare
+        if slope == 0:
+            if spare < 0:
+                return None
+        elif slope > 0:
+            hi = min(hi, (spare // slope - lx) // 2)
+        else:
+            lo = max(lo, _ceil(_ceil(-spare, -slope) - lx, 2))
+    return (lo, hi) if lo <= hi else None
+
+
+def never_fit_reasons(item: Item, truck: Truck) -> list[str]:
+    """Why `item` can never travel on an otherwise empty `truck` (empty list: it can)."""
+    out = []
+    if item.weight > truck.payload_kg:
+        out.append(f"'{item.name}' weighs {item.weight:,} kg and the payload is {truck.payload_kg:,} kg")
+    decks = [(d, deck) for d, deck in enumerate(truck.decks) if _fits(item, deck)]
+    if not decks:
+        longest = max(d.length for d in truck.decks)
+        widest = max(d.width for d in truck.decks)
+        tallest = max(d.height for d in truck.decks)
+        reasons = []
+        if item.height > tallest:
+            reasons.append(f"'{item.name}' is {item.height:,} mm tall and the inside height is "
+                           f"{tallest:,} mm")
+        if max(item.length, item.width) > longest:
+            reasons.append(f"'{item.name}' is {max(item.length, item.width):,} mm long and the longest deck "
+                           f"is {longest:,} mm")
+        elif min(item.length, item.width) > widest:
+            reasons.append(f"'{item.name}' is {min(item.length, item.width):,} mm wide and the widest deck "
+                           f"is {widest:,} mm")
+        if not reasons:
+            reasons.append(f"'{item.name}' ({item.length:,} x {item.width:,} x {item.height:,} mm) fits no "
+                           f"deck either way round")
+        return out + reasons
+    if item.area > truck.floor_mm2:
+        out.append(f"'{item.name}' takes {item.area / 1e6:.1f} m2 of floor and the truck has "
+                   f"{truck.floor_mm2 / 1e6:.1f} m2")
+    if truck.axle_limits and item.weight <= truck.payload_kg:
+        axles = _axles([item], truck)
+        empty = [0] * len(axles)
+        if not any(_axle_x_range(axles, empty, 0, d, lx, deck) for d, deck in decks
+                   for lx, _ in _orientations(item, deck)):
+            names = [ax.name for k, ax in enumerate(axles)
+                     if not any(_axle_x_range(axles[k:k + 1], [0], 0, d, lx, deck) for d, deck in decks
+                                for lx, _ in _orientations(item, deck))]
+            groups = " and the ".join(names) if names else "axle groups"
+            out.append(f"'{item.name}' weighs {item.weight:,} kg and would overload the {groups} wherever "
+                       f"it stands")
+    return out
+
+
 def never_fit(items: Sequence[Item], truck: Truck) -> list[str]:
     """Why each item that can never travel on `truck` doesn't fit (empty = all can)."""
-    longest = max(d.length for d in truck.decks)
-    widest = max(d.width for d in truck.decks)
-    tallest = max(d.height for d in truck.decks)
-    out = []
-    for it in items:
-        if it.weight > truck.payload_kg:
-            out.append(f"'{it.name}' weighs {it.weight:,} kg and the payload is {truck.payload_kg:,} kg")
-        if any(_fits(it, d) for d in truck.decks):
-            continue
-        reasons = []
-        if it.height > tallest:
-            reasons.append(f"'{it.name}' is {it.height:,} mm tall and the inside height is {tallest:,} mm")
-        if max(it.length, it.width) > longest:
-            reasons.append(f"'{it.name}' is {max(it.length, it.width):,} mm long and the longest deck is "
-                           f"{longest:,} mm")
-        elif min(it.length, it.width) > widest:
-            reasons.append(f"'{it.name}' is {min(it.length, it.width):,} mm wide and the widest deck is "
-                           f"{widest:,} mm")
-        if not reasons:
-            reasons.append(f"'{it.name}' ({it.length:,} x {it.width:,} x {it.height:,} mm) fits no deck "
-                           f"either way round")
-        out.extend(reasons)
-    return out
+    return [reason for it in items for reason in never_fit_reasons(it, truck)]
 
 
 def lower_bounds(items: Sequence[Item], truck: Truck) -> dict[str, int]:
@@ -210,6 +312,9 @@ def _dg_groups(items: Sequence[Item]) -> tuple[list[int], set[tuple[int, int]]]:
     return group, pairs
 
 
+dg_groups = _dg_groups
+
+
 # ---------------------------------------------------------------------------
 # Greedy starting packing
 # ---------------------------------------------------------------------------
@@ -218,13 +323,23 @@ def _overlaps(ax, ay, alx, aly, bx, by, blx, bly) -> bool:
     return ax < bx + blx and bx < ax + alx and ay < by + bly and by < ay + aly
 
 
-def _floor_spot(cols: list[_Column], item: Item, deck: DeckSpec) -> tuple[int, int, int, int] | None:
+def _floor_spot(cols: list[_Column], item: Item, deck: DeckSpec,
+                x_range: Callable[[int], tuple[int, int] | None] | None = None,
+                ) -> tuple[int, int, int, int] | None:
     """(x, y, lx, ly) of the front-most free spot for `item` on a deck holding `cols`, or None.
-    Candidate corners come from the edges of the footprints already there."""
-    xs = sorted({0, *(c.x + c.lx for c in cols)})
+    Candidate corners come from the edges of the footprints already there. `x_range(lx)` narrows
+    the x allowed for an `lx` long footprint to (lowest, highest), or None for nowhere (axle
+    limits); its lowest x is a candidate too."""
+    edges = {0, *(c.x + c.lx for c in cols)}
     ys = sorted({0, *(c.y + c.ly for c in cols)})
     best = None
     for lx, ly in _orientations(item, deck):
+        xs = sorted(edges)
+        if x_range is not None:
+            allowed = x_range(lx)
+            if allowed is None:
+                continue
+            xs = sorted(x for x in edges | {allowed[0]} if allowed[0] <= x <= allowed[1])
         found = None
         for x in xs:
             if x + lx > deck.length:
@@ -246,49 +361,70 @@ def _floor_spot(cols: list[_Column], item: Item, deck: DeckSpec) -> tuple[int, i
 
 
 def _greedy(items: Sequence[Item], truck: Truck, order: list[int], group: list[int],
-            conflicts: set[tuple[int, int]]) -> list[_Column]:
+            conflicts: set[tuple[int, int]], axles: Sequence[_Axle] = ()) -> list[_Column]:
     """Largest footprint first: into an existing column if it can stack there, else the
-    front-most free floor spot of the first truck that takes it, else a new truck."""
+    front-most free floor spot of the first truck that takes it, else a new truck. A column or
+    spot that would push an axle group over its limit (`axles`) is skipped."""
     cols: list[_Column] = []
     on_deck: dict[tuple[int, int], list[_Column]] = {}
     load: list[int] = []
+    floor: list[int] = []
     groups: list[set[int]] = []
+    axle_load: list[list[int]] = []
 
     def takes(t: int, i: int) -> bool:
         g = group[i]
         return (load[t] + items[i].weight <= truck.payload_kg
                 and not any((min(g, h), max(g, h)) in conflicts for h in groups[t]))
 
-    def add(t: int, i: int) -> None:
-        load[t] += items[i].weight
-        groups[t].add(group[i])
+    def axle_add(i: int, d: int, c2: int) -> list[int]:
+        return [ax.a[i][d] + ax.b[i][d] * c2 for ax in axles]
+
+    def axles_take(c: _Column, i: int) -> bool:
+        extra = axle_add(i, c.deck, 2 * c.x + c.lx)
+        return all(now + more <= ax.cap
+                   for ax, now, more in zip(axles, axle_load[c.truck], extra, strict=True))
+
+    def add(c: _Column, i: int) -> None:
+        load[c.truck] += items[i].weight
+        groups[c.truck].add(group[i])
+        extra = axle_add(i, c.deck, 2 * c.x + c.lx)
+        axle_load[c.truck] = [now + more for now, more in zip(axle_load[c.truck], extra, strict=True)]
 
     for i in order:
         it = items[i]
         col = next((c for c in cols if it.stackable and _can_stack(it, items[c.members[0]])
-                    and c.top + it.height <= truck.decks[c.deck].height and takes(c.truck, i)), None)
+                    and c.top + it.height <= truck.decks[c.deck].height and takes(c.truck, i)
+                    and axles_take(c, i)), None)
         if col is not None:
             col.members.append(i)
             col.top += it.height
-            add(col.truck, i)
+            add(col, i)
             continue
         t = 0
         while True:
             if t == len(load):
                 load.append(0)
+                floor.append(0)
                 groups.append(set())
-            if takes(t, i):
+                axle_load.append([0] * len(axles))
+            if takes(t, i) and floor[t] + it.area <= truck.floor_mm2:
                 spot = None
                 for d, deck in enumerate(truck.decks):
                     if it.height <= deck.height:
-                        spot = _floor_spot(on_deck.get((t, d), []), it, deck)
+                        x_range = None
+                        if axles:
+                            def x_range(lx, i=i, t=t, d=d, deck=deck):
+                                return _axle_x_range(axles, axle_load[t], i, d, lx, deck)
+                        spot = _floor_spot(on_deck.get((t, d), []), it, deck, x_range)
                         if spot:
                             break
                 if spot:
                     c = _Column(t, d, *spot, members=[i], top=it.height)
                     cols.append(c)
                     on_deck.setdefault((t, d), []).append(c)
-                    add(t, i)
+                    floor[t] += it.area
+                    add(c, i)
                     break
             t += 1
             if t > len(items) + 1:
@@ -359,13 +495,16 @@ def solve(items: Sequence[Item], truck: Truck, time_limit_s: float = 10.0) -> So
         rank[i] = k
     sig = [_signature(items[i], group[i]) for i in range(n)]
 
+    axles = _axles(items, truck)
+
     start = time.perf_counter()
-    hint = _greedy(items, truck, order, group, conflicts)
+    hint = _greedy(items, truck, order, group, conflicts, axles) if axles \
+        else _greedy(items, truck, order, group, conflicts)
     _canonical(hint, order, rank, sig)
     _check(items, truck, _finish(items, hint, rank), group, conflicts)  # a greedy bug shows up here
     num_trucks = 1 + max(c.truck for c in hint)
 
-    model, var = _build_model(items, truck, num_trucks, lb, order, rank, sig, group, conflicts)
+    model, var = _build_model(items, truck, num_trucks, lb, order, rank, sig, group, conflicts, axles)
     _add_hints(model, var, items, hint, num_trucks)
 
     solver = cp_model.CpSolver()
@@ -399,9 +538,11 @@ class _Vars:
     r: list[cp_model.IntVar | None]                       # turned 90 degrees (None: square)
     ext: list[tuple]                                      # (lx, ly, ex, ey) per item
     used: list[cp_model.IntVar]
+    c2: dict[int, cp_model.IntVar] = field(default_factory=dict)              # i -> twice its column's centre
+    g: dict[tuple[int, int, int], cp_model.IntVar] = field(default_factory=dict)   # c2 if a else 0
 
 
-def _build_model(items, truck, num_trucks, lb, order, rank, sig, group, conflicts):
+def _build_model(items, truck, num_trucks, lb, order, rank, sig, group, conflicts, axles=()):
     n = len(items)
     decks = truck.decks
     model = cp_model.CpModel()
@@ -511,6 +652,32 @@ def _build_model(items, truck, num_trucks, lb, order, rank, sig, group, conflict
         model.add_no_overlap_2d(bx, by)
         model.add(sum(items[i].area * f[i, t, d] for i in range(n) if (i, t, d) in f)
                   <= decks[d].length * decks[d].width)
+    if truck.max_floor_mm2 is not None:
+        for t in range(num_trucks):
+            model.add(sum(items[i].area * v for (i, tt, _d), v in f.items() if tt == t) <= truck.floor_mm2)
+
+    # Axle limits: c2 = twice the centre of the item's column, gate (g) = c2 on the item's deck, else 0.
+    c2: dict[int, cp_model.IntVar] = {}
+    gate: dict[tuple[int, int, int], cp_model.IntVar] = {}
+    if axles:
+        longest = max(deck.length for deck in decks)
+        own = [2 * xs[i] + ext[i][0] for i in range(n)]
+        centre: list = list(own)   # a floor-only item's centre is its own
+        for i, it in enumerate(items):
+            if it.stackable:
+                c2[i] = centre[i] = model.new_int_var(0, 2 * longest, f"c2_{i}")
+                model.add(c2[i] == own[i]).only_enforce_if(floor[i])
+        for (i, b), v in base.items():
+            model.add(c2[i] == c2[b]).only_enforce_if(v)
+        for (i, t, d), v in a.items():
+            if any(ax.b[i][d] for ax in axles):
+                gate[i, t, d] = model.new_int_var(0, 2 * decks[d].length, f"g_{i}_{t}_{d}")
+                model.add(gate[i, t, d] == centre[i]).only_enforce_if(v)
+                model.add(gate[i, t, d] == 0).only_enforce_if(v.Not())
+        for t in range(num_trucks):
+            for ax in axles:
+                model.add(sum(ax.a[i][d] * v + (ax.b[i][d] * gate[i, t, d] if ax.b[i][d] else 0)
+                              for (i, tt, d), v in a.items() if tt == t) <= ax.cap * used[t])
 
     # Dangerous goods.
     if conflicts:
@@ -530,7 +697,7 @@ def _build_model(items, truck, num_trucks, lb, order, rank, sig, group, conflict
             model.add(sum(t * a[i, t, d] for t, d in on[i]) <= sum(t * a[j, t, d] for t, d in on[j]))
 
     model.minimize(sum(used))
-    return model, _Vars(a=a, f=f, floor=floor, base=base, x=xs, y=ys, r=rs, ext=ext, used=used)
+    return model, _Vars(a=a, f=f, floor=floor, base=base, x=xs, y=ys, r=rs, ext=ext, used=used, c2=c2, g=gate)
 
 
 def _add_hints(model: cp_model.CpModel, var: _Vars, items, cols: list[_Column], num_trucks: int) -> None:
@@ -559,6 +726,11 @@ def _add_hints(model: cp_model.CpModel, var: _Vars, items, cols: list[_Column], 
     for (i, b), v in var.base.items():
         c = col_of[i]
         model.add_hint(v, c.members[0] == b and c.members[0] != i)
+    for i, v in var.c2.items():
+        model.add_hint(v, 2 * col_of[i].x + col_of[i].lx)
+    for (i, t, d), v in var.g.items():
+        c = col_of[i]
+        model.add_hint(v, 2 * c.x + c.lx if c.truck == t and c.deck == d else 0)
     for t in range(num_trucks):
         model.add_hint(var.used[t], True)
 
@@ -643,7 +815,14 @@ def _check(items: Sequence[Item], truck: Truck, trucks: list[list[Placed]], grou
                 if level and not _can_stack(it, items[by_id[base_id]]):
                     fail(f"'{it.name}' stands on an item it can't stack on.")
                 z += p.height
+        for lim in truck.axle_limits:
+            added = sum(items[by_id[p.id]].weight * lim.share(p.deck, p.x + p.length / 2) for p in load)
+            if added > lim.cap_kg + 1e-6:
+                fail(f"truck {number} overloads the {lim.name} ({added:,.1f} kg on a spare "
+                     f"{lim.cap_kg:,.1f} kg).")
         floor = [p for p in load if p.level == 0]
+        if sum(p.length * p.width for p in floor) > truck.floor_mm2:
+            fail(f"truck {number} uses more floor than allowed.")
         for k, p in enumerate(floor):
             for q in floor[k + 1:]:
                 if p.deck == q.deck and _overlaps(p.x, p.y, p.length, p.width, q.x, q.y, q.length, q.width):
