@@ -98,11 +98,11 @@ export function describeSize(size: UsageTotals): string {
 // ---------------------------------------------------------------------------
 
 // Same shipment = same color in both panels, so you can compare them.
-// Lightness 72% keeps near-black labels at 5.6:1 or better for every hue
+// Lightness 74% keeps the near-black labels (#0f172a) above 6:1 for every hue
 // (WCAG AA needs 4.5:1; at 62% the blue hues only reached 3.5:1).
 export function colorFor(id: number): string {
   const hue = (id * 137.508) % 360; // golden angle spreads colors nicely
-  return `hsl(${hue}, 65%, 72%)`;
+  return `hsl(${hue}, 55%, 74%)`;
 }
 
 /**

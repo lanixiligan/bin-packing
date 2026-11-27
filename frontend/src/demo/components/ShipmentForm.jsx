@@ -58,13 +58,13 @@ export default function ShipmentForm({ shipments, capacity, maxPallets = null, o
           return (
             <div key={s.uid} className={`shipment-row ${tooHeavy || tooBig ? "invalid" : ""}${refused ? " dg-refused" : ""}`}>
               <input
-                className="name"
+                className="input name"
                 value={s.name}
                 onChange={(e) => update(s.uid, { name: e.target.value })}
                 aria-label="Shipment name"
               />
               <input
-                className="weight"
+                className="input weight"
                 type="number"
                 min="1"
                 value={s.weight}
@@ -75,7 +75,7 @@ export default function ShipmentForm({ shipments, capacity, maxPallets = null, o
               />
               <span className="unit">kg</span>
               <input
-                className="pallets"
+                className="input pallets"
                 type="number"
                 min="0"
                 max="100"
@@ -98,7 +98,7 @@ export default function ShipmentForm({ shipments, capacity, maxPallets = null, o
               />
               <button
                 type="button"
-                className="icon"
+                className="btn btn-ghost btn-icon remove"
                 onClick={() => remove(s.uid)}
                 aria-label={`Remove ${s.name || "shipment"}`}
                 title="Remove shipment"
@@ -115,6 +115,7 @@ export default function ShipmentForm({ shipments, capacity, maxPallets = null, o
 
       <form className="add-row" onSubmit={add}>
         <input
+          className="input name"
           placeholder="Shipment name"
           aria-label="New shipment name"
           list={itemsId}
@@ -127,6 +128,7 @@ export default function ShipmentForm({ shipments, capacity, maxPallets = null, o
           ))}
         </datalist>
         <input
+          className="input weight"
           placeholder="Weight"
           aria-label="New shipment weight in kg"
           type="number"
@@ -136,7 +138,7 @@ export default function ShipmentForm({ shipments, capacity, maxPallets = null, o
         />
         <span className="unit">kg</span>
         <input
-          className="pallets"
+          className="input pallets"
           placeholder="Pallets"
           aria-label="New shipment pallet spaces (0 for loose freight)"
           type="number"
@@ -148,7 +150,7 @@ export default function ShipmentForm({ shipments, capacity, maxPallets = null, o
         />
         <span className="unit" aria-hidden="true">pal</span>
         <HazardPicker value={hazard} onChange={setHazard} name={name.trim() || "new shipment"} others={shipments} ruleSet={ruleSet} />
-        <button type="submit">+ Add shipment</button>
+        <button type="submit" className="btn">Add shipment</button>
       </form>
 
       <PasteWeights shipments={shipments} onChange={onChange} />
@@ -174,7 +176,7 @@ function PasteWeights({ shipments, onChange }) {
   if (!open) {
     return (
       <button type="button" className="link-button" onClick={() => setOpen(true)} aria-expanded="false">
-        📋 Paste a list of weights…
+        Paste a list of weights…
       </button>
     );
   }
@@ -186,6 +188,7 @@ function PasteWeights({ shipments, onChange }) {
       </label>
       <textarea
         id={`${id}-text`}
+        className="input"
         rows={3}
         value={text}
         placeholder={"560, 490, 440 370\n360"}
@@ -204,13 +207,13 @@ function PasteWeights({ shipments, onChange }) {
         )}
       </p>
       <div className="paste-actions">
-        <button type="button" disabled={!weights.length} onClick={() => apply("append")}>
+        <button type="button" className="btn btn-sm" disabled={!weights.length} onClick={() => apply("append")}>
           Add to list
         </button>
-        <button type="button" disabled={!weights.length} onClick={() => apply("replace")}>
+        <button type="button" className="btn btn-sm" disabled={!weights.length} onClick={() => apply("replace")}>
           Replace list
         </button>
-        <button type="button" className="secondary" onClick={() => { setOpen(false); setText(""); }}>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={() => { setOpen(false); setText(""); }}>
           Cancel
         </button>
       </div>

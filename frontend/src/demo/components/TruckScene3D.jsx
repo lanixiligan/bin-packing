@@ -17,7 +17,7 @@ import { Vector3 } from "three";
 import { Edges, OrbitControls } from "@react-three/drei";
 import { colorFor, describeSize, describeUsage, dgTextOf, limitedDims, sizeOf, truckFill } from "./capacity.ts";
 import { describeDeck, layoutPallets, LOAD_MM, PALLET_MM, ROW_GAP_MM, truckDeck, usesDeck } from "./deck.ts";
-import { DARK_SCHEME, REDUCED_MOTION, useMediaQuery } from "../useMediaQuery.js";
+import { REDUCED_MOTION, useDarkTheme, useMediaQuery } from "../useMediaQuery.js";
 
 // Scene units (roughly metres, scaled down).
 const L = 4; // trailer length = 100% of capacity (crate mode)
@@ -43,9 +43,10 @@ const LABEL_Y = FLOOR + 0.45;
 const DROP_HEIGHT = 2.6;
 const DROP_SECONDS = 0.35;
 
+// Slate neutrals and the teal accent of the planner's tokens (src/planner/styles/tokens.css).
 const PALETTE = {
-  light: { ground: "#eceef3", frame: "#8a94a8", floor: "#c9cfdb", cab: "#5b6b8c", wheel: "#2a2f3a", active: "#1d2433", warn: "#b35c00", pallet: "#b08a5a" },
-  dark: { ground: "#1f2636", frame: "#6b7690", floor: "#2b3346", cab: "#7a8fbd", wheel: "#0b0e14", active: "#ffffff", warn: "#f0b45a", pallet: "#8a6a42" },
+  light: { ground: "#e2e8f0", frame: "#94a3b8", floor: "#cbd5e1", cab: "#0f766e", wheel: "#1e293b", active: "#0f172a", warn: "#b45309", pallet: "#b08a5a" },
+  dark: { ground: "#1e293b", frame: "#64748b", floor: "#334155", cab: "#0d9488", wheel: "#020617", active: "#ffffff", warn: "#fbbf24", pallet: "#8a6a42" },
 };
 
 /** Columns and rows of the parking grid: lanes front-to-back, up to 3 columns. */
@@ -349,7 +350,7 @@ function LabelTracker({ positions, labels, anchorX }) {
 export default function TruckScene3D({
   data, capacity, step, dropIndex, activeId, onHover, onFocusBlock, height,
 }) {
-  const dark = useMediaQuery(DARK_SCHEME);
+  const dark = useDarkTheme();
   const reducedMotion = useMediaQuery(REDUCED_MOTION);
   const colors = dark ? PALETTE.dark : PALETTE.light;
   const labels = useRef([]);

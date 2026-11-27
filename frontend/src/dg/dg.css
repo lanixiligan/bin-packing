@@ -1,29 +1,32 @@
 /* Dangerous goods class diamonds and badges. The diamond is decoration: the
    class is always written out as text next to it (never color alone). Label
    fills are the real placard colors and don't change with the theme; the
-   outline uses --text so it shows on both backgrounds. */
+   outline is dark on light pages and light on dark ones (data-theme on <html>,
+   or the system preference when there is none). Other colours: planner tokens. */
 .dg-badge {
   display: inline-flex; align-items: center; gap: 6px;
   font-weight: 600; font-size: 0.85rem; white-space: nowrap; vertical-align: middle;
 }
 .dg-badge .dg-text { line-height: 1.2; }
-.dg-badge .dg-sub { font-weight: 400; color: var(--muted); }
+.dg-badge .dg-sub { font-weight: 400; color: var(--color-text-muted); }
 .dg-dia {
   --size: 22px;
+  --dg-outline: #14212b;
   width: var(--size); height: var(--size); flex: none;
   clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-  background: #14212b; display: grid; place-items: center;
+  background: var(--dg-outline); display: grid; place-items: center;
 }
 .dg-dia > i {
   display: block; width: calc(100% - 3px); height: calc(100% - 3px);
   clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
   background: var(--fill);
 }
-@media (prefers-color-scheme: dark) { .dg-dia { background: #e5ecf1; } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dg-dia { --dg-outline: #e5ecf1; } }
+:root[data-theme="dark"] .dg-dia { --dg-outline: #e5ecf1; }
 .dg-dia.sm { --size: 18px; }
 .dg-dia.lg { --size: 40px; }
 .dg-dia.lg > i { width: calc(100% - 5px); height: calc(100% - 5px); }
-.dg-dia.sq { clip-path: inset(0 round 5px); background: var(--border); }
-.dg-dia.sq > i { clip-path: inset(0 round 4px); background: var(--surface-2); font-style: normal; font-size: 0.7em; display: grid; place-items: center; }
+.dg-dia.sq { clip-path: inset(0 round 5px); background: var(--color-border-strong); }
+.dg-dia.sq > i { clip-path: inset(0 round 4px); background: var(--color-surface-2); font-style: normal; font-size: 0.7em; display: grid; place-items: center; }
 .dg-dia.lg.sq > i { font-size: 1.1rem; }
-.dg-badge.general { color: var(--muted); font-weight: 400; }
+.dg-badge.general { color: var(--color-text-muted); font-weight: 400; }

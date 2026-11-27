@@ -53,13 +53,13 @@ export default function ResultPanel({
     <section className={`card panel${activeId != null ? " linking" : ""}`} aria-label={title}>
       <div className="panel-head">
         <h2>{title}</h2>
-        {badge && <span className={`badge ${badge.kind}`}>{badge.text}</span>}
+        {badge && <span className={`badge badge-${badge.kind}`}>{badge.text}</span>}
       </div>
       {explanation && <p className="muted small">{explanation}</p>}
       <p className="panel-stats">
         {multi
           ? multiStats(data, capacity)
-          : <><b>{data.num_trucks}</b> trucks · {totalEmpty.toLocaleString()} kg empty space in total</>}
+          : <><b className="num">{data.num_trucks}</b> trucks · <span className="num">{totalEmpty.toLocaleString()}</span> kg empty space in total</>}
       </p>
       {view === "3d" ? (
         <Suspense fallback={<div className="scene3d scene3d-loading muted" style={{ height: truckHeight + 120 }}>Loading 3D view…</div>}>

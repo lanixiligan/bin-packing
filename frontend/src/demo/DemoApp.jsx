@@ -7,6 +7,10 @@ import { palletFootprint } from "./components/deck.ts";
 import { checkAll } from "../dg/rules.ts";
 import { demoDg, randomShipments } from "./shipments.js";
 import { NARROW_SCREEN, REDUCED_MOTION, SMALL_SCREEN, useMediaQuery } from "./useMediaQuery.js";
+import DemoHeader from "./DemoHeader.jsx";
+import { useTheme } from "./useTheme.js";
+import "../planner/styles/tokens.css";
+import "../planner/styles/base.css";
 import "./demo.css";
 
 const DROP_INTERVAL_MS = 150; // time between each shipment dropping in
@@ -32,6 +36,7 @@ function palletsProblem(text) {
 const palletsOf = (s) => Math.max(0, Number(s.pallets) || 0);
 
 export default function App() {
+  const [theme, setTheme] = useTheme();
   const [capacityText, setCapacityText] = useState("1000");
   const [capacityChecked, setCapacityChecked] = useState(false); // show field error after blur/Solve
   const [palletsText, setPalletsText] = useState(""); // pallet spaces per truck, blank = not limited
@@ -244,178 +249,181 @@ export default function App() {
   const active = activeId != null ? placement[activeId] : null;
 
   return (
-    <div className="app">
-      <header>
-        <h1>🚚 Truck Loading Optimizer</h1>
-        <p className="subtitle">
-          The bin packing problem: load every shipment using the fewest trucks. Google OR-Tools
-          (CP-SAT) searches for the best loading and proves when no better one exists.
-        </p>
-      </header>
+    <div className="app demo">
+      <DemoHeader theme={theme} onTheme={setTheme} />
 
-      <section className="card controls" aria-label="Inputs">
-        <div className="capacity-row">
-          <div className="capacity-field">
-            <label htmlFor="capacity">Truck capacity (kg)</label>
-            <input
-              id="capacity"
-              type="number"
-              min="1"
-              inputMode="numeric"
-              value={capacityText}
-              aria-invalid={showCapError ? true : undefined}
-              aria-describedby={showCapError ? "capacity-error" : undefined}
-              onChange={(e) => {
-                setCapacityText(e.target.value);
-                setCapacityChecked(false); // no error while typing; checked again on blur or Solve
-                clearResult();
-              }}
-              onBlur={() => setCapacityChecked(true)}
-            />
-            {showCapError && <span id="capacity-error" className="field-error">{capError}</span>}
+      <main className="demo-main">
+        <section className="card controls" aria-labelledby="inputs-title">
+          <div className="card-intro">
+            <h2 id="inputs-title" className="section-title">Trucks and shipments</h2>
+            <p className="muted small">
+              The bin packing problem: load every shipment using the fewest identical trucks. Google OR-Tools
+              (CP-SAT) searches for the best loading and proves when no better one exists. Incompatible
+              dangerous goods (ADG Code Table 9.1) never share a truck.
+            </p>
           </div>
-          <div className="capacity-field">
-            <label htmlFor="max-pallets">Pallet spaces per truck</label>
-            <input
-              id="max-pallets"
-              type="number"
-              min="1"
-              max="100"
-              inputMode="numeric"
-              placeholder="not limited"
-              value={palletsText}
-              aria-invalid={palError ? true : undefined}
-              aria-describedby={palError ? "pallets-error" : "pallets-hint"}
-              onChange={(e) => {
-                setPalletsText(e.target.value);
-                clearResult();
-              }}
-            />
-            {palError
-              ? <span id="pallets-error" className="field-error">{palError}</span>
-              : <span id="pallets-hint" className="muted small">1165 × 1165 mm pallets, 2 across</span>}
+
+          <div className="capacity-row">
+            <div className="field capacity-field">
+              <label className="field-label" htmlFor="capacity">Truck capacity (kg)</label>
+              <input
+                id="capacity"
+                className="input"
+                type="number"
+                min="1"
+                inputMode="numeric"
+                value={capacityText}
+                aria-invalid={showCapError ? true : undefined}
+                aria-describedby={showCapError ? "capacity-error" : undefined}
+                onChange={(e) => {
+                  setCapacityText(e.target.value);
+                  setCapacityChecked(false); // no error while typing; checked again on blur or Solve
+                  clearResult();
+                }}
+                onBlur={() => setCapacityChecked(true)}
+              />
+              {showCapError && <span id="capacity-error" className="field-error">{capError}</span>}
+            </div>
+            <div className="field capacity-field">
+              <label className="field-label" htmlFor="max-pallets">Pallet spaces per truck</label>
+              <input
+                id="max-pallets"
+                className="input"
+                type="number"
+                min="1"
+                max="100"
+                inputMode="numeric"
+                placeholder="not limited"
+                value={palletsText}
+                aria-invalid={palError ? true : undefined}
+                aria-describedby={palError ? "pallets-error" : "pallets-hint"}
+                onChange={(e) => {
+                  setPalletsText(e.target.value);
+                  clearResult();
+                }}
+              />
+              {palError
+                ? <span id="pallets-error" className="field-error">{palError}</span>
+                : <span id="pallets-hint" className="field-hint">1165 × 1165 mm pallets, 2 across</span>}
+            </div>
+            <div className="field rule-set">
+              <span className="field-label" id="rule-set-label">Dangerous goods rules</span>
+              <fieldset className="segmented" aria-labelledby="rule-set-label">
+                {[["adg", "ADG Code"], ["northline", "ADG + Northline"]].map(([v, label]) => (
+                  <label key={v}>
+                    <input
+                      type="radio"
+                      name="rule-set"
+                      value={v}
+                      checked={ruleSet === v}
+                      onChange={() => {
+                        setRuleSet(v);
+                        clearResult();
+                      }}
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </fieldset>
+            </div>
           </div>
-          <div className="quick-stats">
-            <span><b>{shipments.length}</b> shipments</span>
-            <span><b>{totalWeight.toLocaleString()}</b> kg total</span>
-            <span><b>{totalPallets.toLocaleString()}</b> pallets</span>
-            <span>Lower bound: <b>{lowerBound ?? "—"}</b> trucks</span>
+
+          <ul className="quick-stats" aria-label="Totals">
+            <li><b className="num">{shipments.length}</b> shipments</li>
+            <li><b className="num">{totalWeight.toLocaleString()}</b> kg total</li>
+            <li><b className="num">{totalPallets.toLocaleString()}</b> pallets</li>
+            <li>Lower bound <b className="num">{lowerBound ?? "—"}</b> trucks</li>
             {dgCount > 0 && (
-              <span className="dg-quick">
-                <b>{dgCount}</b> dangerous goods · <b>{dgConflicts}</b> incompatible pair{dgConflicts === 1 ? "" : "s"}
-              </span>
+              <li className="dg-quick">
+                <b className="num">{dgCount}</b> dangerous goods · <b className="num">{dgConflicts}</b> incompatible pair{dgConflicts === 1 ? "" : "s"}
+              </li>
+            )}
+          </ul>
+
+          <ShipmentForm shipments={shipments} capacity={capacity} maxPallets={maxPallets} onChange={changeShipments} ruleSet={ruleSet} />
+
+          <div className="actions">
+            <button type="button" className="btn btn-primary" onClick={solve} disabled={loading}>
+              {loading ? "Solving…" : "Solve"}
+            </button>
+            <button type="button" className="btn" onClick={() => changeShipments(randomShipments(capacity ?? undefined, 20))}>
+              Load random shipments
+            </button>
+            <button type="button" className="btn" onClick={clearAll} disabled={!shipments.length}>
+              Clear all
+            </button>
+            {result && (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => startAnimation(result.drop_order.length)}
+              >
+                <span aria-hidden="true">↻</span> Replay animation
+              </button>
             )}
           </div>
-          <fieldset className="rule-set">
-            <legend>Dangerous goods rules</legend>
-            <div className="rule-set-options">
-              {[["adg", "ADG Code"], ["northline", "ADG + Northline"]].map(([v, label]) => (
-                <label key={v} className={ruleSet === v ? "on" : ""}>
-                  <input
-                    type="radio"
-                    name="rule-set"
-                    value={v}
-                    checked={ruleSet === v}
-                    onChange={() => {
-                      setRuleSet(v);
-                      clearResult();
-                    }}
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-        </div>
 
-        <ShipmentForm shipments={shipments} capacity={capacity} maxPallets={maxPallets} onChange={changeShipments} ruleSet={ruleSet} />
+          <div role="status" className="notice-slot">
+            {undoList && (
+              <div className="notice">
+                Cleared {undoList.length} shipment{undoList.length === 1 ? "" : "s"} ·{" "}
+                <button type="button" className="link-button" onClick={undoClear}>Undo</button>
+              </div>
+            )}
+          </div>
 
-        <div className="actions">
-          <button type="button" onClick={() => changeShipments(randomShipments(capacity ?? undefined, 20))}>
-            🎲 Load random shipments
-          </button>
-          <button type="button" className="secondary" onClick={clearAll} disabled={!shipments.length}>
-            Clear all
-          </button>
-          <button type="button" className="primary" onClick={solve} disabled={loading}>
-            {loading ? "Solving…" : "▶ Solve"}
-          </button>
+          <div ref={errorRef} role="alert">
+            {error && <div className="error">{error}</div>}
+          </div>
+        </section>
+
+        <div className="results" ref={resultsRef}>
+          {loading && <SolvingProgress elapsed={elapsed} count={shipments.length} />}
+
+          {result && <Summary result={result} />}
+
           {result && (
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => startAnimation(result.drop_order.length)}
-            >
-              ↻ Replay animation
-            </button>
+            <>
+              <div className={`inspector${active ? " on" : ""}`} aria-hidden="true">
+                {active ? (
+                  <>
+                    <span className="inspector-name">{active.shipment.name}</span>
+                    <span>{active.shipment.weight} kg</span>
+                    <span>{palletFootprint(active.shipment.pallets) || "loose freight"}</span>
+                    {active.shipment.dg_class && <span>DG: <b>{dgClassText(active.shipment.dg_class, active.shipment.subsidiary)}</b></span>}
+                    <span><b>Truck {active.truck}</b></span>
+                  </>
+                ) : (
+                  <span className="muted small">
+                    Hover over a shipment, or Tab to it, to see what it is.
+                  </span>
+                )}
+              </div>
+              <fieldset className="segmented view-toggle" aria-label="Truck view">
+                {[["2d", usesPallets ? "2D deck plan" : "2D bars"], ["3d", "3D trucks"]].map(([v, label]) => (
+                  <label key={v}>
+                    <input type="radio" name="truck-view" value={v} checked={view === v} onChange={() => setView(v)} />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </fieldset>
+              <ResultPanel
+                title="OR-Tools CP-SAT"
+                explanation="Searches every possible loading for the fewest trucks, and proves when no better one exists."
+                data={result}
+                capacity={viewCapacity}
+                step={step}
+                truckHeight={narrowScreen ? 200 : 280}
+                badge={result.optimal
+                  ? { text: "Proven optimal", kind: "success" }
+                  : { text: `Best found in ${result.time_limit_s} s (not proven)`, kind: "warning" }}
+                view={view}
+                {...linkProps}
+              />
+            </>
           )}
         </div>
-
-        <div role="status" className="notice-slot">
-          {undoList && (
-            <div className="notice">
-              Cleared {undoList.length} shipment{undoList.length === 1 ? "" : "s"} ·{" "}
-              <button type="button" className="link-button" onClick={undoClear}>Undo</button>
-            </div>
-          )}
-        </div>
-
-        <div ref={errorRef} role="alert">
-          {error && <div className="error">⚠️ {error}</div>}
-        </div>
-      </section>
-
-      <div className="results" ref={resultsRef}>
-        {loading && <SolvingProgress elapsed={elapsed} count={shipments.length} />}
-
-        {result && <Summary result={result} />}
-
-        {result && (
-          <>
-            <div className={`inspector${active ? " on" : ""}`} aria-hidden="true">
-              {active ? (
-                <>
-                  <span className="inspector-name">{active.shipment.name}</span>
-                  <span>{active.shipment.weight} kg</span>
-                  <span>{palletFootprint(active.shipment.pallets) || "loose freight"}</span>
-                  {active.shipment.dg_class && <span>DG: <b>{dgClassText(active.shipment.dg_class, active.shipment.subsidiary)}</b></span>}
-                  <span><b>Truck {active.truck}</b></span>
-                </>
-              ) : (
-                <span className="muted">
-                  Hover over a shipment, or Tab to it, to see what it is.
-                </span>
-              )}
-            </div>
-            <div className="view-toggle" role="group" aria-label="Truck view">
-              {[["2d", usesPallets ? "2D deck plan" : "2D bars"], ["3d", "3D trucks"]].map(([v, label]) => (
-                <button
-                  key={v}
-                  type="button"
-                  className={view === v ? "on" : ""}
-                  aria-pressed={view === v}
-                  onClick={() => setView(v)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <ResultPanel
-              title="OR-Tools CP-SAT"
-              explanation="Searches every possible loading for the fewest trucks, and proves when no better one exists."
-              data={result}
-              capacity={viewCapacity}
-              step={step}
-              truckHeight={narrowScreen ? 200 : 280}
-              badge={result.optimal
-                ? { text: "Proven optimal", kind: "good" }
-                : { text: `Best found in ${result.time_limit_s} s (not proven)`, kind: "warn" }}
-              view={view}
-              {...linkProps}
-            />
-          </>
-        )}
-      </div>
+      </main>
     </div>
   );
 }

@@ -175,7 +175,7 @@ function HazardForm({ id, name, draft, setDraft, others, ruleSet, onCancel, onDo
           {!dg ? (
             <p className="muted small">General freight can share a truck with anything.</p>
           ) : conflicts.length === 0 ? (
-            <p className="hz-ok small">✓ No conflicts with the other shipments in the list.</p>
+            <p className="hz-ok small"><span aria-hidden="true">✓</span> No conflicts with the other shipments in the list.</p>
           ) : (
             <>
               <p className="small">
@@ -196,8 +196,8 @@ function HazardForm({ id, name, draft, setDraft, others, ruleSet, onCancel, onDo
       </div>
 
       <footer className="hz-foot">
-        <button type="button" className="secondary" onClick={onCancel}>Cancel</button>
-        <button type="submit" className="primary">Done</button>
+        <button type="button" className="btn" onClick={onCancel}>Cancel</button>
+        <button type="submit" className="btn btn-primary">Done</button>
       </footer>
     </form>
   );

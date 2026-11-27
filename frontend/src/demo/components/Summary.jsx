@@ -22,10 +22,14 @@ export default function Summary({ result }) {
   const totals = { weight: [result.total_weight, result.capacity], pallets: [result.total_pallets, result.max_pallets] };
   return (
     <section className="card summary" aria-label="Summary">
-      <p className="verdict">
-        OR-Tools packed {count} shipment{count === 1 ? "" : "s"} into {trucks(n)}
-        {optimal ? " ✅ proven optimal" : " ⏱️ best found, not proven"}.
-      </p>
+      <div className="verdict-row">
+        <h2 className="verdict">
+          OR-Tools packed {count} shipment{count === 1 ? "" : "s"} into {trucks(n)}
+        </h2>
+        {optimal
+          ? <span className="badge badge-success">Proven optimal</span>
+          : <span className="badge badge-warning">Best found, not proven</span>}
+      </div>
       <p className="floor-note">{note}</p>
       <ul className="summary-stats small">
         {Object.entries(bounds).map(([dim, value]) => (
@@ -38,7 +42,7 @@ export default function Summary({ result }) {
       </ul>
       {segregated && (
         <p className="dg-bound-note">
-          ⚠️ Some dangerous goods are incompatible (ADG Code Table 9.1) and never share a truck. The lower bound
+          Some dangerous goods are incompatible (ADG Code Table 9.1) and never share a truck. The lower bound
           only counts capacity and ignores this segregation, so it can be lower than any packing that keeps them apart.
         </p>
       )}
