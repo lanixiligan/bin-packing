@@ -2,7 +2,7 @@
 // Run: node --test src/components/deck.test.mjs
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deckFor, describeDeck, layoutPallets, palletFootprint, truckDeck, usesDeck } from "./deck.ts";
+import { deckFor, describeDeck, layoutPallets, longestLoad, palletFootprint, truckDeck, usesDeck } from "./deck.ts";
 
 const s = (id, pallets) => ({ id, name: `S${id}`, weight: 100, pallets });
 
@@ -63,4 +63,14 @@ test("usesDeck: a pallet limit, or any shipment on pallets", () => {
 test("pallet footprint text", () => {
   assert.equal(palletFootprint(2), "2 pallet spaces of 1165 × 1165 mm");
   assert.equal(palletFootprint(0), "");
+});
+
+test("trucks can share one deck length", () => {
+  const trucks = [{ shipments: [s(1, 1)] }, { shipments: [s(2, 3), s(3, 4)] }];
+  assert.equal(longestLoad(trucks), 7);
+  assert.equal(longestLoad([]), 0);
+  // A 1-pallet truck drawn as long as the 7-pallet one (4 rows of 2).
+  assert.equal(truckDeck([s(1, 1)], 1000, 7).rows, 4);
+  // A pallet limit wins over `atLeast`.
+  assert.equal(truckDeck([s(1, 1)], { weight_kg: 1000, pallets: 8 }, 20).slots, 8);
 });

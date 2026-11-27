@@ -56,10 +56,22 @@ export function usesDeck(shipments: ShipmentLike[], cap: number | CapacityLimits
   return shipments.some((s) => palletsOf(s) > 0);
 }
 
-/** The deck of one truck: its pallet limit, or sized to all of its shipments (stable while dropping). */
-export function truckDeck(shipments: ShipmentLike[], cap: number | CapacityLimits | null | undefined): Deck {
+/** Pallet spaces a list of shipments takes. */
+export const palletTotal = (shipments: ShipmentLike[]) => shipments.reduce((sum, s) => sum + palletsOf(s), 0);
+
+/**
+ * The deck of one truck: its pallet limit, or sized to all of its shipments (stable while dropping).
+ * `atLeast` sizes an unlimited deck for at least that many pallets, so trucks drawn side by side
+ * can share one deck length.
+ */
+export function truckDeck(shipments: ShipmentLike[], cap: number | CapacityLimits | null | undefined, atLeast = 0): Deck {
   const limit = cap != null && typeof cap === "object" ? limitOf(cap, "pallets") : null;
-  return deckFor(limit, shipments.reduce((sum, s) => sum + palletsOf(s), 0));
+  return deckFor(limit, Math.max(atLeast, palletTotal(shipments)));
+}
+
+/** Pallet spaces of the most loaded truck: pass it as `atLeast` so unlimited decks share one length. */
+export function longestLoad(trucks: { shipments: ShipmentLike[] }[]): number {
+  return Math.max(0, ...trucks.map((t) => palletTotal(t.shipments)));
 }
 
 export interface PalletPiece {
