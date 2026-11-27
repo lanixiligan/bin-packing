@@ -11,7 +11,14 @@ export default defineConfig({
       "/api": process.env.VITE_API_TARGET || "http://localhost:8000",
     },
   },
-  // Component tests for the load planner (src/planner). The DG rules port runs with `node --test`.
+  // Two pages: the load planner (index.html) and the bin-packing demo (demo.html).
+  build: {
+    rollupOptions: {
+      input: { main: "index.html", demo: "demo.html" },
+    },
+  },
+  // Component tests for the load planner (src/planner). The DG rules port and the demo's helpers
+  // run with `node --test`.
   test: {
     environment: "jsdom",
     include: ["src/planner/**/*.test.{ts,tsx}"],

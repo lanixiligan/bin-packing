@@ -75,6 +75,7 @@ function Header({ theme, onTheme }: { theme: Theme; onTheme(t: Theme): void }) {
           </div>
         </div>
         <div className="header-controls">
+          <a className="btn btn-ghost btn-sm" href="/demo.html">Bin packing demo</a>
           <fieldset className="segmented" aria-label="Display units">
             {([["mm-kg", "mm · kg"], ["m-t", "m · t"]] as [UnitSystem, string][]).map(([value, label]) => (
               <label key={value}>

@@ -3,8 +3,9 @@ Truck load planner API.
 
     cd backend && uvicorn app.main:app --reload --port 8000
 
-Routes are under /api: GET /api/health, GET /api/reference and POST /api/plan. Docs: /docs.
-app/dg.py (ADG dangerous goods segregation) is kept for wiring into the planner later.
+Routes are under /api: GET /api/health, GET /api/reference and POST /api/plan for the
+load planner, and POST /api/solve for the bin-packing demo (OR-Tools, ADG segregation
+from app/dg.py). Docs: /docs.
 CORS_ORIGINS (comma-separated) lists the browser origins allowed to call it.
 """
 
@@ -13,7 +14,7 @@ import os
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import planner
+from app.routers import demo, planner
 
 # Request bodies are capped while they stream in (413 past the limit).
 MAX_BODY_BYTES = 1024 * 1024
@@ -37,4 +38,5 @@ async def health() -> dict[str, str]:
 
 
 api.include_router(planner.router, tags=["planner"])
+api.include_router(demo.router, tags=["demo"])
 app.include_router(api)

@@ -1,0 +1,269 @@
+/* The bin-packing demo page. Colours, type, spacing and the shared building blocks
+   (.card, .btn, .input, .segmented, .badge) come from the planner's tokens.css and
+   base.css; this file only lays out the demo. Two demo-only colours: --block-text, the
+   label on the pastel shipment blocks (6:1 or better on every hue, see colorFor in
+   capacity.ts), and --block-sep, the hairline between stacked blocks. */
+
+/* CSS @import, not a JS import: the planner bundle keeps its own copy and its CSS order. */
+@import "../planner/styles/tokens.css";
+@import "../planner/styles/base.css";
+
+:root {
+  --block-text: #0f172a;
+  --block-sep: rgb(255 255 255 / 0.85);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --block-sep: rgb(11 17 32 / 0.7); }
+}
+:root[data-theme="dark"] { --block-sep: rgb(11 17 32 / 0.7); }
+
+/* ---------- Page ---------- */
+.app { min-height: 100vh; }
+
+.app-header { background: var(--color-surface); border-bottom: var(--border); }
+.app-header-inner { max-width: var(--content-max); margin: 0 auto; padding: var(--space-3) var(--space-6);
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-6); flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: var(--space-3); }
+.brand-mark { flex: none; width: 32px; height: 32px; padding: 5px; color: var(--color-on-accent); background: var(--color-accent);
+  border-radius: var(--radius-sm); }
+.header-controls { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.header-controls fieldset { margin: 0; min-width: 0; }
+
+.demo-main { max-width: var(--content-max); margin: 0 auto; padding: var(--space-5) var(--space-6) var(--space-10);
+  display: flex; flex-direction: column; gap: var(--space-5); }
+.section-title { font-size: var(--text-lg); }
+.card-intro { display: flex; flex-direction: column; gap: var(--space-1); max-width: 72ch; margin-bottom: var(--space-5); }
+
+/* ---------- Inputs ---------- */
+.capacity-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-4) var(--space-6); }
+.capacity-field { width: 200px; }
+.capacity-field .field-error { max-width: 220px; }
+.rule-set fieldset { margin: 0; align-self: flex-start; }
+.rule-set .segmented span { padding: 6px var(--space-3); font-size: var(--text-sm); }
+
+.quick-stats { display: flex; flex-wrap: wrap; gap: var(--space-2); list-style: none; margin: var(--space-4) 0; padding: 0;
+  font-size: var(--text-sm); color: var(--color-text-muted); }
+.quick-stats li { padding: 2px var(--space-3); border-radius: var(--radius-pill); background: var(--color-surface-2); }
+.quick-stats b { color: var(--color-text); font-weight: var(--weight-semibold); }
+.quick-stats .dg-quick { background: var(--color-warning-soft); color: var(--color-warning); }
+.quick-stats .dg-quick b { color: inherit; }
+
+/* Shipment list: a scrolling grid of compact rows. */
+.shipment-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 1fr));
+  gap: var(--space-2) var(--space-5);
+  max-height: 300px;
+  overflow-y: auto;
+  padding: var(--space-3);
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+.shipment-list > .muted { grid-column: 1 / -1; font-size: var(--text-sm); }
+.shipment-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.shipment-form .input { min-height: 32px; padding: 0 var(--space-2); font-variant-numeric: tabular-nums; }
+.shipment-form .name { flex: 1; width: auto; min-width: 5.5rem; }
+.shipment-form .weight { width: 72px; }
+.shipment-form .pallets { width: 52px; }
+.row-error { width: 100%; color: var(--color-error); font-size: var(--text-xs); }
+.unit { color: var(--color-text-subtle); font-size: var(--text-xs); }
+.btn-icon.remove { color: var(--color-text-muted); }
+.btn-icon.remove:hover:not(:disabled) { color: var(--color-error); }
+
+.add-row { display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-3); flex-wrap: wrap; }
+.add-row .name { flex: 0 1 220px; }
+.add-row .weight { width: 88px; }
+.add-row .btn { min-height: 32px; }
+.shipment-form > .link-button { margin-top: var(--space-3); }
+
+.link-button {
+  padding: 2px 0; border: none; background: none; font: inherit; font-size: var(--text-sm);
+  color: var(--color-accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+
+.paste-box {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  margin-top: var(--space-3); padding: var(--space-3);
+  border: 1px dashed var(--color-border-strong); border-radius: var(--radius-sm);
+}
+.paste-box label { font-size: var(--text-sm); }
+.paste-box textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.paste-status { min-height: 1.2em; color: var(--color-text-muted); }
+.paste-invalid { color: var(--color-error); }
+.paste-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+
+.actions { display: flex; gap: var(--space-2); margin-top: var(--space-5); padding-top: var(--space-4); border-top: var(--border); flex-wrap: wrap; }
+.actions .btn-primary { min-width: 96px; }
+
+.notice {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  margin-top: var(--space-3); padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm); border: var(--border); border-radius: var(--radius-sm); background: var(--color-surface);
+}
+.error {
+  margin-top: var(--space-3); padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-sm); border: 1px solid var(--color-error); background: var(--color-error-soft);
+  color: var(--color-error); font-size: var(--text-sm); font-weight: var(--weight-medium);
+}
+
+/* ---------- Progress while solving ---------- */
+.progress-card { display: flex; flex-direction: column; gap: var(--space-1); }
+.progress-title { font-weight: var(--weight-semibold); }
+.progress-card progress { width: 100%; height: 8px; margin-top: var(--space-2); accent-color: var(--color-accent); }
+.progress-time { font-variant-numeric: tabular-nums; color: var(--color-text-muted); }
+
+/* ---------- Results ---------- */
+.results { display: flex; flex-direction: column; gap: var(--space-4); scroll-margin-top: var(--space-2); }
+.results:empty { display: none; }
+
+.verdict-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+.verdict { font-size: var(--text-lg); }
+.floor-note { margin: var(--space-2) 0 var(--space-4); color: var(--color-text-muted); max-width: 80ch; }
+.summary-stats { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-5); list-style: none; margin: 0; padding: 0;
+  font-variant-numeric: tabular-nums; }
+.summary-stats b { font-weight: var(--weight-semibold); }
+.dg-bound-note {
+  margin-top: var(--space-4); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
+  background: var(--color-warning-soft); color: var(--color-warning); font-size: var(--text-sm);
+}
+
+/* Hover/focus inspector: stays in view while scrolling the trucks. */
+.inspector {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4);
+  min-height: 44px; padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm); font-variant-numeric: tabular-nums;
+  border: var(--border); border-radius: var(--radius-md); background: var(--color-surface);
+}
+.inspector.on { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+.inspector-name { font-weight: var(--weight-semibold); }
+
+.view-toggle { align-self: flex-start; margin: 0; min-width: 0; }
+.view-toggle span { padding: 6px var(--space-3); font-size: var(--text-sm); }
+
+.panel { min-width: 0; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2) var(--space-3); flex-wrap: wrap; }
+.panel-head h2 { font-size: var(--text-lg); }
+.panel > .muted { margin-top: var(--space-1); }
+.panel-stats { margin: var(--space-2) 0 var(--space-4); font-size: var(--text-sm); color: var(--color-text-muted); }
+.panel-stats b { color: var(--color-text); }
+
+/* ---------- Trucks (2D bars) ---------- */
+.trucks { display: flex; flex-wrap: wrap; gap: var(--space-4); font-variant-numeric: tabular-nums; }
+.truck { display: flex; flex-direction: column; align-items: center; width: 92px; }
+.truck-fill { margin-bottom: var(--space-1); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.truck-body {
+  width: 100%;
+  display: flex;
+  flex-direction: column-reverse; /* first loaded shipment sits at the bottom */
+  border: 2px solid var(--color-border-strong);
+  border-top-style: dashed;        /* open top: empty space shows as stripes */
+  border-radius: 4px 4px 8px 8px;
+  background: repeating-linear-gradient(45deg, var(--color-surface-2), var(--color-surface-2) 6px,
+    var(--color-surface-3) 6px, var(--color-surface-3) 12px);
+  overflow: hidden;
+}
+.block {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-top: 1px solid var(--block-sep);
+  overflow: hidden;
+  cursor: default;
+  transition: opacity var(--motion-fast) var(--ease);
+  animation: drop 0.45s cubic-bezier(0.3, 0.9, 0.4, 1.15);
+}
+.block-label {
+  max-width: 100%;
+  padding: 0 2px;
+  font-size: 0.68rem;
+  line-height: 1.1;
+  text-align: center;
+  color: var(--block-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.block:focus, .block:focus-visible { outline: none; }
+.block:focus-visible, .block.active {
+  /* inset ring: the truck body clips anything drawn outside the block */
+  box-shadow: inset 0 0 0 3px var(--block-text), inset 0 0 0 5px #ffffff;
+}
+.panel.linking .block:not(.active) { opacity: 0.35; }
+
+.truck-name { margin-top: var(--space-2); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.truck.holds-active .truck-name { color: var(--color-accent); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.truck-empty { font-size: var(--text-xs); color: var(--color-text-muted); text-align: center; }
+
+@keyframes drop {
+  from { transform: translateY(-320px); opacity: 0; }
+  60% { opacity: 1; }
+  to { transform: translateY(0); }
+}
+
+/* ---------- 3D scene ---------- */
+.scene3d {
+  position: relative;
+  border: var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-surface-2);
+  cursor: grab;
+}
+.scene3d:active { cursor: grabbing; }
+.scene3d-loading { display: grid; place-items: center; cursor: default; }
+.scene3d-hint { position: absolute; right: var(--space-3); bottom: var(--space-2); pointer-events: none; }
+.scene3d-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.truck3d-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: hidden; /* until the first frame places it */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 2px 6px;
+  font-size: var(--text-xs);
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+  user-select: none;
+}
+.truck3d-sub { color: var(--color-text-muted); }
+.truck3d-label.active { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+.truck3d-label.extra { border: 2px dashed var(--color-warning); }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- Narrow screens ---------- */
+@media (max-width: 600px) {
+  .app-header-inner, .demo-main { padding-left: var(--space-4); padding-right: var(--space-4); }
+  .demo-main { padding-top: var(--space-4); gap: var(--space-4); }
+  .card { padding: var(--space-4); }
+  .capacity-field { width: calc(50% - var(--space-3)); min-width: 140px; }
+  .shipment-list { padding: var(--space-2); }
+  .trucks { gap: var(--space-3) var(--space-2); }
+  .truck { width: 70px; } /* 4 per row at 375 px; heights shrink to 200 px in JS */
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .block { animation: none; transition: none; }
+}
