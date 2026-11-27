@@ -1,4 +1,6 @@
 // The load planner page: 1) choose a vehicle (or "suggest one"), 2) add freight, 3) review the plan.
+// Steps 1 and 2 stay compact (one line for the vehicle, one row per freight line) and open in place
+// to edit, so the page needs little scrolling.
 //
 // Owns the state and the API calls; every panel is driven purely by the planner's response and
 // never recalculates placement. A plan is requested automatically (debounced) whenever the inputs
@@ -26,7 +28,7 @@ import LoadPlanView from "./components/LoadPlanView.tsx";
 import PlanStatus from "./components/PlanStatus.tsx";
 import TruckTabs from "./components/TruckTabs.tsx";
 import UtilisationSummary from "./components/UtilisationSummary.tsx";
-import VehiclePicker from "./components/VehiclePicker.tsx";
+import VehicleStep from "./components/VehicleStep.tsx";
 import WarningsList from "./components/WarningsList.tsx";
 import "./styles/tokens.css";
 import "./styles/base.css";
@@ -252,20 +254,11 @@ export function Planner({ initialReference = null }: { initialReference?: Refere
       ) : (
         <main className="app-main">
           <div className="rail">
-            <Step n={1} id="step-vehicle" title="Choose a vehicle" hint="Or let the planner suggest the smallest that fits.">
-              <VehiclePicker reference={reference} vehicleId={vehicleId} bodyType={bodyType}
-                             onVehicleChange={(id) => { setVehicleId(id); setBodyType(null); }}
-                             onBodyChange={setBodyType}
-                             suggestedVehicleId={vehicleId === SUGGEST ? result?.vehicle_id ?? null : null} />
-              <fieldset className="segmented mass-scheme" aria-label="Mass limits">
-                {([["GML", "General Mass Limits"], ["HML", "Higher Mass Limits"]] as [MassScheme, string][]).map(([value, label]) => (
-                  <label key={value}>
-                    <input type="radio" name="mass-scheme" value={value} checked={massScheme === value}
-                           onChange={() => setMassScheme(value)} />
-                    <span>{label}</span>
-                  </label>
-                ))}
-              </fieldset>
+            <Step n={1} id="step-vehicle" title="Choose a vehicle">
+              <VehicleStep reference={reference} vehicleId={vehicleId} bodyType={bodyType} massScheme={massScheme}
+                           onVehicleChange={(id) => { setVehicleId(id); setBodyType(null); }}
+                           onBodyChange={setBodyType} onMassSchemeChange={setMassScheme}
+                           suggestedVehicleId={vehicleId === SUGGEST ? result?.vehicle_id ?? null : null} />
             </Step>
             <Step n={2} id="step-freight" title="Add freight" hint="Weights are per unit, including the pallet.">
               <FreightTable reference={reference} rows={rows} onRowsChange={setRows}

@@ -164,6 +164,7 @@ describe("Planner: split across trucks", () => {
     const user = userEvent.setup();
     render(<Planner initialReference={reference} />);
     await splitButton();
+    await user.click(screen.getByRole("button", { name: "Change vehicle" }));
     await user.click(screen.getByRole("radio", { name: /suggest/i }));
     expect(await screen.findByText("To split this load across trucks, pick a vehicle in step 1 first.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Split across trucks" })).not.toBeInTheDocument();
