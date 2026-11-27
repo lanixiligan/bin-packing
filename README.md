@@ -3,7 +3,7 @@
 Given freight (pallets or containers) and an Australian vehicle, the planner works out **whether the
 load fits, where each item goes, and what capacity is left**. It also estimates axle group loads
 against General or Higher Mass Limits, and warns about height, refrigeration, stacking and
-dangerous goods segregation. It can also suggest the smallest vehicle that fits.
+dangerous goods: segregation under the ADG Code, plus Northline's acceptance rules. It can also suggest the smallest vehicle that fits.
 
 > **Planning tool only.** Results are estimates. They are not compliance with the NTC Load Restraint
 > Guide or with mass and dimension limits, and every capacity is a typical value you can override.
@@ -120,6 +120,7 @@ make fixtures   # regenerate the frontend's sample API responses after planner c
 | `vehicle_id` | A vehicle id from `/api/reference`, or `"suggest"` for the smallest vehicle that fits |
 | `body_type` | A body id, or `null` for the vehicle's default. In suggest mode, vehicles without it are skipped |
 | `mass_scheme` | `"GML"` (default) or `"HML"` |
+| `rule_set` | Optional: `"northline"` (default, ADG Code plus Northline's acceptance rules) or `"adg"` (ADG Code only). The page always uses the default |
 | `items[]` | Up to 500 units in total. `gross_weight_kg` is per unit, including the pallet. `height_mm` applies to pallets only. `dg` is optional dangerous goods data |
 | `overrides` | Optional partial reference data, deep-merged and re-validated (lists replace) |
 
@@ -155,8 +156,8 @@ vehicle cards), and every shipment has a real size:
   the truck's inside height. Everything else stands on the deck floor.
 
 Google OR-Tools CP-SAT places every footprint on a deck (turned 90° when that fits better, never
-overlapping), keeps each truck within its payload and keeps incompatible dangerous goods (ADG Code
-Table 9.1) apart. It searches for 10 s at most, starting from a quick greedy packing, and proves
+overlapping), keeps each truck within its payload, refuses goods Northline won't carry and keeps
+incompatible dangerous goods (ADG Code Table 9.1) apart. It searches for 10 s at most, starting from a quick greedy packing, and proves
 when no packing uses fewer trucks. The summary compares the answer with lower bounds for weight,
 volume and the floor area of non-stackable items. The page draws each truck's decks to scale from
 the returned positions, with a 3D view (three.js loads only when it's opened). *Random shipments*
@@ -171,7 +172,6 @@ data and vehicle picker with the planner.
 {
   "vehicle_id": "RIGID_MEDIUM",
   "body_type": null,
-  "rule_set": "adg",
   "shipments": [
     { "name": "Paint 01", "weight": 420, "pallet_type": "AU_STD", "height_mm": 1200,
       "stackable": true, "dg_class": "3" },
@@ -184,7 +184,7 @@ data and vehicle picker with the planner.
 | Field | Notes |
 |---|---|
 | `vehicle_id`, `body_type` | A vehicle and body from `/api/reference` (the body must carry pallets) |
-| `rule_set` | `"adg"` (default) or `"northline"` |
+| `rule_set` | Optional: `"northline"` (default, ADG Code plus Northline's acceptance rules) or `"adg"` (ADG Code only). The page always uses the default |
 | `shipments[]` | Up to 40. `weight` in kg, `height_mm` the total height |
 | `shipments[].kind` | `"pallet"` (default, with `pallet_type`, default AU_STD) or `"loose"` (with `length_mm` and `width_mm`) |
 | `shipments[].stackable` | Optional, default false |
