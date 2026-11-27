@@ -1,5 +1,5 @@
 /* Step 2: freight rows as compact cards (a two-column grid of fields in the 420px rail, four
-   columns when the rail is wide, one when very narrow), actions, CSV panel, presets and toast. */
+   columns when the rail is wide, one when very narrow), DG badges and hint, actions, presets and toast. */
 
 .ft { container: freight / inline-size; display: flex; flex-direction: column; gap: var(--space-4); }
 
@@ -94,21 +94,6 @@
 .ft-totals-label { font-weight: var(--weight-medium); color: var(--color-text-muted); }
 
 .ft-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.ft-actions .btn-ghost { margin-left: auto; }
-
-/* ---- CSV panel ---- */
-.ft-csv { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4);
-  background: var(--color-surface-2); border: var(--border); border-radius: var(--radius-md); }
-.ft-csv-text { min-height: 120px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: var(--text-xs); }
-.ft-csv-preview:empty { display: none; }
-.ft-csv-preview { font-size: var(--text-sm); }
-.ft-csv-problems { padding: var(--space-2) var(--space-3); color: var(--color-text); background: var(--color-warning-soft);
-  border-radius: var(--radius-sm); }
-.ft-csv-problems ul { margin: var(--space-1) 0 0; padding-left: var(--space-5); font-size: var(--text-xs); }
-.ft-csv-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
-.ft-csv-footer .segmented { margin: 0; }
-.ft-csv-buttons { display: flex; gap: var(--space-2); margin-left: auto; }
 
 /* ---- Presets ---- */
 .ft-presets { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-4);
@@ -133,5 +118,5 @@
 @keyframes ft-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
 @media print {
-  .ft-actions, .ft-csv, .ft-presets, .ft-toast-region, .ft-row-actions { display: none !important; }
+  .ft-actions, .ft-presets, .ft-toast-region, .ft-row-actions { display: none !important; }
 }

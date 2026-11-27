@@ -1,11 +1,10 @@
 // Step 2: editable freight rows (a compact card per row, so it fits the narrow rail), quick-add
-// presets, random freight, duplicate / delete with undo, CSV paste or import, inline validation
-// messages. Rows with dangerous goods show a read-only placard badge, and an early hint above the
-// rows names pairs that can't share a vehicle (the plan result stays the authority).
+// presets, random freight, duplicate / delete with undo, inline validation messages. Rows with
+// dangerous goods show a read-only placard badge, and an early hint above the rows names pairs
+// that can't share a vehicle (the plan result stays the authority).
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ReferenceData } from "../api/types.ts";
 import { checkAll, type DgPairResult } from "../../dg/rules.ts";
-import { parseCsv, toCsv, CSV_COLUMNS } from "../lib/csv.ts";
 import { dgLabel, dgName, placardCode } from "../lib/dg.ts";
 import { newRow, newRowId, type FreightRow, type RowErrors, type RowField } from "../lib/freight.ts";
 import { randomFreight } from "../lib/randomFreight.ts";
@@ -132,16 +131,6 @@ function Field({ id, label, error, hint, className = "", children }: FieldProps)
   );
 }
 
-function readText(file: File): Promise<string> {
-  if (typeof file.text === "function") return file.text();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsText(file);
-  });
-}
-
 const toNumber = (v: string): number | null => {
   if (v.trim() === "") return null;
   const n = Number(v);
@@ -165,21 +154,15 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
   const units = useUnits();
   const uid = useId();
   const rootRef = useRef<HTMLDivElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   /** After a render, focus this row (by id) or row index, else the Add line button. */
   const pendingFocus = useRef<{ id?: string; index?: number; field?: string } | null>(null);
 
   const [toast, setToast] = useState<Toast | null>(null);
   const [toastPaused, setToastPaused] = useState(false);
-  const [csvOpen, setCsvOpen] = useState(false);
-  const [csvText, setCsvText] = useState("");
-  const [csvMode, setCsvMode] = useState<"append" | "replace">("append");
-
   const presets = useMemo(() => availablePresets(reference), [reference]);
   const dgPairs = useMemo(() => checkAll(rows.map((row, index) => ({ row, index })), (x) => x.row.dg), [rows]);
   const incompatible = dgPairs.filter((p) => p.status === "incompatible");
   const toCheck = dgPairs.filter((p) => p.status === "check");
-  const parsed = useMemo(() => (csvText.trim() ? parseCsv(csvText, reference) : null), [csvText, reference]);
 
   // The toast hides after a few seconds, but not while the pointer or focus is on it.
   useEffect(() => {
@@ -272,44 +255,6 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
     setToast(null);
   };
 
-  // ---- CSV ----
-  const closeCsv = () => {
-    setCsvOpen(false);
-    setCsvText("");
-  };
-
-  const importCsv = () => {
-    if (!parsed || parsed.rows.length === 0) return;
-    const previous = rows;
-    const added = parsed.rows;
-    const ids = new Set(added.map((r) => r.id));
-    onRowsChange(csvMode === "replace" ? added : [...rows, ...added]);
-    const skipped = new Set(parsed.problems.map((p) => p.line)).size;
-    showToast({
-      message: `${csvMode === "replace" ? "Replaced the list with" : "Added"} ${plural(added.length, "line")} from CSV.`
-        + (skipped ? ` Skipped ${plural(skipped, "line")} with problems.` : ""),
-      undo: csvMode === "replace" ? () => previous : (current) => current.filter((r) => !ids.has(r.id)),
-    });
-    closeCsv();
-  };
-
-  const onFile = async (file: File | undefined) => {
-    if (!file) return;
-    const text = await readText(file);
-    setCsvText(text);
-    setCsvOpen(true);
-    if (fileRef.current) fileRef.current.value = "";
-  };
-
-  const exportCsv = () => {
-    const url = URL.createObjectURL(new Blob([toCsv(rows)], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "freight.csv";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-  };
-
   // ---- Totals ----
   const totals = rows.reduce((t, r) => {
     const q = r.quantity ?? 0;
@@ -319,10 +264,7 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
     return t;
   }, { pallets: 0, containers: 0, weight: 0 });
 
-  const csvPanelId = `${uid}-csv`;
-  const csvTextId = `${uid}-csv-text`;
   const presetsLabelId = `${uid}-presets`;
-  const csvRowsUnits = parsed?.rows.reduce((n, r) => n + (r.quantity ?? 0), 0) ?? 0;
 
   return (
     <div className="ft" ref={rootRef}>
@@ -523,65 +465,7 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
         <button type="button" className="btn" onClick={addRandom}>
           <span aria-hidden="true">🎲</span>Random freight
         </button>
-        <button type="button" className="btn" aria-expanded={csvOpen} aria-controls={csvPanelId}
-                onClick={() => (csvOpen ? closeCsv() : setCsvOpen(true))}>Paste CSV</button>
-        <button type="button" className="btn" onClick={() => fileRef.current?.click()}>Import file</button>
-        <input ref={fileRef} type="file" accept=".csv,text/csv" className="visually-hidden" tabIndex={-1}
-               aria-label="Import a CSV file" onChange={(ev) => void onFile(ev.target.files?.[0])} />
-        {rows.length > 0 && <button type="button" className="btn btn-ghost" onClick={exportCsv}>Export CSV</button>}
       </div>
-
-      {csvOpen && (
-        <div id={csvPanelId} className="ft-csv" role="region" aria-label="Import CSV">
-          <div className="field">
-            <label className="field-label" htmlFor={csvTextId}>Paste CSV</label>
-            <textarea id={csvTextId} className="input ft-csv-text" value={csvText} spellCheck={false}
-                      aria-describedby={`${csvTextId}-hint`}
-                      placeholder={"label,type,quantity,weight_kg,height_mm\nCartons,AU_STD,6,350,900"}
-                      onChange={(ev) => setCsvText(ev.target.value)} />
-            <span id={`${csvTextId}-hint`} className="field-hint">
-              Columns: {CSV_COLUMNS.join(", ")}. The header row is optional; yes/no for stackable and temp-controlled.
-            </span>
-          </div>
-
-          <div className="ft-csv-preview" role="status">
-            {parsed && (
-              parsed.rows.length
-                ? <p><strong>{plural(parsed.rows.length, "line")}</strong> ready to add ({plural(csvRowsUnits, "unit")}).</p>
-                : <p>No lines can be added yet.</p>
-            )}
-          </div>
-          {parsed && parsed.problems.length > 0 && (
-            <div className="ft-csv-problems">
-              <p className="small">
-                {plural(new Set(parsed.problems.map((p) => p.line)).size, "line")} can't be used:
-              </p>
-              <ul>
-                {parsed.problems.map((p, k) => <li key={k}>{p.message}</li>)}
-              </ul>
-            </div>
-          )}
-
-          <div className="ft-csv-footer">
-            <fieldset className="segmented">
-              <legend className="visually-hidden">Add the lines how</legend>
-              {([["append", "Append"], ["replace", "Replace"]] as const).map(([value, label]) => (
-                <label key={value}>
-                  <input type="radio" name={`${uid}-csv-mode`} value={value} checked={csvMode === value}
-                         onChange={() => setCsvMode(value)} />
-                  <span>{label}</span>
-                </label>
-              ))}
-            </fieldset>
-            <div className="ft-csv-buttons">
-              <button type="button" className="btn" onClick={closeCsv}>Cancel</button>
-              <button type="button" className="btn btn-primary" onClick={importCsv} disabled={!parsed?.rows.length}>
-                {csvMode === "replace" ? "Replace with" : "Add"} {plural(parsed?.rows.length ?? 0, "line")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {presets.length > 0 && (
         <div className="ft-presets" role="group" aria-labelledby={presetsLabelId}>

@@ -213,29 +213,9 @@ describe("FreightTable", () => {
     expect(screen.queryByText(/can't share a vehicle/)).not.toBeInTheDocument();
   });
 
-  it("adds rows from pasted CSV and reports a bad line", async () => {
-    const user = setup();
-    await user.click(screen.getByRole("button", { name: "Paste CSV" }));
-    const panel = screen.getByRole("region", { name: "Import CSV" });
-    const text = within(panel).getByLabelText("Paste CSV");
-    await user.click(text);
-    await user.paste("label,type,quantity,weight_kg,height_mm\nBoxes,EURO,4,300,1000\nBad,AU_STD,2,,1200\nBox,40hc,1,18000,");
-    expect(within(panel).getByText("Line 3: weight is missing.")).toBeInTheDocument();
-    expect(within(panel).getByRole("status")).toHaveTextContent("2 lines ready to add (5 units).");
-    await user.click(within(panel).getByRole("button", { name: "Add 2 lines" }));
-    expect(labels()).toEqual(["General", "Cartons", "Steel", "Boxes", "Box"]);
-    expect(store.rows[4]).toMatchObject({ kind: "container", type_id: "HC40" });
-    expect(screen.queryByRole("region", { name: "Import CSV" })).not.toBeInTheDocument();
-    expect(screen.getByText(/added 2 lines from csv\. skipped 1 line with problems/i)).toBeInTheDocument();
-  });
-
-  it("replaces the list from an imported CSV file", async () => {
-    const user = setup();
-    const file = new File(["Pallets,pallet,AU_STD,5,600,1100,no,no,"], "freight.csv", { type: "text/csv" });
-    await user.upload(screen.getByLabelText("Import a CSV file"), file);
-    const panel = await screen.findByRole("region", { name: "Import CSV" });
-    await user.click(within(panel).getByRole("radio", { name: "Replace" }));
-    await user.click(within(panel).getByRole("button", { name: "Replace with 1 line" }));
-    expect(labels()).toEqual(["Pallets"]);
+  it("has no CSV import or export", () => {
+    setup();
+    expect(screen.queryByRole("button", { name: /csv|import/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/csv/i)).not.toBeInTheDocument();
   });
 });
