@@ -11,6 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.dg import DgInfo, RuleSet
 from app.reference.schemas import MassScheme, ReferenceOverrides
 
 SUGGEST = "suggest"
@@ -40,6 +41,11 @@ WarningCode = Literal[
     "AXLE_NEAR_LIMIT",           # an axle group at >= 90 % of its limit
     "AXLE_OVER_LIMIT",           # an axle group over its limit
     "ROUTE_RESTRICTED",          # road train etc: needs route approval / permits
+    "DG_INCOMPATIBLE",           # two lines' dangerous goods can't share a vehicle (ADG Table 9.1/9.2)
+    "DG_CHECK",                  # a pair needs checking against Table 9.2 or the Explosives Code
+    "DG_ON_BOARD",               # the load carries dangerous goods: placards, documents, licence
+    "DG_CARRIER_REFUSED",        # the carrier's rules (rule_set) refuse or limit these goods
+    "DG_CARRIER_NOTE",           # the carrier's approvals and handling notes
 ]
 Severity = Literal["info", "warning", "error"]
 
@@ -61,6 +67,8 @@ class FreightItem(_In):
     stackable: bool = False
     temp_controlled: bool = False
     stop: int | None = Field(default=None, ge=1, le=50, description="Delivery stop, 1 = first drop")
+    dg: DgInfo | None = Field(default=None, description="Dangerous goods data (ADG class, subsidiary "
+                                                        "hazards, food / fire-risk); null = general freight")
 
 
 class PlanRequest(_In):
@@ -68,6 +76,8 @@ class PlanRequest(_In):
     vehicle_id: str = Field(default="SEMI_TRAILER", description="VehicleConfig.id, or 'suggest'")
     body_type: str | None = Field(default=None, description="BodyType.id; None = the vehicle's default")
     mass_scheme: MassScheme = "GML"
+    rule_set: RuleSet = Field(default="adg", description="Dangerous goods rules: 'adg' (ADG Code) or "
+                                                        "'northline' (ADG plus Northline's acceptance rules)")
     overrides: ReferenceOverrides | None = None
 
     @model_validator(mode="after")

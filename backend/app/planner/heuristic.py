@@ -621,7 +621,7 @@ class HeuristicPlanner:
             raise ValueError(f"Unknown vehicle '{req.vehicle_id}'.")
         body = checks.resolve_body(vehicle, req.body_type, ref)
         units = expand_units(req.items)
-        warnings = list(checks.precheck(req.items, vehicle, body, ref).warnings)
+        warnings = list(checks.precheck(req.items, vehicle, body, ref, req.rule_set).warnings)
 
         placements: list[Placement] = []
         unplaced: list[str] = []

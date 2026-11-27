@@ -18,7 +18,7 @@ from tests.factories import BDOUBLE, SEMI, containers, pallets, reference, reque
 def fake_rules(monkeypatch):
     """Rules that pass everything, so a plan's warnings come from placement alone."""
     monkeypatch.setattr(checks, "resolve_body", lambda v, body, ref: ref.bodies[body or v.default_body])
-    monkeypatch.setattr(checks, "precheck", lambda items, v, body, ref: checks.CheckResult())
+    monkeypatch.setattr(checks, "precheck", lambda items, v, body, ref, rule_set="adg": checks.CheckResult())
     monkeypatch.setattr(checks, "postcheck", lambda *args, **kw: checks.CheckResult())
     monkeypatch.setattr(axles, "estimate_axle_loads", lambda v, placements, scheme="GML": [])
 

@@ -51,6 +51,13 @@ PLANS = {
         container("GP20", 12000, id="c20", label="MSKU 20'"),
         container("HC40", 20000, id="c40", label="TGHU 40' HC"),
     ]},
+    # Dangerous goods: paint (Class 3) can't travel with pool chlorine (Class 5.1); acid (Class 8) can.
+    "plan-dg-conflict": {"vehicle_id": "SEMI_TRAILER", "items": [
+        pallet(4, 600, id="paint", label="Paint", stop=2, dg={"dg_class": "3", "t92": []}),
+        pallet(3, 450, id="chlorine", label="Pool chlorine", stop=1, dg={"dg_class": "5.1", "t92": []}),
+        pallet(2, 700, id="acid", label="Battery acid", stop=1, dg={"dg_class": "8", "t92": []}),
+        pallet(6, 500, id="gen", label="General freight", stop=2),
+    ]},
     # Suggest the smallest vehicle.
     "plan-suggest": {"vehicle_id": "suggest", "items": [pallet(7, 500, id="p", label="Retail")]},
 }

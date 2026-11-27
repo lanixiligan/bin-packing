@@ -230,3 +230,48 @@ async def test_container_drops_follow_stop_order_and_warn_when_the_slots_block_i
     mixed = [dict(container("GP20", id="A"), stop=1), dict(container("GP40", id="B"), stop=2)]
     r = await plan(client, *mixed, vehicle="B_DOUBLE", body_type="SKELETAL")
     assert "STOP_ORDER_BLOCKED" in codes(r, "warning")
+
+
+# ---- Dangerous goods ----------------------------------------------------------
+
+def dg(cls=None, subsidiary=(), **kw):
+    return {"dg_class": cls, "subsidiary": list(subsidiary), "t92": [] if cls else None, **kw}
+
+
+async def test_incompatible_dangerous_goods_cant_share_the_vehicle(client):
+    r = await plan(client, pallet(2, id="paint", label="Paint", dg=dg("3")),
+                   pallet(2, id="chlorine", label="Pool chlorine", dg=dg("5.1")))
+    assert not r["fits"]
+    [w] = [w for w in r["warnings"] if w["code"] == "DG_INCOMPATIBLE"]
+    assert w["item_ids"] == ["paint", "chlorine"]
+    assert '"Paint" (Class 3)' in w["message"] and "Table 9.1" in w["message"]
+    assert "separate loads" in w["suggestion"]
+
+
+async def test_compatible_dangerous_goods_fit_with_a_note(client):
+    r = await plan(client, pallet(2, id="paint", dg=dg("3")), pallet(2, id="acid", dg=dg("8")))
+    assert r["fits"] and "DG_INCOMPATIBLE" not in codes(r)
+    [note] = [w for w in r["warnings"] if w["code"] == "DG_ON_BOARD"]
+    assert note["severity"] == "info" and "Class 3, 8" in note["message"]
+
+
+async def test_food_with_toxic_goods_is_incompatible(client):
+    r = await plan(client, pallet(2, id="rice", dg=dg(food=True)), pallet(1, id="pest", dg=dg("6.1")))
+    assert "DG_INCOMPATIBLE" in codes(r, "error")
+
+
+async def test_the_same_product_on_two_lines_never_conflicts(client):
+    r = await plan(client, pallet(2, id="a", dg=dg("3")), pallet(2, id="b", dg=dg("3")))
+    assert "DG_INCOMPATIBLE" not in codes(r)
+
+
+async def test_northline_refuses_goods_the_adg_allows(client):
+    wet = pallet(1, id="wet", dg=dg("4.3", packing_group="II"))
+    assert "DG_CARRIER_REFUSED" not in codes(await plan(client, wet))
+    r = await plan(client, wet, rule_set="northline")
+    assert not r["fits"] and "DG_CARRIER_REFUSED" in codes(r, "error")
+
+
+async def test_invalid_dg_data_is_rejected(client):
+    res = await client.post("/api/plan", json={"items": [pallet(1, dg=dg("3", subsidiary=["3"]))]})
+    assert res.status_code == 422 and "same as the class" in res.text

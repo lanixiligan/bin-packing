@@ -11,6 +11,8 @@ tonnes) and, in `suggestion`, what to try next. The data itself stays in mm and 
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from app.dg import RuleSet
+from app.planner.dg_checks import dg_warnings
 from app.planner.models import AxleLoad, FreightItem, Placement, PlanWarning
 from app.reference.schemas import BodyType, MassScheme, ReferenceData, VehicleConfig
 
@@ -89,10 +91,10 @@ def resolve_body(vehicle: VehicleConfig, body_type: str | None, ref: ReferenceDa
 
 
 def precheck(items: list[FreightItem], vehicle: VehicleConfig, body: BodyType,
-             ref: ReferenceData) -> CheckResult:
+             ref: ReferenceData, rule_set: RuleSet = "adg") -> CheckResult:
     """Unknown types, mixed freight, body/vehicle compatibility, out-of-scope bodies, reefer items,
     per-item height (max stack, internal, overall limit), container gross vs max gross,
-    route-restricted vehicles."""
+    route-restricted vehicles, and dangerous goods segregation / carrier rules (dg_checks)."""
     out: list[PlanWarning] = []
 
     def warn(code, severity, message, suggestion="", item_ids=None):
@@ -215,6 +217,7 @@ def precheck(items: list[FreightItem], vehicle: VehicleConfig, body: BodyType,
              f"The {vehicle.name} can only run on approved routes.{note}",
              "Check the route and permits before you book it.")
 
+    out += dg_warnings(items, rule_set)
     return CheckResult(out)
 
 

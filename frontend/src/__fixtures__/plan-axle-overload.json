@@ -28,6 +28,7 @@
   ],
   "vehicle_id": "SEMI_TRAILER",
   "mass_scheme": "GML",
+  "rule_set": "adg",
   "overrides": {
    "pallet_defaults": {
     "max_gross_kg": 2000

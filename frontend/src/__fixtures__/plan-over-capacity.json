@@ -25,7 +25,8 @@
    }
   ],
   "vehicle_id": "SEMI_TRAILER",
-  "mass_scheme": "GML"
+  "mass_scheme": "GML",
+  "rule_set": "adg"
  },
  "result": {
   "fits": false,

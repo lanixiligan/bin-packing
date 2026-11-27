@@ -24,7 +24,8 @@
   ],
   "vehicle_id": "B_DOUBLE",
   "body_type": "SKELETAL",
-  "mass_scheme": "GML"
+  "mass_scheme": "GML",
+  "rule_set": "adg"
  },
  "result": {
   "fits": true,
