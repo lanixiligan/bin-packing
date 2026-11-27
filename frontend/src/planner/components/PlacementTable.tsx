@@ -1,5 +1,6 @@
 // Every placement as a table: the text alternative to the drawings (the deck view's SVG points
-// here with aria-describedby). Collapsed by default; in deck position order.
+// here with aria-describedby). Collapsed by default; in deck position order. Kept to a few columns
+// (position and size are one column each) so it fits its box without scrolling inside it.
 
 import type { Deck, DgInfo, Placement } from "../api/types.ts";
 import { dgName, placardCode } from "../lib/dg.ts";
@@ -27,6 +28,10 @@ export default function PlacementTable({ id, placements, decks, typeName, dg }: 
     || a.y_mm - b.y_mm || a.stack_level - b.stack_level;
   const rows = [...placements].sort(byPosition);
   const bare = (mm: number) => units.length(mm).replace(/\s*(mm|m)$/, "");
+  // The deck only needs saying when the vehicle has more than one to load.
+  const showDeck = decks.filter((d) => d.cargo).length > 1;
+  /** "3" from "line-1#3": which unit of its freight line (the line id itself is internal). */
+  const unitNumber = (p: Placement) => (p.unit_id.includes("#") ? p.unit_id.slice(p.unit_id.lastIndexOf("#") + 1) : "");
 
   return (
     <details className="ptable">
@@ -34,34 +39,37 @@ export default function PlacementTable({ id, placements, decks, typeName, dg }: 
       <div className="table-scroll">
         <table className="table" id={id}>
           <caption className="visually-hidden">
-            Every placed unit. Positions are from the front of the deck (x) and its driver’s side (y); level 1 is the floor.
+            Every placed unit. Positions are from the front of the deck (x), from its driver’s side (y) and up from
+            the deck floor (z); level 1 is the floor.
           </caption>
           <thead>
             <tr>
-              <th scope="col">Unit</th>
               <th scope="col">Item</th>
               <th scope="col">DG</th>
               <th scope="col">Type</th>
-              <th scope="col">Deck</th>
-              <th scope="col" className="num">x</th>
-              <th scope="col" className="num">y</th>
-              <th scope="col" className="num">L × W × H</th>
+              {showDeck && <th scope="col">Deck</th>}
+              <th scope="col" className="num"
+                  title="From the front of the deck (x), from its driver’s side (y) and up from the deck floor (z)">
+                Position <span className="ptable-axes">(x, y, z)</span>
+              </th>
+              <th scope="col" className="num">Size <span className="ptable-axes">(L × W × H)</span></th>
               <th scope="col" className="num">Weight</th>
               <th scope="col" className="num">Level</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((p) => (
-              <tr key={p.unit_id}>
-                <td className="ptable-unit">{p.unit_id}</td>
-                <td>{p.label || p.item_id}</td>
+              <tr key={p.unit_id} data-unit={p.unit_id}>
+                <td>
+                  {p.label || p.item_id}
+                  {unitNumber(p) && <> <span className="ptable-unit"><span className="visually-hidden">unit </span>#{unitNumber(p)}</span></>}
+                </td>
                 <DgCell dg={dg?.get(p.item_id)} />
                 <td>{typeName(p)}{p.rotated ? <span className="subtle"> (turned)</span> : null}</td>
-                <td>{deckName.get(p.deck_id) ?? p.deck_id}</td>
-                <td className="num">{units.length(p.x_mm)}</td>
-                <td className="num">{units.length(p.y_mm)}</td>
-                <td className="num">{bare(p.length_mm)} × {bare(p.width_mm)} × {units.length(p.height_mm)}</td>
-                <td className="num">{units.weight(p.weight_kg)}</td>
+                {showDeck && <td>{deckName.get(p.deck_id) ?? p.deck_id}</td>}
+                <td className="num ptable-nowrap">{bare(p.x_mm)} · {bare(p.y_mm)} · {units.length(p.z_mm)}</td>
+                <td className="num ptable-nowrap">{bare(p.length_mm)} × {bare(p.width_mm)} × {units.length(p.height_mm)}</td>
+                <td className="num ptable-nowrap">{units.weight(p.weight_kg)}</td>
                 <td className="num">{p.stack_level + 1}</td>
               </tr>
             ))}
@@ -78,7 +86,8 @@ function DgCell({ dg }: { dg: DgInfo | undefined }) {
   if (!code) return <td className="subtle">–</td>;
   return (
     <td>
-      <span className="ptable-dg">{code}</span> <span className="muted">{dgName(dg)}</span>
+      {/* The code shows; the class name is its tooltip and is read out (the legend names the classes too). */}
+      <span className="ptable-dg" title={dgName(dg)}>{code}</span> <span className="visually-hidden">{dgName(dg)}</span>
     </td>
   );
 }

@@ -65,7 +65,7 @@ describe("LoadPlanView", () => {
     const legend = screen.getByRole("heading", { name: "Freight type" }).parentElement!;
     expect(within(legend).getByText("LOOSE")).toBeInTheDocument();
     expect(legend).toHaveTextContent(/LOOSE Loose item × 1/);
-    const row = within(screen.getByRole("table", { hidden: true })).getByText(pipes.unit_id).closest("tr")!;
+    const row = screen.getByRole("table", { hidden: true }).querySelector<HTMLElement>(`tr[data-unit="${pipes.unit_id}"]`)!;
     expect(row).toHaveTextContent("Loose item");
     expect(row).toHaveTextContent("6,000 × 800 × 400 mm");
   });
