@@ -5,6 +5,7 @@
    "name": "Australian Standard",
    "length_mm": 1165,
    "width_mm": 1165,
+   "max_gross_kg": null,
    "notes": "CHEP / Loscam hire pallet. The unit for 'pallet spaces' on Australian trucks."
   },
   "EURO": {
@@ -12,6 +13,7 @@
    "name": "Euro (EUR / EPAL)",
    "length_mm": 1200,
    "width_mm": 800,
+   "max_gross_kg": null,
    "notes": ""
   },
   "ISO_UK": {
@@ -19,6 +21,7 @@
    "name": "ISO / UK",
    "length_mm": 1200,
    "width_mm": 1000,
+   "max_gross_kg": null,
    "notes": ""
   },
   "NA": {
@@ -26,6 +29,7 @@
    "name": "North American (GMA)",
    "length_mm": 1219,
    "width_mm": 1016,
+   "max_gross_kg": null,
    "notes": "48\" x 40\"."
   },
   "ASIA": {
@@ -33,6 +37,7 @@
    "name": "Asia",
    "length_mm": 1100,
    "width_mm": 1100,
+   "max_gross_kg": null,
    "notes": ""
   },
   "SQUARE": {
@@ -40,13 +45,15 @@
    "name": "Square 42\"",
    "length_mm": 1067,
    "width_mm": 1067,
+   "max_gross_kg": null,
    "notes": "42\" x 42\", common for drums and paint."
   }
  },
  "pallet_defaults": {
   "default_pallet": "AU_STD",
   "tare_kg": 35.0,
-  "max_stack_height_mm": 1800
+  "max_stack_height_mm": 1800,
+  "max_gross_kg": 1500.0
  },
  "containers": {
   "GP20": {

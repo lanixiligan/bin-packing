@@ -35,7 +35,9 @@ PLANS = {
         pallet(5, 950, id="hw", label="Hardware", stop=1),
     ]},
     # Heavy freight at the rear: the trailer tri-axle goes over its limit.
-    "plan-axle-overload": {"vehicle_id": "SEMI_TRAILER", "items": [
+    # Steel coil is over the default 1.5 t per-pallet cap, so the carrier's 2 t limit is an override.
+    "plan-axle-overload": {"vehicle_id": "SEMI_TRAILER",
+                           "overrides": {"pallet_defaults": {"max_gross_kg": 2000}}, "items": [
         pallet(12, 1800, id="steel", label="Steel coil", stop=1),
         pallet(10, 50, id="foam", label="Foam", stop=2),
     ]},
@@ -60,7 +62,7 @@ def main() -> None:
     (OUT / "reference.json").write_text(json.dumps(ref.model_dump(mode="json"), indent=1) + "\n")
     for name, body in PLANS.items():
         req = PlanRequest.model_validate(body)
-        result = run_plan(req, ref)
+        result = run_plan(req, load_reference(req.overrides) if req.overrides else ref)
         data = {"request": req.model_dump(mode="json", exclude_none=True),
                 "result": result.model_dump(mode="json")}
         (OUT / f"{name}.json").write_text(json.dumps(data, indent=1) + "\n")

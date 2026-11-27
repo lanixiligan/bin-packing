@@ -27,7 +27,12 @@
    }
   ],
   "vehicle_id": "SEMI_TRAILER",
-  "mass_scheme": "GML"
+  "mass_scheme": "GML",
+  "overrides": {
+   "pallet_defaults": {
+    "max_gross_kg": 2000
+   }
+  }
  },
  "result": {
   "fits": false,
