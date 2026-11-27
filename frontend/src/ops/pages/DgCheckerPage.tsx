@@ -2,7 +2,7 @@
 // ADG Code Table 9.1 / 9.2 (and Northline's acceptance rules), with the tables
 // for reference. The verdicts come from the shared rules engine (src/dg/rules.ts),
 // the same one the backend mirrors, so the checker and the planner agree.
-import { useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router";
 import { PageHeader } from "../../shell/AppShell";
 import {
@@ -141,25 +141,61 @@ function LoadCard({ side, load, onChange, ruleSet, showT92, other = false }: {
   const problems = validateDg(toDg(load));
   const northline = ruleSet === "northline";
 
+  // The class grid is long: show the chosen class and open the grid only to change it.
+  const [open, setOpen] = useState(false);
+  const toggle = useRef<HTMLButtonElement>(null);
+  const grid = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open) grid.current?.querySelector<HTMLButtonElement>('[aria-pressed="true"]')?.focus();
+  }, [open]);
+  const close = () => { setOpen(false); toggle.current?.focus(); };
+
   return (
     <div className="card dgc-load" role="group" aria-labelledby={`${id}-h`}>
-      <h3 id={`${id}-h`}>Load {side} <span className="dgc-load-name">{primaryText(load)} · {primaryName(p)}</span></h3>
-
-      <div className="dgc-picker" role="group" aria-label={`Load ${side}: ${other ? "primary class or other goods" : "primary class"}`}>
-        {choices.map((c) => (
-          <button
-            key={c}
-            type="button"
-            className="dgc-class"
-            aria-pressed={c === p}
-            onClick={() => onChange(withPrimary(load, c))}
-          >
-            <DgDiamond code={c} />
-            <b>{c === "F" ? "Food" : c === "R" ? "Fire-risk" : c}</b>
-            <small>{SHORT[c] ?? (isGoods(c) ? CLASS_NAMES[c] : "")}</small>
-          </button>
-        ))}
+      <h3 id={`${id}-h`} className="sr-only">Load {side}: {primaryText(load)}, {primaryName(p)}</h3>
+      <div className="dgc-current">
+        <span className="dgc-side" aria-hidden="true">{side}</span>
+        <DgDiamond code={p} size="lg" />
+        <span className="dgc-current-text" aria-hidden="true">
+          <b>{primaryText(load)}</b>
+          <small>{primaryName(p)}{load.subs.length && hasSubsidiaries(p) ? ` · subsidiary ${load.subs.join(", ")}` : ""}</small>
+        </span>
+        <button
+          ref={toggle}
+          type="button"
+          className="secondary dgc-change"
+          aria-expanded={open}
+          aria-controls={open ? `${id}-classes` : undefined}
+          onClick={() => setOpen(!open)}
+        >
+          {open ? "Close" : "Change"}<span className="sr-only"> load {side} class</span>
+        </button>
       </div>
+
+      {open ? (
+        <div
+          id={`${id}-classes`}
+          ref={grid}
+          className="dgc-picker"
+          role="group"
+          aria-label={`Load ${side}: ${other ? "primary class or other goods" : "primary class"}`}
+          onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } }}
+        >
+          {choices.map((c) => (
+            <button
+              key={c}
+              type="button"
+              className="dgc-class"
+              aria-pressed={c === p}
+              onClick={() => { if (c !== p) onChange(withPrimary(load, c)); close(); }}
+            >
+              <DgDiamond code={c} />
+              <b>{c === "F" ? "Food" : c === "R" ? "Fire-risk" : c}</b>
+              <small>{SHORT[c] ?? (isGoods(c) ? CLASS_NAMES[c] : "")}</small>
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       {p === "1" ? (
         <ExplosiveCode value={load.explosive} onChange={(explosive) => set({ explosive })} side={side} />

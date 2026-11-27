@@ -24,17 +24,30 @@
 .dgc-loads { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 1000px) { .dgc-loads { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 .dgc-load { margin-bottom: 0; min-width: 0; }
-.dgc-load h3 { margin: 0; font-size: 1.15rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
-.dgc-load-name { font-size: 0.95rem; font-weight: 400; color: var(--muted); }
 
-.dgc-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; margin-top: 10px; }
+/* Chosen class: one row; the class grid opens only to change it */
+.dgc-current { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.dgc-side {
+  flex: none; display: grid; place-items: center; width: 1.9rem; height: 1.9rem; border-radius: 50%;
+  background: var(--surface-2); border: 1px solid var(--border); font-weight: 800;
+}
+.dgc-current-text { display: grid; min-width: 0; flex: 1; line-height: 1.25; }
+.dgc-current-text b { font-size: 1.1rem; }
+.dgc-current-text small { color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; }
+.dgc button.dgc-change { flex: none; min-height: 36px; }
+
+
+.dgc-picker {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; margin-top: 10px;
+  padding: 8px; border-radius: 10px; background: var(--surface-2);
+}
 .dgc button.dgc-class {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   padding: 8px 4px; border: 2px solid transparent; border-radius: 10px; background: transparent;
   text-align: center; min-height: 44px;
 }
-.dgc button.dgc-class:hover { background: var(--surface-2); filter: none; }
-.dgc button.dgc-class[aria-pressed="true"] { border-color: var(--text); background: var(--surface-2); }
+.dgc button.dgc-class:hover { background: var(--card); filter: none; }
+.dgc button.dgc-class[aria-pressed="true"] { border-color: var(--text); background: var(--card); }
 .dgc-class b { font-size: 1rem; line-height: 1; }
 .dgc-class small { font-size: 0.72rem; line-height: 1.15; color: var(--muted); }
 
