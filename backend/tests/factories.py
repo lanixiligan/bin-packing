@@ -148,6 +148,12 @@ def pallets(qty: int, weight: float = 500, *, id: str = "P", type_id: str = "AU_
                        height_mm=height, stackable=stackable, temp_controlled=temp)
 
 
+def loose(qty: int, length: int, width: int, weight: float = 300, *, id: str = "L", height: int = 400,
+          stackable: bool = False) -> FreightItem:
+    return FreightItem(id=id, kind="loose", quantity=qty, length_mm=length, width_mm=width,
+                       gross_weight_kg=weight, height_mm=height, stackable=stackable)
+
+
 def containers(type_id: str, qty: int = 1, weight: float = 15000, *, id: str | None = None) -> FreightItem:
     return FreightItem(id=id or type_id, kind="container", type_id=type_id, quantity=qty, gross_weight_kg=weight)
 
