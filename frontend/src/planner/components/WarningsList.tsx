@@ -20,6 +20,11 @@ const GROUPS: {
   { severity: "info", title: "Information", one: "note", many: "notes", label: "Info", Icon: InfoIcon, badge: "badge-info" },
 ];
 
+/** "Try: <suggestion>", unless the planner's suggestion already starts with "Try". */
+function tryText(suggestion: string): string {
+  return /^try\b/i.test(suggestion.trim()) ? suggestion : `Try: ${suggestion}`;
+}
+
 /** The labels of the freight lines a warning names, in the order they were entered. */
 function lineNames(itemIds: string[], items: FreightItem[]): string[] {
   const order = new Map(items.map((it, i) => [it.id, i]));
@@ -72,7 +77,7 @@ export default function WarningsList({ warnings, request }: WarningsListProps) {
                         <p className="warning-message">
                           <span className="visually-hidden">{g.label}: </span>{w.message}
                         </p>
-                        {w.suggestion && <p className="warning-suggestion">Try: {w.suggestion}</p>}
+                        {w.suggestion && <p className="warning-suggestion">{tryText(w.suggestion)}</p>}
                         {names.length > 0 && (
                           <p className="warning-lines">
                             {names.length === 1 ? "Freight line: " : "Freight lines: "}
