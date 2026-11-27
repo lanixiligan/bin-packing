@@ -12,7 +12,7 @@ import os
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import demo
+from app.routers import demo, planner
 
 # Request bodies are capped while they stream in (413 past the limit).
 MAX_BODY_BYTES = 1024 * 1024
@@ -36,4 +36,5 @@ async def health() -> dict[str, str]:
 
 
 api.include_router(demo.router, tags=["demo"])
+api.include_router(planner.router, tags=["planner"])
 app.include_router(api)
