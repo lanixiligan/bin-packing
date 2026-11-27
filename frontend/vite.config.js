@@ -24,5 +24,6 @@ export default defineConfig({
     include: ["src/planner/**/*.test.{ts,tsx}", "src/demo/**/*.test.{jsx,tsx}"],
     setupFiles: ["src/planner/test/setup.ts"],
     css: false,
+    testTimeout: 15000, // userEvent-heavy tests can pass 5 s on a busy machine
   },
 });

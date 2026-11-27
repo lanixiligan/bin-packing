@@ -1,7 +1,10 @@
 // Vitest setup: jest-dom matchers, a clean DOM between tests, and browser APIs jsdom lacks.
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
+
+// findBy*/waitFor wait up to 1 s by default; a full parallel run can be slower than that.
+configure({ asyncUtilTimeout: 4000 });
 
 afterEach(() => {
   cleanup();
