@@ -90,8 +90,7 @@ export default function FleetSummary({ fleet, request, dgSeparated = false, onBa
               {unplaced.map((g) => (
                 <li key={g.itemId}>
                   <strong>{g.label}</strong>{" "}
-                  <span className="muted num">× {g.unitIds.length}</span>{" "}
-                  <span className="subtle">({g.unitIds.join(", ")})</span>
+                  <span className="muted num">× {g.unitIds.length}</span>
                 </li>
               ))}
             </ul>

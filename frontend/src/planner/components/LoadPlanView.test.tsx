@@ -11,7 +11,7 @@ describe("LoadPlanView", () => {
     const section = screen.getByRole("region", { name: /not placed/i });
     expect(within(section).getByText("Chilled")).toBeInTheDocument();
     expect(within(section).getByText("× 1")).toBeInTheDocument();
-    expect(within(section).getByText("(chill#3)")).toBeInTheDocument();
+    expect(within(section).queryByText("(chill#3)")).not.toBeInTheDocument(); // unit ids are internal
     expect(within(section).getByText(/see the warnings/i)).toBeInTheDocument();
   });
 

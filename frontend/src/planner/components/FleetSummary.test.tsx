@@ -52,7 +52,8 @@ describe("FleetSummary", () => {
     const group = screen.getByRole("group", { name: "3 units can’t go on any truck" });
     const [lines, reasons] = within(group).getAllByRole("list");
     expect(within(lines).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
-      "Cement × 2 (cem#1, cem#2)", "Paint × 1 (paint#4)",
+      // Line names and counts only: unit ids are internal ("line-…#1") and mean nothing to the user.
+      "Cement × 2", "Paint × 1",
     ]);
     expect(within(reasons).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
       "Cement is too heavy for a Medium rigid (8 t).", "Paint is too tall for the body.",
