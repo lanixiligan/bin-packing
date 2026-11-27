@@ -74,35 +74,37 @@ export default function DgCheckerPage() {
       <div ref={anchor} className="dgc-bar-anchor" />
       <VerdictBar a={a} b={b} words={words} on={barOn} onSwap={swap} onDetails={showDetails} />
 
-      <section className="dgc-checker" aria-labelledby="dgc-chk-h">
-        <div className="dgc-chk-head">
-          <h2 id="dgc-chk-h" className="dgc-h2">Check two loads</h2>
-          <SwapButton onSwap={swap} />
-        </div>
-        <div className="dgc-loads">
-          <LoadCard side="A" load={a} onChange={setA} ruleSet={ruleSet} showT92={verdict.v.exceptions.includes(6)} />
-          <LoadCard side="B" load={b} onChange={setB} ruleSet={ruleSet} showT92={verdict.v.exceptions.includes(6)} other />
-        </div>
-        <VerdictBox ref={verdictBox} a={a} b={b} setA={setA} setB={setB} result={verdict} words={words} ruleSet={ruleSet} />
-      </section>
+      <div className="dgc-work">
+        <section className="dgc-checker" aria-labelledby="dgc-chk-h">
+          <div className="dgc-chk-head">
+            <h2 id="dgc-chk-h" className="dgc-h2">Check two loads</h2>
+            <SwapButton onSwap={swap} />
+          </div>
+          <div className="dgc-loads">
+            <LoadCard side="A" load={a} onChange={setA} ruleSet={ruleSet} showT92={verdict.v.exceptions.includes(6)} />
+            <LoadCard side="B" load={b} onChange={setB} ruleSet={ruleSet} showT92={verdict.v.exceptions.includes(6)} other />
+          </div>
+          <VerdictBox ref={verdictBox} a={a} b={b} setA={setA} setB={setB} result={verdict} words={words} ruleSet={ruleSet} />
+        </section>
 
-      <section className="card dgc-section" aria-labelledby="dgc-mx-h">
-        <h2 id="dgc-mx-h">Table 9.1 matrix</h2>
-        <p>Each cell shows the ADG code for the row class against the column class. Select a cell to load that pair into the checker.</p>
-        <ul className="dgc-legend" aria-label="Legend">
-          <li><span className="dgc-code k-ok">0</span> Compatible</li>
-          <li><span className="dgc-code k-cond">0<sup>n</sup></span> Compatible, unless exception n applies</li>
-          <li><span className="dgc-code k-bad">N</span> Incompatible</li>
-          <li><span className="dgc-code k-bad">N<sup>8</sup></span> Incompatible with food</li>
-          <li><span className="dgc-code k-ex">(1)</span> Explosives, see exception 1</li>
-        </ul>
-        <MatrixTable selRow={colOf(a.primary)} selCol={colOf(b.primary)} onPick={pick} />
-        <p className="muted small">
-          Goods are incompatible if any of these conditions occur: the primary hazard of one is incompatible with the primary
-          hazard of the other; the primary hazard of one is incompatible with a subsidiary hazard of the other; or a subsidiary
-          hazard of one is incompatible with a subsidiary hazard of the other.
-        </p>
-      </section>
+        <section className="card dgc-section dgc-matrix" aria-labelledby="dgc-mx-h">
+          <h2 id="dgc-mx-h">Table 9.1 matrix</h2>
+          <p className="small">Each cell shows the ADG code for the row class against the column class. Select a cell to load that pair into the checker.</p>
+          <ul className="dgc-legend" aria-label="Legend">
+            <li><span className="dgc-code k-ok">0</span> Compatible</li>
+            <li><span className="dgc-code k-cond">0<sup>n</sup></span> Unless exception n</li>
+            <li><span className="dgc-code k-bad">N</span> Incompatible</li>
+            <li><span className="dgc-code k-bad">N<sup>8</sup></span> Not with food</li>
+            <li><span className="dgc-code k-ex">(1)</span> Explosives, exception 1</li>
+          </ul>
+          <MatrixTable selRow={colOf(a.primary)} selCol={colOf(b.primary)} onPick={pick} />
+          <p className="muted small">
+            Goods are incompatible if any of these conditions occur: the primary hazard of one is incompatible with the primary
+            hazard of the other; the primary hazard of one is incompatible with a subsidiary hazard of the other; or a subsidiary
+            hazard of one is incompatible with a subsidiary hazard of the other.
+          </p>
+        </section>
+      </div>
 
       <ReferenceTabs value={refTab} onChange={setRefTab} northline={ruleSet === "northline"} />
       <SourcesNote />
