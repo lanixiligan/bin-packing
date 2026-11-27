@@ -41,22 +41,26 @@ you can switch between mm · kg and m · t.
 bin-packing/
 ├── backend/                     Python 3.12, FastAPI, pydantic (no database)
 │   ├── app/
-│   │   ├── main.py              GET /api/health, mounts the planner router
+│   │   ├── main.py              GET /api/health, mounts the planner and demo routers
 │   │   ├── routers/planner.py   GET /api/reference, POST /api/plan
+│   │   ├── routers/demo.py      POST /api/solve (bin-packing demo)
 │   │   ├── reference/           reference data (schemas + pallets, containers, bodies, vehicles)
 │   │   ├── planner/             models, LoadPlanner interface, heuristic, checks, axles, suggest
-│   │   └── dg.py                ADG dangerous goods segregation (kept for wiring in later)
+│   │   ├── solver.py            OR-Tools CP-SAT bin packing for the demo
+│   │   └── dg.py                ADG dangerous goods segregation
 │   ├── scripts/export_fixtures.py   sample API responses for the frontend tests
 │   └── tests/                   pytest (factories.py has small test vehicles)
 ├── frontend/                    React 19 + Vite + TypeScript, plain CSS, Vitest
-│   └── src/planner/
-│       ├── PlannerApp.tsx       the page: state, auto-planning, layout
-│       ├── api/                 typed client and types mirroring the backend models
-│       ├── components/          VehiclePicker, FreightTable, LoadPlanView (deck, elevation,
-│       │                        legend, table), PlanStatus, UtilisationSummary, AxleLoadPanel,
-│       │                        WarningsList, ExportMenu, EmptyState, Disclaimer
-│       ├── lib/                 units, freight validation, CSV, colours, export
-│       └── styles/              design tokens, base styles, print styles
+│   ├── src/planner/
+│   │   ├── PlannerApp.tsx       the page: state, auto-planning, layout
+│   │   ├── api/                 typed client and types mirroring the backend models
+│   │   ├── components/          VehiclePicker, FreightTable, LoadPlanView (deck, elevation,
+│   │   │                        legend, table), PlanStatus, UtilisationSummary, AxleLoadPanel,
+│   │   │                        WarningsList, ExportMenu, EmptyState, Disclaimer
+│   │   ├── lib/                 units, freight validation, CSV, colours, export
+│   │   └── styles/              design tokens, base styles, print styles
+│   ├── src/demo/                the bin-packing demo page (demo.html), its own entry point
+│   └── src/dg/                  ADG segregation rules port, DG class diamonds
 ├── scripts/dev.sh               runs the API and the web app together
 └── Makefile                     `make help` lists every target
 ```
@@ -84,7 +88,7 @@ The API runs on <http://localhost:8000> (Swagger at `/docs`) and the web app on
 ## Tests
 
 ```bash
-make test       # pytest + Vitest component tests + the DG rules port
+make test       # pytest + Vitest component tests + node tests (DG rules port, demo helpers)
 make lint       # ruff + ESLint and tsc
 make build      # production build of the web app
 make fixtures   # regenerate the frontend's sample API responses after planner changes
@@ -135,6 +139,56 @@ Errors are 400 for an unknown vehicle or body, or for invalid overrides, and 422
 Returns all pallets, pallet defaults, containers, bodies and vehicles.
 
 Set `CORS_ORIGINS` (comma-separated) to allow other browser origins to call the API directly.
+
+---
+
+## Bin packing demo
+
+A separate page at **<http://localhost:5173/demo.html>** (linked from the planner header) shows the
+**bin packing problem**: load every shipment into identical trucks using the fewest trucks. Google
+OR-Tools CP-SAT searches for the best loading (10 s limit, warm-started from first-fit decreasing) and
+proves when no better one exists, then the loading drops into a 2D deck plan or a 3D view of the trucks.
+The summary compares the answer with the lower bound, ⌈total ÷ capacity⌉ per dimension.
+
+Shipments can take pallet spaces (the trucks can have a pallet limit) and carry an ADG class (or food /
+fire-risk) with up to 4 subsidiary hazards. Incompatible goods (ADG Code Table 9.1) never share a truck,
+and the *ADG + Northline* rule set also refuses goods Northline won't carry. *Load random shipments*
+draws from a small catalogue where each item has its own DG data (Paint = Class 3, Methanol = 3 +
+sub 6.1, Rice = food, …). The page has its own entry point (`frontend/demo.html`, `src/demo/`) and
+shares only the design tokens, base styles and DG rules with the planner. three.js loads only when the
+3D view is opened.
+
+### `POST /api/solve`
+
+```json
+{
+  "capacity": 1000,
+  "max_pallets": 8,
+  "rule_set": "adg",
+  "shipments": [
+    { "name": "Paint 01", "weight": 300, "pallets": 1, "dg_class": "3" },
+    { "name": "Oxygen cylinders 02", "weight": 200, "dg_class": "2.2", "subsidiary": ["5.1"] }
+  ]
+}
+```
+
+| Field | Notes |
+|---|---|
+| `capacity` | Truck capacity in kg (whole number) |
+| `max_pallets` | Optional pallet spaces per truck (1–100); omit for no pallet limit |
+| `rule_set` | `"adg"` (default) or `"northline"` |
+| `shipments[].weight` | kg, whole number, at most `capacity` |
+| `shipments[].pallets` | Optional pallet spaces (0–100, default 0 = loose freight) |
+| `shipments[].dg_class` | Optional: a DG class (`"1"`…`"9"`), `"food"` or `"fire_risk"` |
+| `shipments[].subsidiary` | Optional, with a DG class only: up to 4 subsidiary hazards |
+
+The response has `num_trucks` and `trucks` (each with its `shipments`, `load`, `empty` and
+`fill_percent`), `optimal` and the CP-SAT `status`, `lower_bound` and `lower_bounds` per dimension,
+`segregated` (some dangerous goods must travel apart), the input totals, `solve_time_ms`,
+`time_limit_s`, and `drop_order` for the loading animation.
+
+Errors: 400 for shipments that can never fit (too heavy, too many pallets) or that Northline refuses,
+422 for invalid input, 429 while 2 solves are already running.
 
 ---
 
