@@ -1,9 +1,10 @@
 # 🚚 Truck Load Planner
 
-Given freight (pallets or containers) and an Australian vehicle, the planner works out **whether the
+Given freight (pallets, loose items such as pipes, or containers) and an Australian vehicle, the planner works out **whether the
 load fits, where each item goes, and what capacity is left**. It also estimates axle group loads
 against General or Higher Mass Limits, and warns about height, refrigeration, stacking and
-dangerous goods: segregation under the ADG Code, plus Northline's acceptance rules. It can also suggest the smallest vehicle that fits.
+dangerous goods: segregation under the ADG Code, plus Northline's acceptance rules. It can also suggest
+the smallest vehicle that fits, or **split the load across the fewest trucks** of the chosen vehicle.
 
 > **Planning tool only.** Results are estimates. They are not compliance with the NTC Load Restraint
 > Guide or with mass and dimension limits, and every capacity is a typical value you can override.
@@ -21,10 +22,17 @@ dangerous goods: segregation under the ADG Code, plus Northline's acceptance rul
     where the axles have the most spare capacity.
   - **Containers:** looks up the vehicle's allowed combinations.
   - **Axle loads:** a static beam model, deck by deck through the kingpins.
+  - **Split across trucks** (pallets and loose items): up to 80 units, OR-Tools CP-SAT finds the
+    fewest trucks and places every unit, with each axle group's limit as a constraint (the beam
+    model is linear, so it fits the solver directly), and proves when no split uses fewer trucks.
+    Bigger loads fill trucks one after another with the heuristic above, dangerous goods that can't
+    travel together kept apart, and are marked "not proven". Every truck comes back as a full plan.
 - **UI:** three steps.
   1. Choose a vehicle from cards, or ask for a suggestion.
-  2. Add freight: editable lines with ADG dangerous goods data, or random freight, with undo.
-  3. Review the plan.
+  2. Add freight: editable pallet, loose or container lines with ADG dangerous goods data, or random
+     freight, with undo.
+  3. Review the plan. When the freight doesn't fit one truck (too much, too heavy for the axles, or
+     dangerous goods that can't share a vehicle), **Split across trucks** shows a tab per truck.
 
   The plan shows a to-scale top-down deck view, coloured by DG class, weight or type, plus a side
   elevation against the 4.3 m limit, axle load bars, utilisation, warnings with next steps, and CSV
@@ -42,11 +50,11 @@ bin-packing/
 ├── backend/                     Python 3.12, FastAPI, pydantic (no database)
 │   ├── app/
 │   │   ├── main.py              GET /api/health, mounts the planner and demo routers
-│   │   ├── routers/planner.py   GET /api/reference, POST /api/plan
+│   │   ├── routers/planner.py   GET /api/reference, POST /api/plan, POST /api/plan/fleet
 │   │   ├── routers/demo.py      POST /api/solve (bin-packing demo)
 │   │   ├── reference/           reference data (schemas + pallets, containers, bodies, vehicles)
-│   │   ├── planner/             models, LoadPlanner interface, heuristic, checks, axles, suggest
-│   │   ├── solver.py            OR-Tools CP-SAT bin packing for the demo
+│   │   ├── planner/             models, LoadPlanner interface, heuristic, checks, axles, suggest, fleet
+│   │   ├── solver.py            OR-Tools CP-SAT sized bin packing (demo and split mode)
 │   │   └── dg.py                ADG dangerous goods segregation
 │   ├── scripts/export_fixtures.py   sample API responses for the frontend tests
 │   └── tests/                   pytest (factories.py has small test vehicles)
@@ -134,6 +142,16 @@ The response includes:
 
 Errors are 400 for an unknown vehicle or body, or for invalid overrides, and 422 for invalid input
 (e.g. repeated line ids or more than 500 units).
+
+### `POST /api/plan/fleet`
+
+Same body as `POST /api/plan`, with a real `vehicle_id` (not `"suggest"`) and pallets or loose items
+only (a loose item has `"kind": "loose"` with `length_mm`, `width_mm` and `height_mm`). The response
+(`FleetResult` in `backend/app/planner/models.py`) has `num_trucks` and `trucks`, each a full
+`/api/plan` result, plus `unplaced` units no truck of this type can take with the `reasons`,
+`lower_bound` and `lower_bounds` (weight, floor, volume), `optimal`, `method` (`"exact"` or
+`"heuristic"`), the CP-SAT `status` and `solve_time_ms`. Errors: 400 for containers, `"suggest"`, or
+an unknown vehicle or body; 429 while 2 solves are already running.
 
 ### `GET /api/reference`
 
