@@ -109,7 +109,8 @@ describe("Planner: split across trucks", () => {
   it("re-splits when the freight changes", async () => {
     const { user, calls, body } = await split();
     const plans = calls("/api/plan").length;
-    const qty = screen.getAllByLabelText("Quantity")[0];
+    await user.click(screen.getByRole("button", { name: /^line 1\b/i })); // freight lines start closed
+    const qty = screen.getByLabelText("Quantity");
     await user.clear(qty);
     await user.type(qty, "7");
     await waitFor(() => expect(calls("/api/plan/fleet").length).toBeGreaterThanOrEqual(2));
