@@ -1,10 +1,15 @@
 // The headline: fits yes/no with the reasons, a row of key facts, and (in suggest mode) the vehicle
 // chosen plus the vehicles tried.
 //
+// When the plan doesn't fit for a reason more trucks would solve (too much freight, too heavy, an
+// axle over its limit, dangerous goods that can't share), it offers "Split across trucks" (`onSplit`),
+// or says why that isn't on offer (`splitNote`).
+//
 // Only the headline is a live region (role="status"), so a screen reader hears "Doesn't fit: 2
 // problems" when the verdict changes, not every fact on every re-plan.
 import { useId, useState } from "react";
 import type { MassScheme, PlanResult, ReferenceData } from "../api/types.ts";
+import { canSplit } from "../lib/fleet.ts";
 import { formatCount, useUnits } from "../lib/units.ts";
 import { AlertIcon, CheckIcon, ChevronIcon, CrossIcon } from "./icons.tsx";
 import "./PlanStatus.css";
@@ -12,6 +17,10 @@ import "./PlanStatus.css";
 export interface PlanStatusProps {
   result: PlanResult;
   reference: ReferenceData;
+  /** Split this load across trucks; the button shows only when the plan fails for a splittable reason. */
+  onSplit?: () => void;
+  /** Shown in place of the button when splitting would help but isn't possible (containers, no vehicle picked). */
+  splitNote?: string | null;
 }
 
 const MASS_SCHEME_NAMES: Record<MassScheme, string> = {
@@ -26,7 +35,7 @@ function headlineText(result: PlanResult): string {
   return `Doesn't fit: ${n} ${n === 1 ? "problem" : "problems"}`;
 }
 
-export default function PlanStatus({ result, reference }: PlanStatusProps) {
+export default function PlanStatus({ result, reference, onSplit, splitNote }: PlanStatusProps) {
   const units = useUnits();
   const headingId = useId();
   const triedId = useId();
@@ -39,6 +48,7 @@ export default function PlanStatus({ result, reference }: PlanStatusProps) {
   const { pallet_spaces: spaces, teu } = result.utilisation;
   const showTeu = teu.used > 0 && spaces.used === 0;
   const schemeName = MASS_SCHEME_NAMES[result.mass_scheme];
+  const splittable = canSplit(result);
 
   return (
     <section className={`card plan-status ${result.fits ? "plan-status--fits" : "plan-status--nofit"}`}
@@ -55,6 +65,15 @@ export default function PlanStatus({ result, reference }: PlanStatusProps) {
           {result.reasons.map((reason, i) => <li key={i}>{reason}</li>)}
         </ul>
       )}
+
+      {splittable && (splitNote ? (
+        <p className="plan-status-split-note no-print">{splitNote}</p>
+      ) : onSplit ? (
+        <div className="plan-status-split no-print">
+          <button type="button" className="btn btn-primary" onClick={onSplit}>Split across trucks</button>
+          <span className="subtle">Works out the fewest of this vehicle that take all the freight.</span>
+        </div>
+      ) : null)}
 
       {result.tried && (
         <div className="plan-status-suggest">
