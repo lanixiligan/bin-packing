@@ -42,10 +42,12 @@ describe("ElevationView", () => {
       <LoadPlanView result={planMultidrop.result} reference={reference} request={planMultidrop.request} />,
     );
     expect(container.querySelectorAll(".elev-unit")).toHaveLength(planMultidrop.result.placements.length);
-    // dry#5 (floor) and dry#6 (z 900) share stack 7: the upper box sits 900 mm higher.
-    const boxes = container.querySelectorAll('.elev-stack[data-stack="trailer:7"] .elev-unit');
+    // Pick a stack with two levels: the upper box sits the lower unit's height higher.
+    const upper = planMultidrop.result.placements.find((p) => p.stack_level === 1)!;
+    const lower = planMultidrop.result.placements.find((p) => p.stack_id === upper.stack_id && p.stack_level === 0)!;
+    const boxes = container.querySelectorAll(`.elev-stack[data-stack="${upper.deck_id}:${upper.stack_id}"] .elev-unit`);
     const ys = [...boxes].map((r) => Number(r.getAttribute("y")));
-    expect(ys[0] - ys[1]).toBe(900);
+    expect(ys[0] - ys[1]).toBe(lower.height_mm);
   });
 
   it("marks stacks over the height limit", () => {

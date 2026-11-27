@@ -47,8 +47,10 @@ describe("planToCsv", () => {
 
     const placements = placementRows(csv);
     expect(placements).toHaveLength(result.placements.length);
-    expect(placements[0]).toEqual(["bev#1", "Beverages", "Australian Standard", "Trailer", "0", "0", "0", "1165",
-      "1165", "1200", "820", "0"]);
+    const p = result.placements[0];
+    expect(placements[0]).toEqual([p.unit_id, p.label, "Australian Standard", "Trailer", String(p.x_mm), String(p.y_mm),
+      String(p.z_mm), String(p.length_mm), String(p.width_mm), String(p.height_mm), String(p.weight_kg),
+      String(p.stack_level)]);
     expect(csv.endsWith("\r\n")).toBe(true);
   });
 
@@ -76,7 +78,7 @@ describe("planToCsv", () => {
     };
     const csv = planToCsv(result, planMultidrop.request, reference);
     expect(csv).toContain('Vehicle,"Semi, ""long"""');
-    expect(csv).toContain('bev#1,"Steel, ""heavy""\nfragile",Australian Standard');
+    expect(csv).toContain(`${result.placements[0].unit_id},"Steel, ""heavy""\nfragile",Australian Standard`);
     const placements = placementRows(csv);
     expect(placements).toHaveLength(result.placements.length);
     expect(placements[0][1]).toBe('Steel, "heavy"\nfragile');

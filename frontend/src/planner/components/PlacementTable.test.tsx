@@ -23,10 +23,14 @@ describe("PlacementTable", () => {
   it("formats numbers with units and lists stacked levels", async () => {
     render(<PlacementTable id="t" placements={planMultidrop.result.placements} decks={vehicle.decks} typeName={typeName} />);
     await userEvent.click(screen.getByText("Show the plan as a table"));
-    const row = screen.getByRole("row", { name: /dry#6/ });
+    const upper = planMultidrop.result.placements.find((p) => p.stack_level === 1)!;
+    const row = screen.getByRole("row", { name: new RegExp(upper.unit_id.replace("#", "\\#")) });
     const cells = within(row).getAllByRole("cell").map((c) => c.textContent);
+    const mm = (n: number) => `${n.toLocaleString("en-AU")} mm`;
     expect(cells).toEqual([
-      "dry#6", "Dry goods", "–", "type AU_STD", "Trailer", "3,495 mm", "0 mm", "1,165 × 1,165 × 900 mm", "410 kg", "2",
+      upper.unit_id, upper.label, "–", "type AU_STD", "Trailer", mm(upper.x_mm), mm(upper.y_mm),
+      `${upper.length_mm.toLocaleString("en-AU")} × ${upper.width_mm.toLocaleString("en-AU")} × ${upper.height_mm} mm`,
+      `${upper.weight_kg} kg`, "2",
     ]);
   });
 

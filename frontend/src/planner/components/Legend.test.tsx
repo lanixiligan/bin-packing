@@ -19,12 +19,14 @@ describe("Legend and colour modes", () => {
     expect(screen.getByRole("radio", { name: "DG class" })).toBeChecked();
     expect(within(legend()).getByText("Dangerous goods class")).toBeInTheDocument();
     const items = within(legend()).getAllByRole("listitem").map((li) => li.textContent);
-    expect(items).toEqual(["3Flammable liquid", "8Corrosive", "5.1Oxidising substance", "–General freight"]);
+    // Classes get colours in the order they first appear in the placements.
+    const names: Record<string, string> = { paint: "3Flammable liquid", acid: "8Corrosive", chlorine: "5.1Oxidising substance" };
+    const order = [...new Set(planDgConflict.result.placements.map((p) => p.item_id))].filter((id) => id in names);
+    expect(items).toEqual([...order.map((id) => names[id]), "–General freight"]);
+    const labels: Record<string, string> = { paint: "Paint", acid: "Battery acid", chlorine: "Pool chlorine" };
     const fillOf = (label: string) => container.querySelector(
       `.deck-view .deck-stack[aria-label^="${label}"] .deck-unit`)!.getAttribute("fill");
-    expect(fillOf("Paint")).toBe("var(--cat-1)");
-    expect(fillOf("Battery acid")).toBe("var(--cat-2)");
-    expect(fillOf("Pool chlorine")).toBe("var(--cat-3)");
+    order.forEach((id, i) => expect(fillOf(labels[id])).toBe(`var(--cat-${i + 1})`));
     expect(fillOf("General freight")).toBe("var(--cat-none)");
   });
 

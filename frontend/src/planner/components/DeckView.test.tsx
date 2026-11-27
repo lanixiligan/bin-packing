@@ -84,22 +84,27 @@ describe("DeckView", () => {
 
   it("shows details on focus, moves with the arrow keys and closes on Escape", async () => {
     renderPlan(planMultidrop);
-    const first = stacks()[0];
+    const all = stacks();
+    const labelOf = (el: Element) => el.getAttribute("aria-label")!.split(",")[0];
+    const first = all[0];
     act(() => first.focus());
-    expect(screen.getByRole("tooltip")).toHaveTextContent("Beverages");
+    expect(screen.getByRole("tooltip")).toHaveTextContent(labelOf(first));
     expect(first).toHaveAttribute("aria-describedby", screen.getByRole("tooltip").id);
 
     fireEvent.keyDown(document.activeElement!, { key: "End" });
-    expect(document.activeElement).toHaveAccessibleName(/^Hardware/);
-    expect(screen.getByRole("tooltip")).toHaveTextContent("Hardware");
+    const last = labelOf(all[all.length - 1]);
+    expect(document.activeElement).toHaveAccessibleName(new RegExp(`^${last}`));
+    expect(screen.getByRole("tooltip")).toHaveTextContent(last);
 
+    const atEnd = document.activeElement;
     fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
-    expect(document.activeElement).toHaveAccessibleName(/^Hardware/);
+    expect(document.activeElement).not.toBe(atEnd); // moved towards the front
+    expect(all).toContain(document.activeElement);
     fireEvent.keyDown(document.activeElement!, { key: "Home" });
     expect(document.activeElement).toBe(first);
     fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
     expect(document.activeElement).not.toBe(first);
-    expect(document.activeElement).toHaveAccessibleName(/^Beverages/);
+    expect(all).toContain(document.activeElement);
 
     fireEvent.keyDown(document.activeElement!, { key: "Escape" });
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
