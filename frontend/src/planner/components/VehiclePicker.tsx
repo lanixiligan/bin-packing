@@ -16,6 +16,8 @@ export interface VehiclePickerProps {
   onBodyChange(bodyType: string | null): void;
   /** In suggest mode, the vehicle the last plan picked (to highlight it). */
   suggestedVehicleId?: string | null;
+  /** Offer the "Suggest one" card (default true; the bin packing demo always needs a vehicle). */
+  allowSuggest?: boolean;
 }
 
 // ---- Helpers -------------------------------------------------------------------
@@ -107,7 +109,7 @@ function CheckIcon() {
 // ---- Component ---------------------------------------------------------------------
 
 export default function VehiclePicker({
-  reference, vehicleId, bodyType, onVehicleChange, onBodyChange, suggestedVehicleId = null,
+  reference, vehicleId, bodyType, onVehicleChange, onBodyChange, suggestedVehicleId = null, allowSuggest = true,
 }: VehiclePickerProps) {
   const units = useUnits();
   const uid = useId();
@@ -127,25 +129,27 @@ export default function VehiclePicker({
       <fieldset className="vp-fieldset">
         <legend className="visually-hidden">Vehicle</legend>
         <div className="vp-grid">
-          <label className="vp-option vp-option-suggest">
-            <input type="radio" className="vp-radio" name={name} value={SUGGEST} checked={suggestMode}
-                   onChange={() => onVehicleChange(SUGGEST)} />
-            <span className="vp-card">
-              <span className="vp-suggest-row">
-                <SparkIcon />
-                <span className="vp-suggest-text">
-                  <span className="vp-name">Suggest one:</span>{" "}
-                  <span className="vp-meta">the smallest vehicle that fits</span>
+          {allowSuggest && (
+            <label className="vp-option vp-option-suggest">
+              <input type="radio" className="vp-radio" name={name} value={SUGGEST} checked={suggestMode}
+                     onChange={() => onVehicleChange(SUGGEST)} />
+              <span className="vp-card">
+                <span className="vp-suggest-row">
+                  <SparkIcon />
+                  <span className="vp-suggest-text">
+                    <span className="vp-name">Suggest one:</span>{" "}
+                    <span className="vp-meta">the smallest vehicle that fits</span>
+                  </span>
+                  <CheckIcon />
                 </span>
-                <CheckIcon />
+                {suggested && (
+                  <span className="vp-badges">
+                    <span className="badge badge-success">Picked: {suggested.name}</span>
+                  </span>
+                )}
               </span>
-              {suggested && (
-                <span className="vp-badges">
-                  <span className="badge badge-success">Picked: {suggested.name}</span>
-                </span>
-              )}
-            </span>
-          </label>
+            </label>
+          )}
 
           {vehicles.map((v) => {
             const combos = containerSummary(v);

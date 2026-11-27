@@ -1,27 +1,29 @@
 import { Fragment, useEffect, useId, useRef, useState } from "react";
 import { northlineIssues } from "../../dg/rules.ts";
-import { demoDg, ITEMS, itemByName, nextUid, parseWeights, shipmentsFromWeights } from "../shipments.js";
+import {
+  DEFAULT_PALLET, demoDg, ITEMS, itemByName, MAX_SHIPMENTS, nextUid, parseWeights, shipmentsFromWeights, typicalSize,
+} from "../shipments.js";
 import { colorFor, dgClassText } from "./capacity.ts";
+import { fitProblems, footprintOf, inputProblem, KNOWN_PALLETS, palletShort, sizeLabel, sizeSpoken } from "./sizes.ts";
 import HazardPicker from "./HazardPicker.jsx";
 
-// The shipment list as a compact table: one line per shipment (name, kg, pallet
-// spaces, DG class and, after Solve, its truck). Click a name, or press Enter on it,
-// to edit that row in place; the DG chip opens its own picker. Below the table:
-// a row to add a shipment and "Paste a list of weights…".
+// The shipment list as a compact table: one line per shipment (name, size, kg, whether it
+// stacks, DG class and, after Solve, its truck). Click a name, or press Enter on it, to edit
+// that row in place; the DG chip opens its own picker. Below the table: a row to add a
+// shipment and "Paste a list of weights…".
 //
-// `capacity` is null while the capacity field is empty or invalid, so rows are
-// only flagged "heavier than truck" against a real capacity. Likewise
-// `maxPallets` (null = not limited) flags rows with more pallets than a truck. With
-// `ruleSet === "northline"`, rows Northline won't accept are flagged too (the
-// server refuses them on Solve). `placement` maps a shipment's position in the
-// list to { truck } once solved. Row index = the solver's shipment id.
+// `fit` is the chosen vehicle's decks and payload (null until the reference data is in): rows
+// that can never go on it are flagged, as the server would refuse them. `pallets` is the
+// reference's pallet types (KNOWN_PALLETS until then). With `ruleSet === "northline"`, rows
+// Northline won't accept are flagged too. `placement` maps a shipment's position in the list
+// to { truck } once solved. Row index = the solver's shipment id.
 export default function ShipmentTable({
-  shipments, capacity, maxPallets = null, onChange, ruleSet = "adg",
-  placement = null, activeId = null, activeTruck = null, onHover = () => {},
+  shipments, fit = null, pallets = KNOWN_PALLETS, onChange, ruleSet = "adg",
+  placement = null, activeIds = null, activeTruck = null, onHover = () => {},
 }) {
   const [editing, setEditing] = useState(null); // uid of the row being edited
   const solved = placement != null;
-  const cols = solved ? 6 : 5;
+  const cols = solved ? 7 : 6;
 
   function update(uid, patch) {
     onChange(shipments.map((s) => (s.uid === uid ? { ...s, ...patch } : s)));
@@ -43,12 +45,13 @@ export default function ShipmentTable({
       {shipments.length === 0 ? (
         <p className="muted small empty-list">No shipments yet. Add one below, paste weights, or load random ones.</p>
       ) : (
-        <table className={`shipment-table${activeId != null || activeTruck != null ? " linking" : ""}`}>
+        <table className={`shipment-table${activeIds != null || activeTruck != null ? " linking" : ""}`}>
           <thead>
             <tr>
               <th scope="col" className="col-name">Shipment</th>
+              <th scope="col" className="col-size">Size</th>
               <th scope="col" className="n col-kg">kg</th>
-              <th scope="col" className="n col-pal"><abbr title="Pallet spaces">Pal</abbr></th>
+              <th scope="col" className="col-stack"><abbr title="Stackable">Stack</abbr></th>
               <th scope="col" className="col-dg">DG</th>
               {solved && <th scope="col" className="n col-truck">Truck</th>}
               <th scope="col" className="col-remove"><span className="sr-only">Remove</span></th>
@@ -56,19 +59,19 @@ export default function ShipmentTable({
           </thead>
           <tbody>
             {shipments.map((s, i) => {
-              const tooHeavy = capacity != null && Number(s.weight) > capacity;
-              const tooBig = maxPallets != null && Number(s.pallets) > maxPallets;
+              const checks = fitProblems(s, fit, pallets);
+              const missing = inputProblem(s);
               const refused = ruleSet === "northline"
                 ? northlineIssues(demoDg(s.dgClass, s.subsidiary)).find((x) => x.kind === "prohibited")
                 : null;
               const problems = [
-                tooHeavy && "Heavier than a truck can carry.",
-                tooBig && "Takes more pallet spaces than a truck has.",
+                missing && `${missing[0].toUpperCase()}${missing.slice(1)}.`,
+                ...checks.messages,
                 refused && refused.message,
               ].filter(Boolean);
               const errId = `row-err-${s.uid}`;
               const truck = placement?.[i]?.truck;
-              const lit = activeId === i || (activeTruck != null && truck === activeTruck);
+              const lit = activeIds?.includes(i) || (activeTruck != null && truck === activeTruck);
               const hazard = (
                 <HazardPicker
                   value={s}
@@ -93,9 +96,10 @@ export default function ShipmentTable({
               );
               const rowProps = {
                 className: [problems.length && "invalid", lit && "lit"].filter(Boolean).join(" ") || undefined,
-                onPointerEnter: solved ? () => onHover(i) : undefined,
+                onPointerEnter: solved ? () => onHover([i]) : undefined,
                 onPointerLeave: solved ? () => onHover(null) : undefined,
               };
+              const size = missing ? "–" : sizeLabel(s);
               return (
                 <Fragment key={s.uid}>
                   {editing === s.uid ? (
@@ -103,10 +107,10 @@ export default function ShipmentTable({
                       <td colSpan={cols}>
                         <EditRow
                           s={s}
+                          pallets={pallets}
                           onUpdate={(patch) => update(s.uid, patch)}
                           onDone={() => finishEdit(s.uid)}
-                          tooHeavy={tooHeavy}
-                          tooBig={tooBig}
+                          checks={checks}
                           errId={errId}
                           hazard={hazard}
                           removeBtn={removeBtn}
@@ -130,9 +134,15 @@ export default function ShipmentTable({
                             {s.name || <span className="muted">(no name)</span>}
                           </button>
                         </div>
+                        {/* Narrow screens hide the Size column and show the size here instead. */}
+                        <span className={`name-size${checks.tooLong || checks.tooTall ? " bad" : ""}`}>{size}</span>
                       </td>
-                      <td className={`n${tooHeavy ? " bad" : ""}`}>{Number(s.weight).toLocaleString()}</td>
-                      <td className={`n${tooBig ? " bad" : ""}`}>{s.pallets ?? 0}</td>
+                      <td className={`size-cell${checks.tooLong || checks.tooTall ? " bad" : ""}`}>
+                        <span aria-hidden="true">{size}</span>
+                        {!missing && <span className="sr-only">{sizeSpoken(s)}</span>}
+                      </td>
+                      <td className={`n${checks.tooHeavy ? " bad" : ""}`}>{Number(s.weight).toLocaleString()}</td>
+                      <td className="stack-cell"><StackMark on={s.stackable} /></td>
                       <td className="dg-cell">{hazard}</td>
                       {solved && <td className="n truck-cell">{truck ?? "–"}</td>}
                       <td className="remove-cell">{removeBtn}</td>
@@ -150,19 +160,76 @@ export default function ShipmentTable({
         </table>
       )}
 
-      <AddRow shipments={shipments} onChange={onChange} ruleSet={ruleSet} />
+      <AddRow shipments={shipments} onChange={onChange} ruleSet={ruleSet} pallets={pallets} fit={fit} />
       <PasteWeights shipments={shipments} onChange={onChange} />
     </div>
   );
 }
 
-/** One row in edit mode: name, kg and pallets inputs, the DG chip, Done. Escape or Enter closes it. */
-function EditRow({ s, onUpdate, onDone, tooHeavy, tooBig, errId, hazard, removeBtn }) {
+/** Two stacked boxes for a stackable shipment, a dash for one that isn't; the text says which. */
+function StackMark({ on }) {
+  return on ? (
+    <span className="stack-mark" role="img" aria-label="Stackable" title="Stackable">
+      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <rect x="3" y="1.5" width="10" height="5.5" rx="1" />
+        <rect x="3" y="9" width="10" height="5.5" rx="1" />
+      </svg>
+    </span>
+  ) : (
+    <span className="stack-none" role="img" aria-label="Not stackable" title="Not stackable">–</span>
+  );
+}
+
+/** The pallet types, then "Loose": the choice of what a shipment is. */
+function KindSelect({ value, pallets, onChange, label }) {
+  return (
+    <select className="select kind" value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}>
+      {Object.entries(pallets).map(([id, p]) => (
+        <option key={id} value={id}>{`${palletShort(id)} · ${p.length_mm}×${p.width_mm}`}</option>
+      ))}
+      <option value="loose">Loose</option>
+    </select>
+  );
+}
+
+/** The fields a change of the kind select sets: a pallet type, or loose with a footprint to start from. */
+function kindPatch(value, s, pallets) {
+  if (value !== "loose") return { kind: "pallet", palletType: value };
+  const fp = footprintOf(s, pallets) ?? [1200, 1000];
+  return { kind: "loose", lengthMm: s.lengthMm || fp[0], widthMm: s.widthMm || fp[1] };
+}
+
+/** A number input with its unit after it. */
+function NumField({ value, onChange, label, unit, className, invalid, describedBy, placeholder }) {
+  return (
+    <span className={`num-field ${className}`}>
+      <input
+        className="input"
+        type="number"
+        min="1"
+        step="1"
+        inputMode="numeric"
+        value={value ?? ""}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={label}
+        aria-invalid={invalid || undefined}
+        aria-describedby={invalid ? describedBy : undefined}
+      />
+      <span className="unit" aria-hidden="true">{unit}</span>
+    </span>
+  );
+}
+
+/** One row in edit mode: name, pallet or loose, sizes, kg, stacks, the DG chip, Done. Escape or Enter closes it. */
+function EditRow({ s, pallets, onUpdate, onDone, checks, errId, hazard, removeBtn }) {
   const nameRef = useRef(null);
   useEffect(() => {
     nameRef.current?.focus();
     nameRef.current?.select();
   }, []);
+  const who = s.name || "shipment";
+  const loose = s.kind === "loose";
   return (
     <form
       className="edit-row"
@@ -176,30 +243,30 @@ function EditRow({ s, onUpdate, onDone, tooHeavy, tooBig, errId, hazard, removeB
         onChange={(e) => onUpdate({ name: e.target.value })}
         aria-label="Shipment name"
       />
-      <input
-        className="input weight"
-        type="number"
-        min="1"
-        value={s.weight}
-        onChange={(e) => onUpdate({ weight: e.target.value })}
-        aria-label={`Weight of ${s.name || "shipment"} in kg`}
-        aria-invalid={tooHeavy || undefined}
-        aria-describedby={tooHeavy ? errId : undefined}
+      <KindSelect
+        value={loose ? "loose" : s.palletType || DEFAULT_PALLET}
+        pallets={pallets}
+        onChange={(v) => onUpdate(kindPatch(v, s, pallets))}
+        label={`Pallet type of ${who}, or loose`}
       />
-      <span className="unit" aria-hidden="true">kg</span>
-      <input
-        className="input pallets"
-        type="number"
-        min="0"
-        max="100"
-        step="1"
-        value={s.pallets ?? 0}
-        onChange={(e) => onUpdate({ pallets: e.target.value })}
-        aria-label={`Pallet spaces of ${s.name || "shipment"} (0 for loose freight)`}
-        aria-invalid={tooBig || undefined}
-        aria-describedby={tooBig ? errId : undefined}
-      />
-      <span className="unit" aria-hidden="true">pal</span>
+      {loose && (
+        <>
+          <NumField className="dim" value={s.lengthMm} onChange={(v) => onUpdate({ lengthMm: v })} unit="mm"
+            label={`Length of ${who} in mm`} invalid={checks.tooLong} describedBy={errId} />
+          <NumField className="dim" value={s.widthMm} onChange={(v) => onUpdate({ widthMm: v })} unit="mm"
+            label={`Width of ${who} in mm`} invalid={checks.tooLong} describedBy={errId} />
+        </>
+      )}
+      <NumField className="dim" value={s.heightMm} onChange={(v) => onUpdate({ heightMm: v })} unit="mm high"
+        label={loose ? `Height of ${who} in mm` : `Height of ${who} in mm, pallet included`}
+        invalid={checks.tooTall} describedBy={errId} />
+      <NumField className="weight" value={s.weight} onChange={(v) => onUpdate({ weight: v })} unit="kg"
+        label={`Weight of ${who} in kg`} invalid={checks.tooHeavy} describedBy={errId} />
+      <label className="check">
+        <input type="checkbox" checked={Boolean(s.stackable)} onChange={(e) => onUpdate({ stackable: e.target.checked })}
+          aria-label={`${who} stacks`} />
+        Stacks
+      </label>
       {hazard}
       <button type="submit" className="btn btn-sm">Done</button>
       {removeBtn}
@@ -207,69 +274,100 @@ function EditRow({ s, onUpdate, onDone, tooHeavy, tooBig, errId, hazard, removeB
   );
 }
 
-/** The "add a shipment" row under the table. Typing a catalogue item ("Methanol") fills in its DG data. */
-function AddRow({ shipments, onChange, ruleSet }) {
-  const [name, setName] = useState("");
-  const [weight, setWeight] = useState("");
-  const [pallets, setPallets] = useState("1");
+const EMPTY_ADD = { name: "", kind: "pallet", palletType: DEFAULT_PALLET, lengthMm: "", widthMm: "", heightMm: "1200", weight: "", stackable: false };
+
+/**
+ * The "add a shipment" row under the table (it wraps to two lines). Typing a catalogue item
+ * ("Methanol", "Pipes") fills in its DG data and typical size. Disabled at MAX_SHIPMENTS.
+ */
+function AddRow({ shipments, onChange, ruleSet, pallets, fit }) {
+  const [draft, setDraft] = useState(EMPTY_ADD);
   const [hazard, setHazard] = useState({ dgClass: null, subsidiary: [] });
   const itemsId = useId();
+  const full = shipments.length >= MAX_SHIPMENTS;
+  const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
+  const loose = draft.kind === "loose";
 
   function changeName(value) {
-    setName(value);
     const it = itemByName(value);
-    if (it) setHazard({ dgClass: it.dgClass, subsidiary: [...it.subsidiary] });
+    if (!it) {
+      set({ name: value });
+      return;
+    }
+    const longest = fit ? Math.max(...fit.decks.map((d) => d.length_mm)) : Infinity;
+    const size = typicalSize(it, longest);
+    setDraft((d) => ({ ...d, ...size, name: value, heightMm: String(size.heightMm) }));
+    setHazard({ dgClass: it.dgClass, subsidiary: [...it.subsidiary] });
   }
 
   function add(e) {
     e.preventDefault();
-    const w = Number(weight);
-    if (!name.trim() || !(w > 0)) return;
-    const p = Math.max(0, Math.round(Number(pallets) || 0));
-    onChange([...shipments, { uid: nextUid(), name: name.trim(), weight: Math.round(w), pallets: p, ...hazard }]);
-    setName("");
-    setWeight("");
-    setPallets("1");
+    if (full) return;
+    const s = {
+      uid: nextUid(),
+      name: draft.name.trim(),
+      weight: Math.round(Number(draft.weight)),
+      kind: draft.kind,
+      ...(loose
+        ? { lengthMm: Math.round(Number(draft.lengthMm)), widthMm: Math.round(Number(draft.widthMm)) }
+        : { palletType: draft.palletType }),
+      heightMm: Math.round(Number(draft.heightMm)),
+      stackable: draft.stackable,
+      ...hazard,
+    };
+    if (inputProblem(s)) return;
+    onChange([...shipments, s]);
+    setDraft(EMPTY_ADD);
     setHazard({ dgClass: null, subsidiary: [] });
   }
 
   return (
-    <form className="add-row" onSubmit={add} aria-label="Add a shipment">
-      <input
-        className="input name"
-        placeholder="New shipment"
-        aria-label="New shipment name"
-        list={itemsId}
-        value={name}
-        onChange={(e) => changeName(e.target.value)}
-      />
-      <datalist id={itemsId}>
-        {ITEMS.map((it) => (
-          <option key={it.name} value={it.name}>{dgClassText(it.dgClass, it.subsidiary) || "General freight"}</option>
-        ))}
-      </datalist>
-      <input
-        className="input weight"
-        placeholder="kg"
-        aria-label="New shipment weight in kg"
-        type="number"
-        min="1"
-        value={weight}
-        onChange={(e) => setWeight(e.target.value)}
-      />
-      <input
-        className="input pallets"
-        placeholder="Pal"
-        aria-label="New shipment pallet spaces (0 for loose freight)"
-        type="number"
-        min="0"
-        max="100"
-        step="1"
-        value={pallets}
-        onChange={(e) => setPallets(e.target.value)}
-      />
-      <HazardPicker value={hazard} onChange={setHazard} name={name.trim() || "new shipment"} others={shipments} ruleSet={ruleSet} />
-      <button type="submit" className="btn btn-sm">Add</button>
+    <form className="add-row" onSubmit={add} aria-label="Add a shipment" aria-describedby={full ? `${itemsId}-full` : undefined}>
+      <fieldset className="add-fields" disabled={full}>
+        <input
+          className="input name"
+          placeholder="New shipment"
+          aria-label="New shipment name"
+          list={itemsId}
+          value={draft.name}
+          onChange={(e) => changeName(e.target.value)}
+        />
+        <datalist id={itemsId}>
+          {ITEMS.map((it) => (
+            <option key={it.name} value={it.name}>{dgClassText(it.dgClass, it.subsidiary) || "General freight"}</option>
+          ))}
+        </datalist>
+        <KindSelect
+          value={loose ? "loose" : draft.palletType}
+          pallets={pallets}
+          onChange={(v) => set(kindPatch(v, draft, pallets))}
+          label="New shipment pallet type, or loose"
+        />
+        {loose && (
+          <>
+            <NumField className="dim" value={draft.lengthMm} onChange={(v) => set({ lengthMm: v })} unit="mm"
+              placeholder="Length" label="New shipment length in mm" />
+            <NumField className="dim" value={draft.widthMm} onChange={(v) => set({ widthMm: v })} unit="mm"
+              placeholder="Width" label="New shipment width in mm" />
+          </>
+        )}
+        <NumField className="dim" value={draft.heightMm} onChange={(v) => set({ heightMm: v })} unit="mm high"
+          placeholder="Height" label="New shipment height in mm" />
+        <NumField className="weight" value={draft.weight} onChange={(v) => set({ weight: v })} unit="kg"
+          placeholder="kg" label="New shipment weight in kg" />
+        <label className="check">
+          <input type="checkbox" checked={draft.stackable} onChange={(e) => set({ stackable: e.target.checked })}
+            aria-label="New shipment stacks" />
+          Stacks
+        </label>
+        <HazardPicker value={hazard} onChange={setHazard} name={draft.name.trim() || "new shipment"} others={shipments} ruleSet={ruleSet} />
+        <button type="submit" className="btn btn-sm">Add</button>
+      </fieldset>
+      {full && (
+        <p id={`${itemsId}-full`} className="small muted add-full">
+          {MAX_SHIPMENTS} shipments is the most one solve takes. Remove one to add another.
+        </p>
+      )}
     </form>
   );
 }
@@ -279,11 +377,12 @@ function PasteWeights({ shipments, onChange }) {
   const [text, setText] = useState("");
   const id = useId();
   const { weights, invalid } = parseWeights(text);
+  const room = MAX_SHIPMENTS - shipments.length;
 
   function apply(mode) {
     if (!weights.length) return;
     const start = mode === "append" ? shipments.length : 0;
-    const added = shipmentsFromWeights(weights, start);
+    const added = shipmentsFromWeights(weights.slice(0, MAX_SHIPMENTS - start), start);
     onChange(mode === "append" ? [...shipments, ...added] : added);
     setText("");
     setOpen(false);
@@ -300,7 +399,8 @@ function PasteWeights({ shipments, onChange }) {
   return (
     <div className="paste-box">
       <label htmlFor={`${id}-text`}>
-        Weights in kg, separated by commas, spaces or new lines. Names are added automatically.
+        Weights in kg, separated by commas, spaces or new lines. Each becomes an AU pallet 1.2 m high, not
+        stackable; names are added automatically.
       </label>
       <textarea
         id={`${id}-text`}
@@ -314,6 +414,9 @@ function PasteWeights({ shipments, onChange }) {
       />
       <p id={`${id}-status`} className="small paste-status" aria-live="polite">
         {weights.length > 0 && <span>{weights.length} weight{weights.length === 1 ? "" : "s"} found. </span>}
+        {weights.length > Math.max(0, room) && (
+          <span>Adding keeps the first {Math.max(0, room)} (at most {MAX_SHIPMENTS} shipments). </span>
+        )}
         {invalid.length > 0 && (
           <span className="paste-invalid">
             Skipping {invalid.length === 1 ? "this entry" : "these entries"} (not a whole number above 0):{" "}
@@ -323,7 +426,7 @@ function PasteWeights({ shipments, onChange }) {
         )}
       </p>
       <div className="paste-actions">
-        <button type="button" className="btn btn-sm" disabled={!weights.length} onClick={() => apply("append")}>
+        <button type="button" className="btn btn-sm" disabled={!weights.length || room <= 0} onClick={() => apply("append")}>
           Add to list
         </button>
         <button type="button" className="btn btn-sm" disabled={!weights.length} onClick={() => apply("replace")}>

@@ -1,162 +1,112 @@
-// Pallet deck geometry for the truck views (2D plan and 3D trailer).
+// Deck geometry for the truck views (2D plan and 3D trucks), from the solve response.
 //
-// Drawing only: the solver still counts pallet SPACES (capacity.pallets,
-// shipment.pallets). This file turns those counts into a floor plan at real
-// size, using Australian standard sizes: a CHEP pallet is 1165 × 1165 mm and
-// a deck is 2400 mm wide, so two pallets fit side by side. The deck length
-// follows from the truck's pallet limit (or from the load when unlimited).
+// The solver places every shipment on a deck (placement.x_mm along the deck from the cab end,
+// y_mm across from the driver's side, z_mm up; length_mm × width_mm already turned). These
+// helpers only scale and group what came back; they never move anything.
 //
 // Pure functions only (no React, no DOM), so they can be unit-tested with node.
-import { EPS, limitOf, type CapacityLimits, type ShipmentLike } from "./capacity.ts";
 
-export const PALLET_MM = 1165;
-export const DECK_WIDTH_MM = 2400;
-/** Clearance between rows (and at the cab and rear ends). */
-export const ROW_GAP_MM = 50;
-/** Height of the load on a pallet in the 3D view. */
-export const LOAD_MM = 1200;
-/** Rows drawn for an unlimited deck, at least (so a tiny load doesn't look like a ute). */
-const MIN_ROWS = 2;
-
-export interface Deck {
-  /** Pallets side by side: 2, or 1 for a single-slot deck. */
-  across: number;
-  rows: number;
-  /** Usable pallet slots (an odd limit leaves the last row half used). */
-  slots: number;
-  lengthMm: number;
-  widthMm: number;
-  /** True when the slots come from a pallet limit, false when sized to the load. */
-  limited: boolean;
+export interface DeckBox {
+  id: string;
+  name: string;
+  length_mm: number;
+  width_mm: number;
+  height_mm: number;
 }
 
-const lengthFor = (rows: number) => rows * PALLET_MM + (rows + 1) * ROW_GAP_MM;
-
-/**
- * The deck of a truck with `maxPallets` pallet spaces (null = not limited:
- * sized to `loadedPallets`, at least two rows).
- */
-export function deckFor(maxPallets: number | null | undefined, loadedPallets = 0): Deck {
-  const limited = maxPallets != null && maxPallets > 0;
-  if (limited) {
-    const slots = Math.ceil(maxPallets - EPS);
-    const across = slots === 1 ? 1 : 2;
-    const rows = Math.ceil(slots / across);
-    return { across, rows, slots, lengthMm: lengthFor(rows), widthMm: DECK_WIDTH_MM, limited };
-  }
-  const rows = Math.max(MIN_ROWS, Math.ceil(Math.ceil(loadedPallets - EPS) / 2));
-  return { across: 2, rows, slots: rows * 2, lengthMm: lengthFor(rows), widthMm: DECK_WIDTH_MM, limited };
+export interface PlacementLike {
+  deck_id: string;
+  x_mm: number;
+  y_mm: number;
+  z_mm: number;
+  length_mm: number;
+  width_mm: number;
+  height_mm: number;
+  stack_base: number;
+  level: number;
 }
 
-const palletsOf = (s: ShipmentLike) => (s.pallets != null && s.pallets > EPS ? s.pallets : 0);
-
-/** True when a truck should be drawn as a pallet deck: a pallet limit, or any shipment on pallets. */
-export function usesDeck(shipments: ShipmentLike[], cap: number | CapacityLimits | null | undefined): boolean {
-  if (cap != null && typeof cap === "object" && limitOf(cap, "pallets") != null) return true;
-  return shipments.some((s) => palletsOf(s) > 0);
-}
-
-/** Pallet spaces a list of shipments takes. */
-export const palletTotal = (shipments: ShipmentLike[]) => shipments.reduce((sum, s) => sum + palletsOf(s), 0);
-
-/**
- * The deck of one truck: its pallet limit, or sized to all of its shipments (stable while dropping).
- * `atLeast` sizes an unlimited deck for at least that many pallets, so trucks drawn side by side
- * can share one deck length.
- */
-export function truckDeck(shipments: ShipmentLike[], cap: number | CapacityLimits | null | undefined, atLeast = 0): Deck {
-  const limit = cap != null && typeof cap === "object" ? limitOf(cap, "pallets") : null;
-  return deckFor(limit, Math.max(atLeast, palletTotal(shipments)));
-}
-
-/** Pallet spaces of the most loaded truck: pass it as `atLeast` so unlimited decks share one length. */
-export function longestLoad(trucks: { shipments: ShipmentLike[] }[]): number {
-  return Math.max(0, ...trucks.map((t) => palletTotal(t.shipments)));
-}
-
-export interface PalletPiece {
-  /** Shipment id (several pieces share it when a shipment has several pallets). */
+export interface PlacedLike {
   id: number;
-  slot: number;
-  row: number;
-  /** 0 = left (driver's side), 1 = right. */
-  col: number;
-  /** Part of the slot's length taken, 0..1 from the cab end: [0, 1] for a whole pallet. */
-  from: number;
-  to: number;
-  /** Past the last slot: the load is over the deck's pallet capacity. */
-  over: boolean;
-  /** True for the shipment's first piece (the one that carries its label and focus). */
-  first: boolean;
+  placement: PlacementLike;
 }
 
-export interface DeckLayout<S extends ShipmentLike = ShipmentLike> {
-  pieces: PalletPiece[];
-  /** Shipments without pallets (loose freight): not placed on the deck. */
-  loose: S[];
-  /** Rows drawn: the deck's rows, plus any rows of over-capacity pieces past the rear. */
-  rows: number;
+/** Room drawn between two decks (the coupling), in mm at the deck scale. */
+export const DECK_GAP_MM = 700;
+
+export interface DeckPlan {
+  /** px per mm, the same for every deck (and every truck of the vehicle). */
+  scale: number;
+  /** Widest deck in px. */
+  width: number;
+  decks: (DeckBox & { widthPx: number; lengthPx: number })[];
 }
 
 /**
- * Places shipments on the deck in list order: whole pallets take the next
- * free slot, front (cab end) to back, left then right in each row. A
- * fractional remainder (0.5 of a space) shares a slot along its length with
- * another fraction when one has room, else it starts a free slot. Pieces past
- * the deck's last slot are marked `over`.
+ * One scale for the vehicle's decks drawn top-down, cab end up: the widest deck is at most
+ * `maxWidthPx` wide and all decks end to end (with DECK_GAP_MM between) at most `maxLengthPx` long.
  */
-export function layoutPallets<S extends ShipmentLike>(shipments: S[], deck: Deck): DeckLayout<S> {
-  const fill: number[] = []; // used length (0..1) per slot index, growing past deck.slots when over
-  const pieces: PalletPiece[] = [];
-  const loose: S[] = [];
-
-  const freeSlot = () => {
-    let i = 0;
-    while ((fill[i] ?? 0) > EPS) i++;
-    return i;
+export function deckPlan(decks: DeckBox[], { maxWidthPx = 80, maxLengthPx = 340 } = {}): DeckPlan {
+  const widest = Math.max(1, ...decks.map((d) => d.width_mm));
+  const total = decks.reduce((s, d) => s + d.length_mm, 0) + DECK_GAP_MM * Math.max(0, decks.length - 1);
+  const scale = Math.min(maxWidthPx / widest, maxLengthPx / Math.max(1, total));
+  return {
+    scale,
+    width: widest * scale,
+    decks: decks.map((d) => ({ ...d, widthPx: d.width_mm * scale, lengthPx: d.length_mm * scale })),
   };
-  const place = (id: number, slot: number, size: number, first: boolean) => {
-    const from = fill[slot] ?? 0;
-    fill[slot] = from + size;
-    pieces.push({
-      id, slot, row: Math.floor(slot / deck.across), col: slot % deck.across,
-      from, to: from + size, over: slot >= deck.slots, first,
-    });
-  };
+}
 
+/** A footprint drawn on a deck, in px from the deck's top-left (cab end, driver's side). */
+export interface Rect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+/** Where a placement's footprint is drawn: x down the deck, y across it. */
+export function rectOf(p: Pick<PlacementLike, "x_mm" | "y_mm" | "length_mm" | "width_mm">, scale: number): Rect {
+  return { top: p.x_mm * scale, left: p.y_mm * scale, width: p.width_mm * scale, height: p.length_mm * scale };
+}
+
+/** A column on the deck: a floor item and whatever stands on it, bottom first. */
+export interface Column<S extends PlacedLike = PlacedLike> {
+  key: string;
+  deckId: string;
+  /** Bottom first (level 0, 1, …). */
+  items: S[];
+  /** The floor item's placement: the column's footprint. */
+  base: PlacementLike;
+  /** Top of the column above the deck floor, mm. */
+  topMm: number;
+}
+
+/** A truck's shipments grouped into columns (by deck and stack_base), in floor order. */
+export function stackColumns<S extends PlacedLike>(shipments: S[]): Column<S>[] {
+  const byKey = new Map<string, S[]>();
   for (const s of shipments) {
-    const p = palletsOf(s);
-    if (p === 0) {
-      loose.push(s);
-      continue;
-    }
-    let whole = Math.floor(p + EPS);
-    const frac = p - whole > EPS ? p - whole : 0;
-    let first = true;
-    for (; whole > 0; whole--) {
-      place(s.id, freeSlot(), 1, first);
-      first = false;
-    }
-    if (frac > 0) {
-      let slot = fill.findIndex((f) => f > EPS && f + frac <= 1 + EPS);
-      if (slot < 0) slot = freeSlot();
-      place(s.id, slot, frac, first);
-    }
+    const key = `${s.placement.deck_id}:${s.placement.stack_base}`;
+    const list = byKey.get(key);
+    if (list) list.push(s);
+    else byKey.set(key, [s]);
   }
-
-  const lastRow = pieces.reduce((m, pc) => Math.max(m, pc.row), -1);
-  return { pieces, loose, rows: Math.max(deck.rows, lastRow + 1) };
+  return [...byKey.entries()].map(([key, items]) => {
+    const sorted = [...items].sort((a, b) => a.placement.level - b.placement.level);
+    const base = sorted[0].placement;
+    return {
+      key,
+      deckId: base.deck_id,
+      items: sorted,
+      base,
+      topMm: Math.max(...sorted.map((s) => s.placement.z_mm + s.placement.height_mm)),
+    };
+  });
 }
 
-/** "2 pallet spaces of 1165 × 1165 mm", or "" for loose freight. */
-export function palletFootprint(pallets: number | null | undefined): string {
-  if (!pallets || pallets <= EPS) return "";
-  const n = pallets.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  return `${n} pallet space${pallets === 1 ? "" : "s"} of ${PALLET_MM} × ${PALLET_MM} mm`;
-}
-
-/** "13.4 × 2.4 m deck, 22 pallet spaces" for labels and screen readers. */
-export function describeDeck(deck: Deck): string {
-  const m = (mm: number) => (mm / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 });
-  return `${m(deck.lengthMm)} × ${m(deck.widthMm)} m deck, ${deck.slots} pallet space${deck.slots === 1 ? "" : "s"}`;
+/** Floor area (m²) of what has been placed so far: stacked items count once. */
+export function floorUsedM2(shipments: PlacedLike[]): number {
+  return shipments
+    .filter((s) => s.placement.level === 0)
+    .reduce((sum, s) => sum + (s.placement.length_mm * s.placement.width_mm) / 1e6, 0);
 }

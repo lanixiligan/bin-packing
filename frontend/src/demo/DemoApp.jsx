@@ -2,8 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import ShipmentTable from "./components/ShipmentTable.jsx";
 import ResultPanel from "./components/ResultPanel.jsx";
 import Summary from "./components/Summary.jsx";
+import VehiclePicker from "../planner/components/VehiclePicker.tsx";
+import { fetchReference } from "../planner/api/client.ts";
 import { checkAll } from "../dg/rules.ts";
-import { demoDg, randomShipments } from "./shipments.js";
+import { demoDg, MAX_SHIPMENTS, RANDOM_COUNT, randomShipments, toRequest } from "./shipments.js";
+import { fitProblems, inputProblem, KNOWN_PALLETS, volumeOf } from "./components/sizes.ts";
+import { DEFAULT_VEHICLE, demoReference, vehicleFit, vehicleLine } from "./components/vehicle.ts";
 import { NARROW_SCREEN, REDUCED_MOTION, useMediaQuery } from "./useMediaQuery.js";
 import DemoHeader from "./DemoHeader.jsx";
 import { useTheme } from "./useTheme.js";
@@ -12,30 +16,18 @@ import "./demo.css";
 const DROP_INTERVAL_MS = 150; // time between each shipment dropping in
 const SOLVER_TIME_LIMIT_S = 10; // matches TIME_LIMIT_SECONDS in backend/app/routers/demo.py
 
-// The capacity field is kept as text so it can be empty while typing.
-function capacityProblem(text) {
-  if (text.trim() === "") return "Enter the truck capacity in kg.";
-  const n = Number(text);
-  if (!(n > 0)) return "Truck capacity must be a positive number.";
-  if (!Number.isInteger(n)) return "Truck capacity must be a whole number of kg.";
-  return "";
+/** "'Pipes 04' (too long or wide), 'Tiles 07' (too heavy)" for the Solve error. */
+function listProblems(rows) {
+  const shown = rows.slice(0, 5).map(({ s, why }) => `'${s.name}' (${why})`).join(", ");
+  return rows.length > 5 ? `${shown} and ${rows.length - 5} more` : shown;
 }
-
-// Pallet spaces per truck: blank means not limited.
-function palletsProblem(text) {
-  if (text.trim() === "") return "";
-  const n = Number(text);
-  if (!Number.isInteger(n) || n < 1 || n > 100) return "Pallet spaces must be a whole number from 1 to 100, or blank.";
-  return "";
-}
-
-const palletsOf = (s) => Math.max(0, Number(s.pallets) || 0);
 
 export default function App() {
   const [theme, setTheme] = useTheme();
-  const [capacityText, setCapacityText] = useState("1000");
-  const [capacityChecked, setCapacityChecked] = useState(false); // show field error after blur/Solve
-  const [palletsText, setPalletsText] = useState(""); // pallet spaces per truck, blank = not limited
+  const [reference, setReference] = useState({ status: "loading", data: null, error: "" });
+  const [vehicleId, setVehicleId] = useState(DEFAULT_VEHICLE);
+  const [bodyType, setBodyType] = useState(null); // null = the vehicle's default body
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [shipments, setShipments] = useState(() => randomShipments());
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
@@ -43,27 +35,30 @@ export default function App() {
   const [elapsed, setElapsed] = useState(0); // seconds since Solve was pressed
   const [step, setStep] = useState(0); // how many shipments have "dropped" so far
   const [undoList, setUndoList] = useState(null); // shipments removed by "Clear all"
-  const [hoverId, setHoverId] = useState(null);
-  const [focusId, setFocusId] = useState(null);
+  const [hoverIds, setHoverIds] = useState(null); // shipment ids under the pointer (a stack is several)
+  const [focusIds, setFocusIds] = useState(null);
   const [hoverTruck, setHoverTruck] = useState(null); // truck card under the pointer
-  const [view, setView] = useState("2d"); // "2d" bars or "3d" trucks
+  const [view, setView] = useState("2d"); // "2d" deck plans or "3d" trucks
   const [ruleSet, setRuleSet] = useState("adg"); // "adg" or "northline" (dangerous goods rules)
   const timer = useRef(null);
   const errorRef = useRef(null);
+  const changeRef = useRef(null);
+  const panelRef = useRef(null);
+  const referenceRequest = useRef(null);
 
   const reducedMotion = useMediaQuery(REDUCED_MOTION);
   const narrowScreen = useMediaQuery(NARROW_SCREEN);
 
-  const capError = capacityProblem(capacityText);
-  const capacity = capError ? null : Number(capacityText); // null while invalid
-  const palError = palletsProblem(palletsText);
-  const maxPallets = palError || palletsText.trim() === "" ? null : Number(palletsText);
+  // The vehicles the demo offers, and what the chosen one holds (null until the reference is in).
+  const demoRef = useMemo(() => (reference.data ? demoReference(reference.data) : null), [reference.data]);
+  const fit = useMemo(() => (demoRef ? vehicleFit(demoRef, vehicleId, bodyType) : null), [demoRef, vehicleId, bodyType]);
+  const pallets = reference.data?.pallets ?? KNOWN_PALLETS;
+  const vehicleName = demoRef?.vehicles[vehicleId]?.name ?? "truck";
+
   const totalWeight = shipments.reduce((s, x) => s + (Number(x.weight) || 0), 0);
-  const totalPallets = shipments.reduce((s, x) => s + palletsOf(x), 0);
-  const lowerBound = capacity
-    ? Math.max(Math.ceil(totalWeight / capacity), maxPallets ? Math.ceil(totalPallets / maxPallets) : 0)
-    : null;
-  const activeId = hoverId ?? focusId; // shipment highlighted in the truck view
+  const totalVolume = shipments.reduce((s, x) => s + volumeOf(x, pallets), 0);
+  const weightBound = fit ? Math.ceil(totalWeight / fit.payloadKg) : null;
+  const activeIds = hoverIds ?? focusIds; // shipments highlighted in the table and the trucks
   const dgCount = shipments.filter((s) => s.dgClass).length;
   // Pairs of shipments that must travel apart (the server decides on Solve).
   const dgConflicts = useMemo(
@@ -71,11 +66,28 @@ export default function App() {
     [shipments, dgCount]
   );
 
+  // ---- Reference data: the vehicles and pallet types -----------------------
+  function loadReference() {
+    referenceRequest.current?.abort();
+    const ctrl = new AbortController();
+    referenceRequest.current = ctrl;
+    setReference({ status: "loading", data: null, error: "" });
+    fetchReference(ctrl.signal)
+      .then((data) => setReference({ status: "ready", data, error: "" }))
+      .catch((e) => {
+        if (e.name !== "AbortError") setReference({ status: "error", data: null, error: e.message });
+      });
+  }
+  useEffect(() => {
+    loadReference();
+    return () => referenceRequest.current?.abort();
+  }, []);
+
   // ---- Animation: bump `step` until every shipment has dropped ----------
   function startAnimation(n) {
     clearInterval(timer.current);
-    setHoverId(null);
-    setFocusId(null);
+    setHoverIds(null);
+    setFocusIds(null);
     if (reducedMotion) {
       setStep(n); // show the final loading at once
       return;
@@ -110,7 +122,8 @@ export default function App() {
     return () => clearInterval(id);
   }, [loading]);
 
-  // Solve the random shipments straight away, so the page opens on an answer.
+  // Solve the random shipments straight away, so the page opens on an answer. The random
+  // shipments already fit the default vehicle, so this doesn't wait for the reference data.
   useEffect(() => {
     solve();
   }, []);
@@ -120,48 +133,37 @@ export default function App() {
     if (error) errorRef.current?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "nearest" });
   }, [error, reducedMotion]);
 
+  // Opening the vehicle cards puts focus on the chosen one (arrow keys then move between them).
+  useEffect(() => {
+    if (pickerOpen) panelRef.current?.querySelector("input[type=radio]:checked")?.focus();
+  }, [pickerOpen, demoRef]);
+
   // ---- Validation done in the browser (the backend checks again) --------
   function validate() {
-    if (capError) return capError;
-    if (palError) return palError;
     if (shipments.length === 0) return "Add at least one shipment.";
-    const bad = shipments.find(
-      (s) => !s.name.trim() || !(Number(s.weight) > 0) || !Number.isInteger(Number(s.weight))
-    );
-    if (bad) return "Every shipment needs a name and a whole-number weight above 0 kg.";
-    const badPallets = shipments.find((s) => {
-      const p = Number(s.pallets ?? 0);
-      return !Number.isInteger(p) || p < 0 || p > 100;
-    });
-    if (badPallets) return `Pallet spaces must be a whole number from 0 to 100 ('${badPallets.name}').`;
-    const tooBig = maxPallets ? shipments.filter((s) => palletsOf(s) > maxPallets) : [];
-    if (tooBig.length) {
-      return (
-        `These shipments take more pallet spaces than a truck has (${maxPallets}) and can never fit: ` +
-        tooBig.map((s) => `'${s.name}' (${palletsOf(s)} pallets)`).join(", ")
-      );
-    }
-    const tooHeavy = shipments.filter((s) => Number(s.weight) > capacity);
-    if (tooHeavy.length) {
-      return (
-        `These shipments are heavier than the truck capacity (${capacity} kg) ` +
-        `and can never fit: ` +
-        tooHeavy.map((s) => `'${s.name}' (${s.weight} kg)`).join(", ")
-      );
-    }
+    if (shipments.length > MAX_SHIPMENTS) return `One solve takes at most ${MAX_SHIPMENTS} shipments; remove ${shipments.length - MAX_SHIPMENTS}.`;
+    const incomplete = shipments.map((s) => ({ s, why: inputProblem(s) })).filter((x) => x.why);
+    if (incomplete.length) return `Some shipments aren't complete yet: ${listProblems(incomplete)}.`;
+    const never = shipments
+      .map((s) => {
+        const p = fitProblems(s, fit, pallets);
+        const why = [p.tooLong && "too long or wide", p.tooTall && "too tall", p.tooHeavy && "too heavy"].filter(Boolean);
+        return { s, why: why.join(", ") };
+      })
+      .filter((x) => x.why);
+    if (never.length) return `These shipments can never go on a ${vehicleName}: ${listProblems(never)}. Choose a bigger vehicle or change them.`;
     return "";
   }
 
   function clearResult() {
     clearInterval(timer.current);
     setResult(null);
-    setHoverId(null);
-    setFocusId(null);
+    setHoverIds(null);
+    setFocusIds(null);
     setHoverTruck(null);
   }
 
   async function solve() {
-    setCapacityChecked(true);
     const msg = validate();
     setError(msg);
     clearResult();
@@ -171,25 +173,13 @@ export default function App() {
       const res = await fetch("/api/solve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          capacity,
-          ...(maxPallets ? { max_pallets: maxPallets } : {}),
-          // dg_class / subsidiary only for dangerous goods, so a plain request looks as before
-          shipments: shipments.map((s) => ({
-            name: s.name.trim(),
-            weight: Number(s.weight),
-            ...(s.dgClass ? { dg_class: s.dgClass } : {}),
-            ...(s.subsidiary?.length ? { subsidiary: s.subsidiary } : {}),
-            ...(palletsOf(s) ? { pallets: palletsOf(s) } : {}),
-          })),
-          rule_set: ruleSet,
-        }),
+        body: JSON.stringify(toRequest({ vehicleId, bodyType, ruleSet, shipments })),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         // FastAPI puts messages in `detail` (a string, or a list for type errors)
         const detail = Array.isArray(data.detail)
-          ? data.detail.map((d) => d.msg).join("; ")
+          ? data.detail.map((d) => String(d.msg).replace(/^Value error, /, "")).join("; ")
           : data.detail;
         throw new Error(detail || `Server error (${res.status})`);
       }
@@ -224,6 +214,23 @@ export default function App() {
     setUndoList(null);
   }
 
+  function randomise() {
+    const longest = fit ? Math.max(...fit.decks.map((d) => d.length_mm)) : undefined;
+    const inside = fit ? Math.max(...fit.decks.map((d) => d.height_mm)) : undefined;
+    changeShipments(randomShipments(RANDOM_COUNT, Math.random, { maxLengthMm: longest, maxHeightMm: inside }));
+  }
+
+  function chooseVehicle(id) {
+    setVehicleId(id);
+    setBodyType(null);
+    clearResult();
+  }
+
+  function closePicker() {
+    setPickerOpen(false);
+    requestAnimationFrame(() => changeRef.current?.focus());
+  }
+
   // Where each shipment ended up: id -> { shipment, truck }
   const placement = useMemo(() => {
     const map = {};
@@ -233,10 +240,7 @@ export default function App() {
     return map;
   }, [result]);
 
-  const showCapError = capacityChecked && capError;
-  // The capacity the truck views get: kg only, or kg and pallet spaces.
-  const viewCapacity = result?.max_pallets ? { weight_kg: result.capacity, pallets: result.max_pallets } : result?.capacity;
-  const linkProps = { activeId, onHover: setHoverId, onFocusBlock: setFocusId };
+  const linkProps = { activeIds, onHover: setHoverIds, onFocusBlock: setFocusIds };
 
   return (
     <div className="app demo">
@@ -245,47 +249,25 @@ export default function App() {
       <main className="demo-main">
         <section className="card toolbar" aria-label="Trucks">
           <div className="toolbar-fields">
-            <div className="field">
-              <label className="field-label" htmlFor="capacity">Truck capacity</label>
-              <div className="input-unit">
-                <input
-                  id="capacity"
-                  className="input"
-                  type="number"
-                  min="1"
-                  inputMode="numeric"
-                  value={capacityText}
-                  aria-invalid={showCapError ? true : undefined}
-                  aria-describedby={showCapError ? "capacity-error" : undefined}
-                  onChange={(e) => {
-                    setCapacityText(e.target.value);
-                    setCapacityChecked(false); // no error while typing; checked again on blur or Solve
-                    clearResult();
-                  }}
-                  onBlur={() => setCapacityChecked(true)}
-                />
-                <span className="unit" aria-hidden="true">kg</span>
+            <div className="field vehicle-field">
+              <span className="field-label">Truck</span>
+              <div className="vehicle-line">
+                <span className="vehicle-text">
+                  {demoRef
+                    ? vehicleLine(demoRef, vehicleId, bodyType)
+                    : reference.status === "loading" ? "Loading vehicles…" : vehicleId}
+                </span>
+                <button
+                  ref={changeRef}
+                  type="button"
+                  className="btn btn-sm"
+                  aria-expanded={pickerOpen}
+                  aria-controls="vehicle-panel"
+                  onClick={() => (pickerOpen ? closePicker() : setPickerOpen(true))}
+                >
+                  Change<span className="sr-only"> truck</span>
+                </button>
               </div>
-            </div>
-            <div className="field">
-              <label className="field-label" htmlFor="max-pallets">Pallet spaces</label>
-              <input
-                id="max-pallets"
-                className="input"
-                type="number"
-                min="1"
-                max="100"
-                inputMode="numeric"
-                placeholder="No limit"
-                title="Pallet spaces per truck (1165 × 1165 mm pallets, 2 across). Blank for no limit."
-                value={palletsText}
-                aria-invalid={palError ? true : undefined}
-                aria-describedby={palError ? "pallets-error" : undefined}
-                onChange={(e) => {
-                  setPalletsText(e.target.value);
-                  clearResult();
-                }}
-              />
             </div>
             <div className="field">
               <span className="field-label" id="rule-set-label">Dangerous goods rules</span>
@@ -309,7 +291,7 @@ export default function App() {
             </div>
           </div>
           <div className="toolbar-actions">
-            <button type="button" className="btn" onClick={() => changeShipments(randomShipments(capacity ?? undefined, 20))}>
+            <button type="button" className="btn" onClick={randomise}>
               Random shipments
             </button>
             <button type="button" className="btn btn-ghost" onClick={clearAll} disabled={!shipments.length}>
@@ -319,10 +301,46 @@ export default function App() {
               {loading ? "Solving…" : "Solve"}
             </button>
           </div>
-          {(showCapError || palError) && (
-            <div className="toolbar-errors">
-              {showCapError && <span id="capacity-error" className="field-error">{capError}</span>}
-              {palError && <span id="pallets-error" className="field-error">{palError}</span>}
+          {reference.status === "error" && (
+            <p className="toolbar-errors field-error" role="alert">
+              Couldn’t load the vehicles ({reference.error}). Solving uses the {vehicleId === DEFAULT_VEHICLE ? "default 8 t rigid" : vehicleId}.{" "}
+              <button type="button" className="link-button" onClick={loadReference}>Try again</button>
+            </p>
+          )}
+          {pickerOpen && (
+            <div
+              id="vehicle-panel"
+              ref={panelRef}
+              className="vehicle-panel"
+              role="region"
+              aria-label="Choose the truck"
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  closePicker();
+                }
+              }}
+            >
+              {demoRef ? (
+                <VehiclePicker
+                  reference={demoRef}
+                  vehicleId={vehicleId}
+                  bodyType={bodyType}
+                  onVehicleChange={chooseVehicle}
+                  onBodyChange={(b) => {
+                    setBodyType(b);
+                    clearResult();
+                  }}
+                  allowSuggest={false}
+                />
+              ) : (
+                <p className="muted small">
+                  {reference.status === "loading" ? "Loading vehicles…" : "The vehicle list isn’t available right now."}
+                </p>
+              )}
+              <div className="vehicle-panel-actions">
+                <button type="button" className="btn btn-sm btn-primary" onClick={closePicker}>Done</button>
+              </div>
             </div>
           )}
         </section>
@@ -366,7 +384,6 @@ export default function App() {
                 </Summary>
                 <ResultPanel
                   data={result}
-                  capacity={viewCapacity}
                   step={step}
                   view={view}
                   narrow={narrowScreen}
@@ -381,12 +398,13 @@ export default function App() {
                 <p className="muted">
                   {shipments.length
                     ? <>Press <b>Solve</b> to load {shipments.length} shipment{shipments.length === 1 ? "" : "s"} into
-                      the fewest trucks{lowerBound ? <> (at least {lowerBound})</> : null}.</>
+                      the fewest trucks{weightBound ? <> (at least {weightBound} by weight)</> : null}.</>
                     : <>Add shipments, or press <b>Random shipments</b>.</>}
                 </p>
                 <p className="muted small">
-                  Google OR-Tools (CP-SAT) searches for the loading that uses the fewest identical trucks and proves
-                  when no better one exists. Incompatible dangerous goods (ADG Code Table 9.1) never share a truck.
+                  Google OR-Tools (CP-SAT) places every shipment on the decks of the fewest identical trucks,
+                  stacking where it can, and proves when no better loading exists. Incompatible dangerous goods
+                  (ADG Code Table 9.1) never share a truck.
                 </p>
               </div>
             )}
@@ -397,7 +415,7 @@ export default function App() {
               <h2 id="shipments-title">Shipments</h2>
               <p className="shipments-stats">
                 <span className="num">{shipments.length}</span> · <span className="num">{totalWeight.toLocaleString()}</span> kg
-                · <span className="num">{totalPallets.toLocaleString()}</span> pallets
+                · <span className="num">{totalVolume.toLocaleString(undefined, { maximumFractionDigits: 1 })}</span> m³
               </p>
             </div>
             {dgCount > 0 && (
@@ -408,14 +426,14 @@ export default function App() {
             )}
             <ShipmentTable
               shipments={shipments}
-              capacity={capacity}
-              maxPallets={maxPallets}
+              fit={fit}
+              pallets={pallets}
               onChange={changeShipments}
               ruleSet={ruleSet}
               placement={result ? placement : null}
-              activeId={activeId}
+              activeIds={activeIds}
               activeTruck={hoverTruck}
-              onHover={setHoverId}
+              onHover={setHoverIds}
             />
           </section>
         </div>
