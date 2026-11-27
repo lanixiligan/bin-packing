@@ -14,9 +14,11 @@ Guide or with mass limits.
 from fastapi import APIRouter, HTTPException
 from pydantic import ValidationError
 
+from app.planner import fleet
 from app.planner.base import run_plan
 from app.planner.models import FleetResult, PlanRequest, PlanResult
 from app.reference import ReferenceData, load_reference
+from app.solve_slots import solve_slots
 
 router = APIRouter()
 
@@ -56,5 +58,14 @@ def plan_fleet(req: PlanRequest) -> FleetResult:
         raise HTTPException(400, f"Unknown body type '{req.body_type}'.")
     if any(i.kind == "container" for i in req.items):
         raise HTTPException(400, "Split mode takes pallets and loose freight, not containers.")
-    # Implemented in app/planner/fleet.py (plan_fleet).
-    raise HTTPException(501, "Splitting across trucks isn't available yet.")
+    # Shares the demo's solver slots: a split can run CP-SAT for up to fleet.EXACT_TIME_LIMIT_S.
+    if not solve_slots.acquire(blocking=False):
+        raise HTTPException(429, "The solver is busy with other requests. Try again in a few seconds.")
+    try:
+        return fleet.plan_fleet(req, ref)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(500, str(exc)) from exc
+    finally:
+        solve_slots.release()

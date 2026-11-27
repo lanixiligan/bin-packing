@@ -90,11 +90,20 @@ def resolve_body(vehicle: VehicleConfig, body_type: str | None, ref: ReferenceDa
     return body
 
 
+def footprint_fits(length_mm: int, width_mm: int, vehicle: VehicleConfig) -> bool:
+    """True when a length x width footprint fits some cargo deck, one way round or the other."""
+    return any((length_mm <= d.length_mm and width_mm <= d.width_mm)
+               or (width_mm <= d.length_mm and length_mm <= d.width_mm) for d in vehicle.cargo_decks)
+
+
 def precheck(items: list[FreightItem], vehicle: VehicleConfig, body: BodyType,
              ref: ReferenceData, rule_set: RuleSet = "northline") -> CheckResult:
     """Unknown types, mixed freight, body/vehicle compatibility, out-of-scope bodies, reefer items,
-    per-item height (max stack, internal, overall limit), container gross vs max gross,
-    route-restricted vehicles, and dangerous goods segregation / carrier rules (dg_checks)."""
+    per-item height (max stack, internal, overall limit), container gross vs max gross, loose items
+    that are too heavy or too long for the vehicle, route-restricted vehicles, and dangerous goods
+    segregation / carrier rules (dg_checks).
+
+    Pallets and loose items are deck freight and may share a plan; containers can't mix with either."""
     out: list[PlanWarning] = []
 
     def warn(code, severity, message, suggestion="", item_ids=None):
@@ -105,7 +114,7 @@ def precheck(items: list[FreightItem], vehicle: VehicleConfig, body: BodyType,
     known: list[FreightItem] = []
     for it in items:
         table = ref.pallets if it.kind == "pallet" else ref.containers
-        if it.type_id in table:
+        if it.kind == "loose" or it.type_id in table:
             known.append(it)
             continue
         options = ", ".join(sorted(table))
@@ -113,13 +122,16 @@ def precheck(items: list[FreightItem], vehicle: VehicleConfig, body: BodyType,
              f"Item {_name(it)} uses an unknown {it.kind} type '{it.type_id}'.",
              f"Pick one of: {options}.", [it.id])
 
-    pallet_items = [it for it in items if it.kind == "pallet"]
+    # Deck freight: pallets and loose items share the deck, the bodies and the height rules.
+    pallet_items = [it for it in items if it.kind != "container"]
     container_items = [it for it in items if it.kind == "container"]
+    kinds = sorted({it.kind for it in pallet_items})
+    deck_word = {"pallet": "pallets", "loose": "loose items"}.get("".join(kinds), "pallets and loose items")
 
     if pallet_items and container_items:
         warn("MIXED_FREIGHT", "error",
-             "This load mixes pallets and containers; a plan can hold only one kind.",
-             "Plan the pallets and the containers as separate loads.", [it.id for it in items])
+             f"This load mixes {deck_word} and containers; containers need a plan of their own.",
+             f"Plan the {deck_word} and the containers as separate loads.", [it.id for it in items])
 
     # Body vs vehicle.
     if body.id not in vehicle.allowed_bodies:
@@ -138,7 +150,7 @@ def precheck(items: list[FreightItem], vehicle: VehicleConfig, body: BodyType,
         if pallet_items and not body.carries_pallets:
             alt = _allowed_bodies(vehicle, ref, pallets=True)
             warn("BODY_INCOMPATIBLE", "error",
-                 f"Pallets can't go on a {body.name.lower()} body.",
+                 f"{deck_word.capitalize()} can't go on a {body.name.lower()} body.",
                  f"Use {_body_names(alt[:3])} instead." if alt
                  else "Choose a vehicle that takes pallet bodies.",
                  [it.id for it in pallet_items])
@@ -173,30 +185,54 @@ def precheck(items: list[FreightItem], vehicle: VehicleConfig, body: BodyType,
     deck_h = _max_deck_height(vehicle)
     limit = vehicle.overall_height_limit_mm
     for it in known:
-        if it.kind == "pallet":
+        if it.kind != "container":
+            loose = it.kind == "loose"
+            what = "Item" if loose else "Pallet"
             h = it.height_mm if it.height_mm is not None else max_stack
-            max_gross = ref.pallet_defaults.max_gross_for(ref.pallets[it.type_id])
-            if it.gross_weight_kg > max_gross:
-                warn("PALLET_OVER_MAX_GROSS", "error",
-                     f"Pallet {_name(it)} weighs {_t(it.gross_weight_kg)}; one pallet is limited to "
-                     f"{_t(max_gross)}.",
-                     "Split the freight across more pallets, or check the carrier's per-pallet limit.",
-                     [it.id])
+            if loose:
+                if it.gross_weight_kg > vehicle.max_payload_kg:
+                    warn("OVER_PAYLOAD", "error",
+                         f"Item {_name(it)} weighs {_t(it.gross_weight_kg)}; the {vehicle.name} can carry "
+                         f"{_t(vehicle.max_payload_kg)}.",
+                         "Choose a vehicle with more payload, or move it as an over-mass load.", [it.id])
+                if vehicle.cargo_decks and not footprint_fits(it.length_mm, it.width_mm, vehicle):
+                    longest = max(d.length_mm for d in vehicle.cargo_decks)
+                    widest = max(d.width_mm for d in vehicle.cargo_decks)
+                    long_side, short_side = max(it.length_mm, it.width_mm), min(it.length_mm, it.width_mm)
+                    if long_side > longest:
+                        why = f"is {_m(long_side)} long; the {vehicle.name}'s deck is {_m(longest)} long"
+                    elif short_side > widest:
+                        why = f"is {_m(short_side)} wide; the {vehicle.name}'s deck is {_m(widest)} wide"
+                    else:
+                        why = (f"({_m(it.length_mm)} × {_m(it.width_mm)}) fits no deck of the {vehicle.name} "
+                               "whichever way it turns")
+                    warn("OVERSIZE_FOOTPRINT", "error", f"Item {_name(it)} {why}.",
+                         "Choose a vehicle with a longer deck, or move it as an over-dimensional load.",
+                         [it.id])
+            else:
+                max_gross = ref.pallet_defaults.max_gross_for(ref.pallets[it.type_id])
+                if it.gross_weight_kg > max_gross:
+                    warn("PALLET_OVER_MAX_GROSS", "error",
+                         f"Pallet {_name(it)} weighs {_t(it.gross_weight_kg)}; one pallet is limited to "
+                         f"{_t(max_gross)}.",
+                         "Split the freight across more pallets, or check the carrier's per-pallet limit.",
+                         [it.id])
             if h > max_stack:
                 warn("STACK_TOO_HIGH", "error",
-                     f"Pallet {_name(it)} is {_m(h)} tall; the max stack height is {_m(max_stack)}.",
-                     "Split it into two pallets or check the carrier's limit.", [it.id])
+                     f"{what} {_name(it)} is {_m(h)} tall; the max stack height is {_m(max_stack)}.",
+                     "Lay it down or check the carrier's limit." if loose
+                     else "Split it into two pallets or check the carrier's limit.", [it.id])
             if body.internal_height_mm is not None and h > body.internal_height_mm:
                 warn("OVER_INTERNAL_HEIGHT", "error",
-                     f"Pallet {_name(it)} is {_m(h)} tall; the {body.name.lower()} has "
+                     f"{what} {_name(it)} is {_m(h)} tall; the {body.name.lower()} has "
                      f"{_m(body.internal_height_mm)} inside.",
-                     "Lower the pallet or choose a body with more internal height (or an open flat top).",
-                     [it.id])
+                     f"Lower the {what.lower()} or choose a body with more internal height (or an open "
+                     "flat top).", [it.id])
             if deck_h + h > limit:
                 warn("OVER_HEIGHT_LIMIT", "error",
-                     f"Pallet {_name(it)} would reach {_m(deck_h + h)} above the road on the "
+                     f"{what} {_name(it)} would reach {_m(deck_h + h)} above the road on the "
                      f"{_m(deck_h)} deck; the height limit is {_m(limit)}.",
-                     "Lower the pallet or choose a vehicle with a lower deck.", [it.id])
+                     f"Lower the {what.lower()} or choose a vehicle with a lower deck.", [it.id])
         else:
             ct = ref.containers[it.type_id]
             if ct.ext_height_mm is not None and deck_h + ct.ext_height_mm > limit:
@@ -229,7 +265,7 @@ def _smallest_vehicle_for(weight_kg: float, current: VehicleConfig,
                default=None)
 
 
-def _feeding_decks(vehicle: VehicleConfig, group_id: str) -> set[str]:
+def feeding_decks(vehicle: VehicleConfig, group_id: str) -> set[str]:
     """Decks whose load reaches the axle group (directly, or through decks resting on them)."""
     decks = {d.id for d in vehicle.decks
              if group_id in (d.front_support.axle_group, d.rear_support.axle_group)}
@@ -296,7 +332,7 @@ def postcheck(placements: list[Placement], vehicle: VehicleConfig, body: BodyTyp
     # Axle groups.
     for a in axle_loads:
         group = vehicle.axle_group(a.group_id)
-        decks = _feeding_decks(vehicle, a.group_id)
+        decks = feeding_decks(vehicle, a.group_id)
         item_ids = sorted({p.item_id for p in placements if p.deck_id in decks})
         if a.status == "over":
             direction = _axle_direction(vehicle, a.group_id)

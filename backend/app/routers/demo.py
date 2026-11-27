@@ -15,10 +15,11 @@ With the default `rule_set: "northline"`, classes Northline never accepts are
 rejected (400); `rule_set: "adg"` applies the ADG Code only.
 
 It packs with Google OR-Tools CP-SAT (app/solver.py) and returns the fewest
-trucks it finds, with whether that is proven optimal.
+trucks it finds, with whether that is proven optimal. Every truck stays within
+the vehicle's axle group limits at GML (the planner's beam model, through
+app/planner/fleet.py `axle_coefficients`), so heavy freight may need more
+trucks than its weight alone suggests.
 """
-
-import threading
 
 from fastapi import APIRouter, HTTPException
 
@@ -32,15 +33,17 @@ from app.demo_models import (
     TruckCapacity,
     TruckOut,
 )
+from app.planner.fleet import axle_coefficients
 from app.reference import load_reference
+from app.solve_slots import MAX_CONCURRENT_SOLVES  # noqa: F401  (part of this module's interface)
+from app.solve_slots import solve_slots as _solve_slots
 from app.solver import DeckSpec, Item, Truck, loose_key, pallet_key
 from app.solver import solve as solve_items
 
-TIME_LIMIT_SECONDS = 10.0
 # The endpoint is public and each solve can use 8 solver threads for up to
-# TIME_LIMIT_SECONDS, so only this many run at once; the rest get 429.
-MAX_CONCURRENT_SOLVES = 2
-_solve_slots = threading.BoundedSemaphore(MAX_CONCURRENT_SOLVES)
+# TIME_LIMIT_SECONDS, so only MAX_CONCURRENT_SOLVES run at once (app/solve_slots.py, shared
+# with POST /api/plan/fleet); the rest get 429.
+TIME_LIMIT_SECONDS = 10.0
 
 # Class 1 in the demo means small arms ammunition (1.4S), the only explosive with wide acceptance.
 DEMO_EXPLOSIVE = "1.4S"
@@ -83,7 +86,8 @@ def _truck(req: SolveRequest):
         for d in vehicle.cargo_decks)
     if not decks or any(d.length <= 0 or d.width <= 0 or d.height <= 0 for d in decks):
         raise HTTPException(400, f"A {vehicle.name} has no usable cargo deck.")
-    truck = Truck(payload_kg=int(vehicle.max_payload_kg), decks=decks, name=vehicle.name)
+    truck = Truck(payload_kg=int(vehicle.max_payload_kg), decks=decks, name=vehicle.name,
+                  axle_limits=axle_coefficients(vehicle, "GML"))
     return ref, vehicle, body_id, truck
 
 
