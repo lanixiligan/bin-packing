@@ -1,70 +1,86 @@
-import { colorFor, dgCodeOf, limitOf, truckFill } from "./capacity.ts";
-import { usesDeck } from "./deck.ts";
+import { colorFor, dgCodeOf } from "./capacity.ts";
+import { floorUsedM2 } from "./deck.ts";
+import { metres } from "./sizes.ts";
 import DeckTruck from "./DeckTruck.jsx";
-import DimBars from "./DimBars.jsx";
-import Truck from "./Truck.jsx";
 import { DgDiamond } from "../../dg/DgBadge.tsx";
 import "./truck.css";
 
-// One truck in the 2D grid: its name and what's left, one fill bar per limited
-// dimension, the drawing (a pallet deck, or a weight column when nothing is on
-// pallets) and the names of what it carries. Hovering a name or a block lights up
-// that shipment everywhere; hovering the card lights up its rows in the table.
+// One truck in the 2D grid: its name and payload left, a bar each for weight and floor used,
+// the tallest point against the inside height, the deck drawing (DeckTruck.jsx) and the names
+// of what it carries. Hovering a name or a footprint lights up that shipment everywhere;
+// hovering the card lights up its rows in the table. While shipments are still dropping in,
+// the numbers follow what has landed so far.
 
-const num = (n) => n.toLocaleString(undefined, { maximumFractionDigits: 1 });
+const EPS = 1e-9;
+const pct = (n) => Math.floor(n + EPS);
+const kg = (n) => n.toLocaleString("en-AU");
 
-/** "466 kg free", plus "2 spaces free" with a pallet limit. */
-function freeText(full, limits) {
-  const parts = [`${num(Math.max(0, limits.weight_kg - full.weight_kg))} kg free`];
-  const pallets = limitOf(limits, "pallets");
-  if (pallets != null) {
-    const free = Math.max(0, pallets - full.pallets);
-    parts.push(`${num(free)} space${free === 1 ? "" : "s"} free`);
-  }
-  return parts.join(" · ");
+function FillBar({ label, value }) {
+  const p = pct(value);
+  return (
+    <div className="fill-bar">
+      <span className="fill-bar-label">{label}</span>
+      <span className="fill-bar-track"><span className="fill-bar-fill" style={{ width: `${Math.min(100, p)}%` }} /></span>
+      <span className="fill-bar-pct">{p}%</span>
+    </div>
+  );
 }
 
 export default function TruckCard({
-  truck, numTrucks, capacity, deckAtLeast, barHeight, deckMaxHeight, step, dropIndex,
-  activeId, activeTruck, onHover, onFocusBlock, onHoverTruck,
+  truck, numTrucks, capacity, plan, step, dropIndex, activeIds, activeTruck, onHover, onFocusBlock, onHoverTruck,
 }) {
-  const limits = typeof capacity === "number" ? { weight_kg: capacity } : capacity;
-  const { usage, full, done, over } = truckFill(truck, limits, step, dropIndex);
-  const deck = usesDeck(truck.shipments, capacity);
-  const holdsActive = activeId != null && truck.shipments.some((s) => s.id === activeId);
   const shown = truck.shipments.filter((s) => dropIndex[s.id] < step);
-  // Loose freight already has its own chips under the deck.
-  const named = deck ? shown.filter((s) => (s.pallets ?? 0) > 0) : shown;
-  const drawingProps = { truck, numTrucks, step, dropIndex, activeId, onHover, onFocusBlock };
+  const done = shown.length === truck.shipments.length;
+  const load = shown.reduce((sum, s) => sum + s.weight, 0);
+  const weightPct = done ? truck.fill_percent : (100 * load) / capacity.weight_kg;
+  const floorPct = done ? truck.floor_percent : (100 * floorUsedM2(shown)) / capacity.floor_m2;
+  const highMm = done ? truck.max_height_mm : Math.max(0, ...shown.map((s) => s.placement.z_mm + s.placement.height_mm));
+  const insideMm = Math.max(...capacity.decks.map((d) => d.height_mm));
+  const holdsActive = activeIds != null && truck.shipments.some((s) => activeIds.includes(s.id));
+  const free = done ? `${kg(truck.empty)} kg free` : "Loading…";
+  const high = `${metres(highMm)} of ${metres(insideMm)} m high`;
 
   return (
     <article
-      className={`truck-card${holdsActive ? " holds-active" : ""}${activeTruck === truck.truck ? " is-hovered" : ""}${over ? " over" : ""}`}
+      className={`truck-card${holdsActive ? " holds-active" : ""}${activeTruck === truck.truck ? " is-hovered" : ""}`}
       aria-labelledby={`truck-${truck.truck}-title`}
       onPointerEnter={() => onHoverTruck(truck.truck)}
       onPointerLeave={() => onHoverTruck(null)}
     >
       <header className="truck-card-head">
         <h3 id={`truck-${truck.truck}-title`}>Truck {truck.truck}</h3>
-        <span className={`truck-card-free${over ? " is-over" : ""}`}>
-          {!done ? "Loading…" : over ? "⚠ Over capacity" : freeText(full, limits)}
-        </span>
+        <span className="truck-card-free">{free}</span>
       </header>
-      <DimBars usage={usage} cap={limits} compact />
-      <div className="truck-card-drawing" style={{ minHeight: deck ? undefined : barHeight }}>
-        {deck
-          ? <DeckTruck {...drawingProps} cap={capacity} deckAtLeast={deckAtLeast} maxHeight={deckMaxHeight} />
-          : <Truck {...drawingProps} capacity={limits.weight_kg} height={barHeight} />}
+      <div className="fill-bars" aria-hidden="true">
+        <FillBar label="kg" value={weightPct} />
+        <FillBar label="floor" value={floorPct} />
       </div>
-      {named.length > 0 && (
+      <p className="truck-card-high" aria-hidden="true">{high}</p>
+      <p className="sr-only">
+        {`Weight ${kg(done ? truck.load : load)} of ${kg(capacity.weight_kg)} kg (${pct(weightPct)}%), `}
+        {`floor ${pct(floorPct)}% used, ${high}.`}
+      </p>
+      <div className="truck-card-drawing">
+        <DeckTruck
+          truck={truck}
+          numTrucks={numTrucks}
+          plan={plan}
+          step={step}
+          dropIndex={dropIndex}
+          activeIds={activeIds}
+          onHover={onHover}
+          onFocusBlock={onFocusBlock}
+        />
+      </div>
+      {shown.length > 0 && (
         <ul className="truck-card-items" aria-hidden="true">
-          {named.map((s) => {
+          {shown.map((s) => {
             const code = dgCodeOf(s);
             return (
               <li
                 key={s.id}
-                className={s.id === activeId ? "active" : undefined}
-                onPointerEnter={() => onHover(s.id)}
+                className={activeIds?.includes(s.id) ? "active" : undefined}
+                onPointerEnter={() => onHover([s.id])}
                 onPointerLeave={() => onHover(null)}
               >
                 <span className="swatch" style={{ background: colorFor(s.id) }} />
@@ -78,4 +94,3 @@ export default function TruckCard({
     </article>
   );
 }
-

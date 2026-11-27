@@ -1,5 +1,5 @@
-/* The 2D truck grid: truck cards (TruckCard.jsx), fill bars, DG blocks and the
-   pallet deck plan (DeckTruck.jsx). Colours come from the planner tokens. */
+/* The 2D truck grid: truck cards (TruckCard.jsx), fill bars and the deck plan drawn to
+   scale (DeckTruck.jsx). Colours come from the planner tokens. */
 
 /* ---------- Truck cards ---------- */
 .truck-grid {
@@ -16,14 +16,9 @@
 }
 .truck-card.is-hovered { border-color: var(--color-border-strong); }
 .truck-card.holds-active { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
-.truck-card.over { border-color: var(--color-error); }
 .truck-card-head { display: flex; flex-direction: column; gap: 2px; }
 .truck-card-head h3 { font-size: var(--text-md); }
 .truck-card-free { font-size: var(--text-xs); color: var(--color-text-muted); }
-.truck-card-free.is-over { color: var(--color-error); font-weight: var(--weight-semibold); }
-.truck-card .dim-bars { margin: 0; }
-.truck-card .dim-bars.compact .dim-bar { grid-template-columns: 1.7rem minmax(0, 1fr) 2.4rem; gap: var(--space-1); font-size: var(--text-xs); }
-.truck-card .dim-bar-track { height: 6px; }
 .truck-card-drawing { display: flex; justify-content: center; align-items: flex-end; padding: var(--space-1) 0; }
 .truck-card-items { display: flex; flex-wrap: wrap; gap: 3px var(--space-2); margin: 0; padding: var(--space-2) 0 0;
   list-style: none; border-top: var(--border); font-size: var(--text-xs); }
@@ -34,44 +29,24 @@
 .truck-card-item-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .truck-card-items .dg-dia { --size: 13px; flex: none; }
 .truck-grid.linking .truck-card-items li:not(.active) { opacity: 0.55; }
+.truck-card-high { font-size: var(--text-xs); color: var(--color-text-muted); }
 
-/* ---------- Fill bars (one per limited dimension) ---------- */
-.dim-bars { display: flex; flex-direction: column; gap: 3px; width: 100%; margin-bottom: 6px; }
-.dim-bar {
-  display: grid;
-  grid-template-columns: 4.5rem minmax(0, 1fr) 3rem;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-}
-.dim-bars.compact .dim-bar { grid-template-columns: 1.9rem minmax(0, 1fr) 2.3rem; gap: 3px; font-size: 0.68rem; }
-.dim-bar-label { color: var(--color-text-muted); font-weight: var(--weight-medium); white-space: nowrap; }
-.dim-bar-track {
-  position: relative;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--color-surface-3);
-  overflow: hidden;
-}
-.dim-bar-fill { position: absolute; inset: 0 auto 0 0; background: var(--color-accent); border-radius: var(--radius-pill); }
-.dim-bar.over .dim-bar-fill {
-  background: repeating-linear-gradient(45deg, var(--color-error), var(--color-error) 4px, transparent 4px, transparent 7px);
-}
-.dim-bar-pct { text-align: right; font-variant-numeric: tabular-nums; font-weight: var(--weight-semibold); }
-.dim-bar.over .dim-bar-pct { color: var(--color-error); }
+/* ---------- Fill bars: weight and floor, the text carries the number ---------- */
+.fill-bars { display: flex; flex-direction: column; gap: 3px; }
+.fill-bar { display: grid; grid-template-columns: 2.2rem minmax(0, 1fr) 2.4rem; align-items: center; gap: var(--space-1);
+  font-size: var(--text-xs); }
+.fill-bar-label { color: var(--color-text-muted); font-weight: var(--weight-medium); white-space: nowrap; }
+.fill-bar-track { position: relative; height: 6px; border-radius: var(--radius-pill); background: var(--color-surface-3); overflow: hidden; }
+.fill-bar-fill { position: absolute; inset: 0 auto 0 0; background: var(--color-accent); border-radius: var(--radius-pill); }
+.fill-bar-pct { text-align: right; font-weight: var(--weight-semibold); }
 
 @media (max-width: 600px) {
   .truck-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
   .truck-card { padding: var(--space-2); }
 }
 
-/* ---------- Dangerous goods on the truck blocks ---------- */
-/* A DG block: the class diamond at the left edge, the class as text on tall blocks. */
-.block.dg .block-label { padding-left: 18px; }
-.block-dia { position: absolute; left: 2px; top: 50%; transform: translateY(-50%); display: flex; pointer-events: none; }
-.block-dg { font-weight: var(--weight-semibold); }
-
-/* ---------- Pallet deck (DeckTruck.jsx): top-down plan at real proportions ---------- */
+/* ---------- Deck plan (DeckTruck.jsx): top-down, to scale, cab at the top ---------- */
+.deck { display: flex; flex-direction: column; align-items: center; max-width: 100%; }
 .deck-cab {
   height: 14px;
   border: 2px solid var(--color-border-strong);
@@ -79,49 +54,35 @@
   border-radius: 8px 8px 0 0;
   background: var(--color-surface-3);
 }
-.deck { display: flex; flex-direction: column; align-items: center; max-width: 100%; }
+.deck-part { display: flex; flex-direction: column; align-items: center; }
+.deck-hitch { width: 6px; height: 8px; background: var(--color-border-strong); }
+.deck-name { margin: 2px 0; font-size: 0.62rem; line-height: 1.1; color: var(--color-text-muted); white-space: nowrap; }
+/* The deck itself: its outline is drawn outside the box so the footprints keep their true scale. */
 .deck-floor {
   position: relative;
-  max-width: 100%;
   flex-shrink: 0;
-}
-.deck-bed {
-  position: absolute;
-  inset: 0 0 auto 0;
-  border: 2px solid var(--color-border-strong);
-  border-radius: 2px 2px 6px 6px;
+  outline: 2px solid var(--color-border-strong);
+  border-radius: 1px;
   background: repeating-linear-gradient(45deg, var(--color-surface-2), var(--color-surface-2) 6px,
     var(--color-surface-3) 6px, var(--color-surface-3) 12px);
 }
-.deck.over .deck-bed { outline: 2px solid var(--color-error); outline-offset: 3px; }
-.deck-slot {
-  position: absolute;
-  box-sizing: border-box;
-  border: 1px dashed var(--color-border-strong);
-  border-radius: 2px;
-}
-/* A pallet (or part of one): the item colour with faint deck boards across it. */
-.block.deck-piece {
+.block.deck-item {
   position: absolute;
   box-sizing: border-box;
   border: 1px solid var(--block-sep);
   border-radius: 2px;
-  background-image: repeating-linear-gradient(0deg, transparent 0 5px, rgb(0 0 0 / 0.07) 5px 6px) !important;
 }
-.block.deck-piece.over {
-  outline: 2px solid var(--color-error);
-  outline-offset: -2px;
-}
+/* Pallets: faint deck boards across the load. Loose items: grain along their length. */
+.block.deck-item.pallet { background-image: repeating-linear-gradient(0deg, transparent 0 5px, rgb(0 0 0 / 0.07) 5px 6px); }
+.block.deck-item.loose { border-radius: 4px; background-image: repeating-linear-gradient(90deg, transparent 0 3px, rgb(0 0 0 / 0.08) 3px 4px); }
 .deck-dia { display: flex; pointer-events: none; transform: scale(0.85); }
-.deck-loose { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; margin-top: 6px; max-width: 100%; }
-.block.deck-chip {
-  max-width: 100%;
-  padding: 1px 5px;
-  border: 1px solid var(--block-sep);
-  border-radius: var(--radius-pill);
-  font-size: 0.62rem;
-  color: var(--block-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.deck-count {
+  position: absolute; right: 1px; bottom: 1px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--block-text);
+  color: #ffffff;
+  font-size: 0.6rem; font-weight: var(--weight-semibold); line-height: 1.3;
+  pointer-events: none;
 }
+
