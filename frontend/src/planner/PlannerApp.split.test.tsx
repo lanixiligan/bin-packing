@@ -24,7 +24,9 @@ function mockApi({ plan = planDgConflict.result as unknown, fleet = fleetSample.
 }
 
 const splitButton = () => screen.findByRole("button", { name: "Split across trucks" });
-const tabs = () => screen.getAllByRole("tab");
+const allTab = () => screen.getByRole("tab", { name: "All trucks" });
+/** The trucks' tabs, after "All trucks". */
+const tabs = () => screen.getAllByRole("tab").slice(1);
 const panel = () => screen.getByRole("tabpanel");
 
 /** Render the page, wait for the single-truck plan, click "Split across trucks" and wait for the tabs. */
@@ -60,7 +62,11 @@ describe("Planner: split across trucks", () => {
     expect(screen.getByRole("heading", { name: "2 trucks · Proven fewest" })).toBeInTheDocument();
     expect(screen.getByText("Split across 2 × Medium rigid (8 t).")).toBeInTheDocument();
     expect(tabs().map((t) => t.textContent)).toEqual(["Truck 168 % of payload, fits", "Truck 245 % of payload, fits"]);
-    expect(tabs()[0]).toHaveAttribute("aria-selected", "true");
+    // A split opens on all the trucks: one drawing each, in one panel.
+    expect(allTab()).toHaveAttribute("aria-selected", "true");
+    expect(panel()).toHaveAccessibleName("All trucks");
+    expect(within(panel()).getAllByRole("heading", { name: /^Truck \d/ }).map((h) => h.textContent))
+      .toEqual(["Truck 1 →", "Truck 2 →"]);
     // The single-truck plan's DG clash is why: say so.
     expect(screen.getByRole("note")).toHaveTextContent(/can’t travel together are on separate trucks/);
     // The split button is gone while split.
@@ -68,7 +74,8 @@ describe("Planner: split across trucks", () => {
   });
 
   it("shows the selected truck with the usual panels, labelled by its tab", async () => {
-    await split();
+    const { user } = await split();
+    await user.click(tabs()[0]);
     expect(panel()).toHaveAccessibleName("Truck 1 68 % of payload, fits");
     expect(tabs()[0]).toHaveAttribute("aria-controls", panel().id);
     const view = within(panel());
@@ -77,13 +84,24 @@ describe("Planner: split across trucks", () => {
     expect(view.getByRole("heading", { name: /Estimated axle loads/ })).toBeInTheDocument();
     expect(view.getByText("5,400 kg")).toBeInTheDocument(); // truck 1's total weight
     expect(view.getByText(/This load carries dangerous goods \(Class 3\)/)).toBeInTheDocument();
-    // Every truck is in the page (for print), but only the selected one is shown.
-    expect(screen.getAllByRole("tabpanel", { hidden: true })).toHaveLength(2);
+    // Every truck is in the page (for print), plus all of them together, but only the selected one is shown.
+    expect(screen.getAllByRole("tabpanel", { hidden: true })).toHaveLength(3);
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+  });
+
+  it("opens a truck from its heading in the all-trucks drawing, keeping the chosen view", async () => {
+    const { user } = await split();
+    await user.click(within(panel()).getByRole("radio", { name: "Rear" }));
+    expect(within(panel()).getAllByRole("img", { name: /^Rear view/ })).toHaveLength(2);
+    await user.click(within(panel()).getByRole("button", { name: /^Truck 2/ }));
+    expect(tabs()[1]).toHaveAttribute("aria-selected", "true");
+    expect(within(panel()).getByRole("radio", { name: "Rear" })).toBeChecked();
+    expect(within(panel()).getAllByRole("img", { name: /^Rear view/ })).toHaveLength(1);
   });
 
   it("switches trucks with the arrow keys, and the axle panel follows", async () => {
     const { user } = await split();
+    await user.click(tabs()[0]);
     const axles = () => within(panel()).getByRole("heading", { name: /Estimated axle loads/ }).closest("section")!;
     expect(axles()).toHaveTextContent("4,604 kg / 6,000 kg"); // truck 1 steer
     expect(axles()).toHaveTextContent("6,296 kg / 9,000 kg");
@@ -98,11 +116,11 @@ describe("Planner: split across trucks", () => {
     expect(axles()).not.toHaveTextContent("6,296 kg");
     expect(within(panel()).getByText(/This load carries dangerous goods \(Class 5\.1\)/)).toBeInTheDocument();
 
-    await user.keyboard("{ArrowRight}"); // wraps
-    expect(tabs()[0]).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{ArrowRight}"); // wraps to all the trucks
+    expect(allTab()).toHaveAttribute("aria-selected", "true");
     await user.keyboard("{End}");
     expect(panel()).toHaveAccessibleName(/^Truck 2/);
-    await user.keyboard("{Home}");
+    await user.keyboard("{Home}{ArrowRight}");
     expect(axles()).toHaveTextContent("4,604 kg / 6,000 kg");
   });
 

@@ -46,8 +46,11 @@ export function fleetHeadline(fleet: FleetResult): string {
 }
 
 /** Ids that tie truck tab `i` to its panel. */
-export const truckTabId = (idBase: string, i: number) => `${idBase}-tab-${i}`;
-export const truckPanelId = (idBase: string, i: number) => `${idBase}-panel-${i}`;
+/** A truck of the split by index, or all of them. */
+export type TruckChoice = number | "all";
+
+export const truckTabId = (idBase: string, i: TruckChoice) => `${idBase}-tab-${i}`;
+export const truckPanelId = (idBase: string, i: TruckChoice) => `${idBase}-panel-${i}`;
 
 export type TruckStatus = "ok" | "near" | "over";
 

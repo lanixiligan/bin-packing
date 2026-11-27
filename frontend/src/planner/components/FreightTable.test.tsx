@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { normalise, type DgClass } from "../../dg/rules.ts";
-import { newLooseRow, newRow, validateRows, type FreightRow } from "../lib/freight.ts";
+import { exampleRows, newLooseRow, newRow, validateRows, type FreightRow } from "../lib/freight.ts";
+import { EXAMPLE_SECTIONS, exampleById } from "../../examples/shipmentExamples.ts";
 import { randomFreight, seededRandom } from "../lib/randomFreight.ts";
 import { reference } from "../test/fixtures.ts";
 import FreightTable from "./FreightTable.tsx";
@@ -71,7 +72,7 @@ describe("FreightTable", () => {
     expect(summary(1)).toBe("3 × loose 6,000 × 400 × 300 mm · 600 kg each Stackable");
     expect(summary(2)).toBe("1 × 40' High cube container · 20,000 kg each Temp-controlled");
     expect(summary(3)).toBe(
-      "1 × Australian Standard pallet · 500 kg each · 1,200 mm high Temp-controlled 3Dangerous goods: Class 3");
+      "1 × Australian Standard pallet · 500 kg each · 1,200 mm high Temp-controlled Dangerous goods: Class 3");
   });
 
   it("opens a line's form in place and closes it with Done, one line at a time", async () => {
@@ -324,7 +325,7 @@ describe("FreightTable", () => {
       newRow(reference, { label: "Timber" }),
     ]);
     expect(line(1)).toHaveTextContent("Dangerous goods: Class 3");
-    expect(within(line(1)).getByTitle("Flammable liquid")).toHaveTextContent("3Dangerous goods: Class 3");
+    expect(within(line(1)).getByTitle("Flammable liquid")).toHaveTextContent(/^Dangerous goods: Class 3$/);
     expect(line(2)).toHaveTextContent("Dangerous goods: Food");
     expect(line(3)).not.toHaveTextContent(/dangerous goods/i);
     expect(within(line(1)).queryByRole("combobox", { name: /dangerous|class/i })).not.toBeInTheDocument();
@@ -378,5 +379,108 @@ describe("FreightTable", () => {
     setup();
     expect(screen.queryByRole("button", { name: /csv|import/i })).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/csv/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("FreightTable: example shipments", () => {
+  const select = () => screen.getByRole("combobox", { name: "Example shipments" });
+
+  it("lists the examples by section", () => {
+    setup();
+    const groups = within(select()).getAllByRole("group");
+    expect(groups.map((g) => g.getAttribute("label"))).toEqual(EXAMPLE_SECTIONS.map((s) => s.name));
+    expect(within(groups[0]).getAllByRole("option").map((o) => o.textContent))
+      .toEqual(EXAMPLE_SECTIONS[0].examples.map((e) => e.title));
+  });
+
+  it("replaces the list with the example's lines, with undo", async () => {
+    const user = setup();
+    const before = labels();
+    await user.selectOptions(select(), "hardware-store");
+    const example = exampleById("hardware-store")!;
+    expect(labels()).toEqual(example.lines.map((l) => l.name));
+    expect(store.rows.map((r) => r.quantity)).toEqual(example.lines.map((l) => l.count));
+    expect(store.rows.map((r) => r.dg?.dg_class ?? null)).toEqual(example.lines.map((l) => l.dgClass));
+    const status = screen.getAllByRole("status").find((s) => s.textContent?.includes("example"))!;
+    expect(status).toHaveTextContent("Replaced the list with the “Hardware store” example.");
+    await user.click(within(status).getByRole("button", { name: "Undo" }));
+    expect(labels()).toEqual(before);
+  });
+
+  it("hands the example and its rows to onExample, and shows the caption while exampleId is set", async () => {
+    const user = userEvent.setup();
+    const onExample = vi.fn();
+    const onRowsChange = vi.fn();
+    const rows = rowsFixture();
+    const { rerender } = render(
+      <FreightTable reference={reference} rows={rows} onRowsChange={onRowsChange} errors={{}} listErrors={[]}
+                    exampleId="" onExample={onExample} />);
+    expect(screen.queryByText(/Heavy pallets/)).not.toBeInTheDocument();
+    await user.selectOptions(select(), "cement-tiles");
+    expect(onRowsChange).not.toHaveBeenCalled();
+    expect(onExample).toHaveBeenCalledWith(exampleById("cement-tiles"), expect.any(Array));
+    const sent: FreightRow[] = onExample.mock.calls[0][1];
+    const expected = exampleRows(exampleById("cement-tiles")!, reference);
+    expect(sent.map((r) => [r.label, r.quantity])).toEqual(expected.map((r) => [r.label, r.quantity]));
+
+    rerender(
+      <FreightTable reference={reference} rows={sent} onRowsChange={onRowsChange} errors={{}} listErrors={[]}
+                    exampleId="cement-tiles" onExample={onExample} />);
+    expect(select()).toHaveValue("cement-tiles");
+    const note = screen.getByText(/Heavy pallets/);
+    expect(note).toHaveTextContent(`Cement & tiles: ${exampleById("cement-tiles")!.shows}`);
+  });
+});
+
+describe("FreightTable: paste weights", () => {
+  const open = (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole("button", { name: "Paste weights…" }));
+  const box = () => screen.getByRole("textbox", { name: /Weights in kg/ });
+
+  it("counts the weights and lists what it skips", async () => {
+    const user = setup();
+    await open(user);
+    await user.type(box(), "560, 490 abc 0");
+    expect(screen.getByText(/2 weights found/)).toBeInTheDocument();
+    expect(screen.getByText(/Skipping these entries/)).toHaveTextContent('"abc", "0"');
+  });
+
+  it("adds a numbered AU pallet line per weight, with undo", async () => {
+    const user = setup();
+    const before = labels();
+    await open(user);
+    await user.type(box(), "560, 490");
+    await user.click(screen.getByRole("button", { name: "Add to list" }));
+    expect(labels()).toEqual([...before, "General freight 04", "General freight 05"]);
+    expect(store.rows.slice(3).map((r) => [r.type_id, r.quantity, r.gross_weight_kg, r.height_mm, r.stackable]))
+      .toEqual([["AU_STD", 1, 560, 1200, false], ["AU_STD", 1, 490, 1200, false]]);
+    expect(screen.queryByRole("textbox", { name: /Weights in kg/ })).not.toBeInTheDocument();
+    const status = screen.getAllByRole("status").find((s) => s.textContent?.includes("pasted"))!;
+    expect(status).toHaveTextContent("Added 2 pasted weights.");
+    await user.click(within(status).getByRole("button", { name: "Undo" }));
+    expect(labels()).toEqual(before);
+  });
+
+  it("replaces the list, and Cancel leaves it alone", async () => {
+    const user = setup();
+    const before = labels();
+    await open(user);
+    await user.type(box(), "700");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(labels()).toEqual(before);
+    await open(user);
+    expect(box()).toHaveValue("");
+    await user.type(box(), "700 800");
+    await user.click(screen.getByRole("button", { name: "Replace list" }));
+    expect(labels()).toEqual(["General freight 01", "General freight 02"]);
+  });
+
+  it("keeps within the units one plan takes", async () => {
+    const user = setup([200, 200, 99].map((quantity) => newRow(reference, { quantity }))); // 499 units
+    await open(user);
+    fireEvent.change(box(), { target: { value: "500 600 700" } });
+    expect(screen.getByText(/Adding keeps the first 1\b/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add to list" }));
+    expect(store.rows).toHaveLength(4);
+    expect(validateRows(store.rows, reference).listErrors).toEqual([]);
   });
 });

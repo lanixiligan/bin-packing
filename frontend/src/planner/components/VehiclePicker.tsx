@@ -16,7 +16,7 @@ export interface VehiclePickerProps {
   onBodyChange(bodyType: string | null): void;
   /** In suggest mode, the vehicle the last plan picked (to highlight it). */
   suggestedVehicleId?: string | null;
-  /** Offer the "Suggest one" card (default true; the bin packing demo always needs a vehicle). */
+  /** Offer the "Suggest one" card (default true; false where a vehicle must be picked). */
   allowSuggest?: boolean;
 }
 

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { EXAMPLES, exampleById, type ShipmentExample } from "../../examples/shipmentExamples.ts";
 import { reference } from "../test/fixtures.ts";
-import { newLooseRow, newRow, newRowId, sampleRows, toItem, validateRows } from "./freight.ts";
+import {
+  exampleRows, newLooseRow, newRow, newRowId, parseWeights, sampleRows, toItem, validateRows, weightRows,
+} from "./freight.ts";
 
 const pallet = (o = {}) => newRow(reference, o);
 const container = (o = {}) => newRow(reference, { kind: "container", type_id: "HC40", gross_weight_kg: 20000, height_mm: null, ...o });
@@ -111,5 +114,70 @@ describe("validateRows", () => {
 
   it("makes unique row ids", () => {
     expect(newRowId()).not.toBe(newRowId());
+  });
+});
+
+describe("exampleRows", () => {
+  it("makes one row per example line, its count as the quantity", () => {
+    const example = exampleById("cement-tiles")!;
+    const rows = exampleRows(example, reference);
+    expect(rows.map((r) => [r.label, r.kind, r.type_id, r.quantity, r.gross_weight_kg, r.height_mm, r.stackable])).toEqual(
+      example.lines.map((l) => [l.name, "pallet", l.palletType, l.count, l.weightKg, l.heightMm, l.stackable]),
+    );
+    expect(rows.every((r) => r.dg === null)).toBe(true);
+    expect(new Set(rows.map((r) => r.id)).size).toBe(rows.length);
+  });
+
+  it("makes loose lines with their own length and width", () => {
+    const rows = exampleRows(exampleById("pipes-timber")!, reference);
+    expect(rows[0]).toMatchObject({ kind: "loose", type_id: "LOOSE", label: "Pipes", quantity: 8,
+      length_mm: 6000, width_mm: 400, height_mm: 300, gross_weight_kg: 300, stackable: false });
+    expect(toItem(rows[0])).toMatchObject({ kind: "loose", length_mm: 6000, width_mm: 400 });
+  });
+
+  it("maps food, fire-risk and DG classes with their subsidiary hazards", () => {
+    const example: ShipmentExample = {
+      id: "t", title: "Test", shows: "",
+      lines: [
+        { name: "Rice", count: 1, weightKg: 300, heightMm: 900, stackable: true, palletType: "AU_STD", dgClass: "food", subsidiary: [] },
+        { name: "Diesel", count: 1, weightKg: 300, heightMm: 900, stackable: false, palletType: "AU_STD", dgClass: "fire_risk", subsidiary: [] },
+        { name: "Methanol", count: 2, weightKg: 300, heightMm: 900, stackable: false, palletType: "AU_STD", dgClass: "3", subsidiary: ["6.1"] },
+        { name: "Tyres", count: 1, weightKg: 300, heightMm: 900, stackable: false, palletType: "AU_STD", dgClass: null, subsidiary: [] },
+      ],
+    };
+    const [rice, diesel, methanol, tyres] = exampleRows(example, reference);
+    expect(rice.dg).toMatchObject({ dg_class: null, food: true, fire_risk: false });
+    expect(diesel.dg).toMatchObject({ dg_class: null, food: false, fire_risk: true });
+    expect(methanol.dg).toMatchObject({ dg_class: "3", subsidiary: ["6.1"], t92: [], food: false, fire_risk: false });
+    expect(tyres.dg).toBeNull();
+    expect(toItem(methanol).dg).toMatchObject({ dg_class: "3", subsidiary: ["6.1"] });
+  });
+
+  it.each(EXAMPLES.map((e) => [e.id, e] as const))("%s passes the planner's checks", (_id, example) => {
+    const v = validateRows(exampleRows(example, reference), reference);
+    expect(v.errors).toEqual({});
+    expect(v.listErrors).toEqual([]);
+    expect(reference.vehicles[example.vehicleId ?? "RIGID_MEDIUM"]).toBeDefined();
+  });
+});
+
+describe("parseWeights", () => {
+  it("reads whole numbers separated by commas, semicolons, spaces and new lines", () => {
+    expect(parseWeights("560, 490, 440 370\n360;\t12")).toEqual({ weights: [560, 490, 440, 370, 360, 12], invalid: [] });
+    expect(parseWeights("  ")).toEqual({ weights: [], invalid: [] });
+  });
+
+  it("lists what isn't a whole number above 0", () => {
+    expect(parseWeights("500 0 12.5 abc -3 700")).toEqual({ weights: [500, 700], invalid: ["0", "12.5", "abc", "-3"] });
+  });
+});
+
+describe("weightRows", () => {
+  it("makes one AU pallet per weight, 1.2 m high, not stackable, numbered on from `start`", () => {
+    const rows = weightRows([560, 490], reference, 9);
+    expect(rows.map((r) => [r.label, r.kind, r.type_id, r.quantity, r.gross_weight_kg, r.height_mm, r.stackable])).toEqual([
+      ["General freight 10", "pallet", "AU_STD", 1, 560, 1200, false],
+      ["General freight 11", "pallet", "AU_STD", 1, 490, 1200, false],
+    ]);
   });
 });

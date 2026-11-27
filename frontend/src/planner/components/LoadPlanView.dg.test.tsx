@@ -50,15 +50,20 @@ describe("LoadPlanView dangerous goods", () => {
 
   it("outlines conflicting stacks in deck and elevation, with a warning icon and 'conflicts with' text", () => {
     const { container } = renderPlan(planDgConflict);
-    for (const s of [...stacksOf("Paint"), ...stacksOf("Pool chlorine"), ...stacksOf("Battery acid")]) {
+    const conflicting = [...stacksOf("Paint"), ...stacksOf("Pool chlorine"), ...stacksOf("Battery acid")];
+    for (const s of conflicting) {
       expect(s).toHaveClass("has-conflict", "is-conflict-error");
       expect(s.querySelector(".deck-conflict-outline.is-error")).not.toBeNull();
       expect(s.querySelector(".deck-conflict-icon")).not.toBeNull();
-      const key = s.getAttribute("data-stack");
+    }
+    const keys = conflicting.map((s) => s.getAttribute("data-stack"));
+    act(() => screen.getByRole("radio", { name: "Driver side" }).click());
+    for (const key of keys) {
       const elev = container.querySelector(`.elev-stack[data-stack="${key}"]`)!;
       expect(elev).toHaveClass("has-conflict", "is-conflict-error");
       expect(elev.querySelector(".elev-conflict title")).toHaveTextContent("Incompatible dangerous goods");
     }
+    act(() => screen.getByRole("radio", { name: "Top" }).click());
     for (const s of stacksOf("General freight")) {
       expect(s).not.toHaveClass("has-conflict");
       expect(s.querySelector(".deck-conflict-outline")).toBeNull();

@@ -1,5 +1,5 @@
-/* The load plan: toolbar, the two drawings (fitted to their box; they scroll sideways only when zoomed in),
-   legend, unplaced units and the table. The details popover is positioned against .lp. */
+/* The load plan: toolbar, one drawing per truck shown (fitted to its box; it scrolls sideways only when
+   zoomed in), legend, unplaced units and the table. The details popover is positioned against .lp-truck. */
 
 .lp { position: relative; display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
 
@@ -9,6 +9,12 @@
 .lp-toolbar-label { font-size: var(--text-sm); color: var(--color-text-muted); }
 .lp-toolbar .btn-icon { font-size: var(--text-md); }
 .lp-zoom { min-width: 4.5ch; text-align: center; font-size: var(--text-xs); color: var(--color-text-muted); }
+
+/* One truck's drawing; its details popover is positioned against it. All trucks: one under another. */
+.lp-truck { position: relative; display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.lp-trucks { display: flex; flex-direction: column; gap: var(--space-5); }
+.lp-truck-title { margin: 0; font-size: var(--text-sm); }
+.lp-truck-title .btn { padding-inline: var(--space-1); font-weight: var(--weight-semibold); }
 
 .lp-figure { margin: 0; min-width: 0; }
 .lp-scroll {

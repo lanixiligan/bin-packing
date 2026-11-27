@@ -2,6 +2,10 @@
 
 .elevation-view { display: block; height: auto; max-width: none; font-family: var(--font-sans);
   font-variant-numeric: tabular-nums; user-select: none; }
+/* End-on: about 2.5 m wide, so it gets a fixed size (LoadPlanView scales it for zoom), centred. */
+.rear-view { margin-inline: auto; }
+.rear-view .elev-label { font-size: 200px; stroke-width: 60px; }
+.rear-wheel { fill: var(--color-text-subtle); }
 
 .elev-ground { stroke: var(--color-border-strong); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
 .elev-chassis { fill: var(--color-surface-3); }
@@ -9,6 +13,8 @@
   stroke-linejoin: round; }
 .elev-cab-window { fill: var(--color-surface-3); }
 .elev-deck { fill: var(--color-text-subtle); }
+/* A pallet's wooden base, at the bottom of each pallet unit (part of its height). */
+.elev-pallet { fill: var(--color-pallet); }
 
 .elev-stack { cursor: pointer; transition: transform var(--motion-base) var(--ease), opacity var(--motion-fast) var(--ease); }
 .elev-stack.is-dimmed { opacity: 0.45; }

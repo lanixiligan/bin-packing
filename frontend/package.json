@@ -10,7 +10,7 @@
     "lint": "eslint . && tsc --noEmit -p .",
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run && npm run test:node",
-    "test:node": "node --test 'src/dg/**/*.test.ts' 'src/demo/**/*.test.mjs'",
+    "test:node": "node --test 'src/dg/**/*.test.ts'",
     "test:watch": "vitest"
   },
   "dependencies": {

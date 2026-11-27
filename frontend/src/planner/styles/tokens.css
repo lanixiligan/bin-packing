@@ -47,6 +47,8 @@
   --cat-7: #d99cc1;
   --cat-8: #b8b8b8;
   --cat-none: #cbd5e1;
+  /* A pallet's wooden base in the side views (TruckScene3D.jsx uses the same browns). */
+  --color-pallet: #b08a5a;
   --on-cat: #0f172a;
 
   /* Weight heat scale (light → heavy), single hue */
@@ -129,6 +131,7 @@
     --color-info: #93c5fd;
     --color-info-soft: #172554;
     --cat-none: #475569;
+    --color-pallet: #8a6a42;
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
     --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.5);
   }
@@ -159,6 +162,7 @@
   --color-info: #93c5fd;
   --color-info-soft: #172554;
   --cat-none: #475569;
+  --color-pallet: #8a6a42;
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.5);
 }

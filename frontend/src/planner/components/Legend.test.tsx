@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { planDgConflict, planMultidrop, reference } from "../test/fixtures.ts";
@@ -7,16 +7,31 @@ import LoadPlanView from "./LoadPlanView.tsx";
 function renderPlan() {
   return render(<LoadPlanView result={planMultidrop.result} reference={reference} request={planMultidrop.request} />);
 }
+const colourBy = (mode: string) => act(() => screen.getByRole("radio", { name: mode }).click());
 
 const legend = () => screen.getByRole("group", { name: "Legend" });
 const deckSvg = (container: HTMLElement) => container.querySelector<HTMLElement>(".deck-view")!;
 
 describe("Legend and colour modes", () => {
-  it("colours by DG class by default, in order of first appearance, general freight neutral", () => {
+  it("colours by line by default: one colour per line, named in the legend with the pallet base", () => {
+    const { container } = renderPlan();
+    expect(screen.getByRole("radio", { name: "Line" })).toBeChecked();
+    const items = within(legend()).getAllByRole("listitem").map((li) => li.textContent);
+    const lines = planMultidrop.request.items.filter((i) => planMultidrop.result.placements.some((p) => p.item_id === i.id));
+    expect(items.slice(0, -1).map((t) => t!.replace(/ × \d+$/, ""))).toEqual(lines.map((i) => i.label));
+    expect(items.at(-1)).toMatch(/^Pallet base/);
+    // Stacks of the same line share a fill; different lines differ.
+    const fillOf = (label: string) => [...container.querySelectorAll(
+      `.deck-view .deck-stack[aria-label^="${label}"] .deck-unit`)].map((r) => r.getAttribute("fill"));
+    expect(new Set(fillOf("Beverages")).size).toBe(1);
+    expect(fillOf("Beverages")[0]).not.toBe(fillOf("Hardware")[0]);
+  });
+
+  it("colours by DG class on request, in order of first appearance, general freight neutral", () => {
     const { container } = render(
       <LoadPlanView result={planDgConflict.result} reference={reference} request={planDgConflict.request} />,
     );
-    expect(screen.getByRole("radio", { name: "DG class" })).toBeChecked();
+    colourBy("DG class");
     expect(within(legend()).getByText("Dangerous goods class")).toBeInTheDocument();
     const items = within(legend()).getAllByRole("listitem").map((li) => li.textContent);
     // Classes get colours in the order they first appear in the placements.
@@ -32,6 +47,7 @@ describe("Legend and colour modes", () => {
 
   it("lists only general freight without DG", () => {
     const { container } = renderPlan();
+    colourBy("DG class");
     const items = within(legend()).getAllByRole("listitem").map((li) => li.textContent);
     expect(items).toEqual(["–General freight"]);
     const fills = [...container.querySelectorAll(".deck-view .deck-unit")].map((r) => r.getAttribute("fill"));

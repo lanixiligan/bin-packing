@@ -115,6 +115,7 @@ export default function Legend({ mode, stacks, dgClasses }: LegendProps) {
   return (
     <div className="legend" aria-label="Legend" role="group">
       <div className="legend-main">
+        {mode === "line" && <LineLegend stacks={stacks} />}
         {mode === "dg" && <DgLegend stacks={stacks} dgClasses={dgClasses} />}
         {mode === "weight" && <WeightLegend stacks={stacks} />}
         {mode === "type" && <TypeLegend stacks={stacks} />}
@@ -126,6 +127,40 @@ export default function Legend({ mode, stacks, dgClasses }: LegendProps) {
         <span className="subtle">Axle group, one tick per axle</span>
       </div>
     </div>
+  );
+}
+
+/** One swatch per freight line on the truck(s), in the freight list's order, and the pallet base's brown. */
+function LineLegend({ stacks }: { stacks: PlanStack[] }) {
+  const lines = new Map<number, { name: string; fill: string; count: number }>();
+  let pallets = false;
+  for (const s of stacks) {
+    s.units.forEach((u, i) => {
+      const f = s.faces[i];
+      const line = lines.get(f.line);
+      if (line) line.count += 1;
+      else lines.set(f.line, { name: u.label || u.item_id, fill: f.fill, count: 1 });
+      pallets ||= u.kind === "pallet";
+    });
+  }
+  return (
+    <>
+      <h3 className="legend-title">Lines</h3>
+      <ul className="legend-list">
+        {[...lines.entries()].sort(([a], [b]) => a - b).map(([k, l]) => (
+          <li key={k} className="legend-item">
+            <span className="legend-swatch legend-swatch-cat" style={{ background: l.fill }} aria-hidden="true" />
+            <span><strong>{l.name}</strong> <span className="muted num">× {l.count}</span></span>
+          </li>
+        ))}
+        {pallets && (
+          <li className="legend-item">
+            <span className="legend-swatch legend-swatch-cat" style={{ background: "var(--color-pallet)" }} aria-hidden="true" />
+            <span className="muted">Pallet base (side and rear views)</span>
+          </li>
+        )}
+      </ul>
+    </>
   );
 }
 

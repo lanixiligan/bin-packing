@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/dg/checker.css"
+        ],
+        "createdAt": "2026-11-27T16:33:03.540Z",
+        "reason": "Claude's call: the Northline rule cards' red left border is copied from the CTO-supplied checker page the user asked to port (.nl-rule border-left:5px solid var(--bad))"
+      }
+    ]
+  }
+}

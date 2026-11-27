@@ -1,4 +1,4 @@
-"""Sized OR-Tools packing (app.solver) and the demo endpoint (POST /api/solve)."""
+"""Sized OR-Tools packing (app.solver), plus the app-wide health check and body size limit."""
 
 import random
 
@@ -6,12 +6,10 @@ import pytest
 from ortools.sat.python import cp_model
 
 from app import solver as solver_mod
-from app.demo_models import SolveResponse
 from app.dg import DgInfo
 from app.planner.axles import estimate_axle_loads
 from app.planner.fleet import axle_coefficients
 from app.planner.models import Placement
-from app.routers import demo
 from app.solver import DeckSpec, Item, Solution, Truck, pallet_key, solve
 from tests import factories
 
@@ -382,172 +380,11 @@ def test_random_instances_are_valid_and_never_below_the_bound(seed, size):
 
 
 # ---------------------------------------------------------------------------
-# POST /api/solve
+# App-wide
 # ---------------------------------------------------------------------------
 
-def body(*shipments: dict, **extra) -> dict:
-    return {"shipments": list(shipments), **extra}
-
-
-def ship(name: str, weight: int = 100, height_mm: int = 1200, **kw) -> dict:
-    return {"name": name, "weight": weight, "height_mm": height_mm, **kw}
-
-
-async def test_demo_endpoint_response(client):
-    shipments = [ship("Paint 01", 420, dg_class="3", stackable=True),
-                 ship("Paint 02", 400, dg_class="3", stackable=True),
-                 ship("Pipes 03", 250, 300, kind="loose", length_mm=4600, width_mm=400),
-                 ship("Glass 04", 300, 1600, pallet_type="EURO"),
-                 ship("Acid 05", 300, 1400, dg_class="8", subsidiary=["6.1"]),
-                 ship("Rice 06", 400, 1000, pallet_type="EURO", dg_class="food")]
-    r = await client.post("/api/solve", json=body(*shipments))
-    assert r.status_code == 200, r.text
-    data = SolveResponse.model_validate(r.json()).model_dump()
-    assert r.json() == SolveResponse.model_validate(r.json()).model_dump(mode="json")
-    assert data["vehicle_id"] == "RIGID_MEDIUM" and data["vehicle_name"] == "Medium rigid (8 t)"
-    assert data["body_type"] == "TAUTLINER"
-    cap = data["capacity"]
-    assert cap["weight_kg"] == 8000 and cap["floor_m2"] == 11.52 and cap["volume_m3"] == 31.1
-    assert cap["decks"] == [{"id": "body", "name": "Body", "length_mm": 4800, "width_mm": 2400,
-                             "height_mm": 2700}]
-    assert data["total_weight"] == 2070
-    assert data["segregated"] is True and data["num_trucks"] == 2 and data["lower_bound"] == 1
-    assert set(data["lower_bounds"]) == {"weight", "volume", "floor"}
-    assert data["time_limit_s"] == 10.0 and data["status"] == "OPTIMAL" and data["optimal"]
-    assert data["drop_order"] == [s["id"] for t in data["trucks"] for s in t["shipments"]]
-    assert sorted(data["drop_order"]) == list(range(6))
-    for number, t in enumerate(data["trucks"], start=1):
-        assert t["truck"] == number
-        assert t["load"] == sum(s["weight"] for s in t["shipments"]) and t["empty"] == 8000 - t["load"]
-        floor = sum(s["placement"]["length_mm"] * s["placement"]["width_mm"]
-                    for s in t["shipments"] if s["placement"]["level"] == 0)
-        assert t["floor_used_m2"] == round(floor / 1e6, 2)
-        assert t["max_height_mm"] == max(s["placement"]["z_mm"] + s["height_mm"] for s in t["shipments"])
-        levels = [s["placement"]["level"] for s in t["shipments"]]
-        assert levels == sorted(levels)
-    out = {s["name"]: s for t in data["trucks"] for s in t["shipments"]}
-    assert out["Paint 01"]["pallet_type"] == "AU_STD" and out["Paint 01"]["length_mm"] == 1165
-    assert out["Glass 04"]["length_mm"] == 1200 and out["Glass 04"]["width_mm"] == 800
-    assert out["Pipes 03"]["pallet_type"] is None and out["Pipes 03"]["kind"] == "loose"
-    assert out["Acid 05"]["subsidiary"] == ["6.1"]
-    # Food and Class 8 never share a truck.
-    truck_of = {s["name"]: t["truck"] for t in data["trucks"] for s in t["shipments"]}
-    assert truck_of["Rice 06"] != truck_of["Acid 05"]
-
-
-async def test_demo_endpoint_names_items_that_never_fit(client):
-    r = await client.post("/api/solve", json=body(
-        ship("Pipes 04", 200, 300, kind="loose", length_mm=6000, width_mm=400), ship("Ok")))
-    assert r.status_code == 400
-    assert "'Pipes 04' is 6,000 mm long and the longest deck is 4,800 mm" in r.json()["detail"]
-    assert "Ok" not in r.json()["detail"]
-
-
-async def test_demo_endpoint_stacks_when_the_floor_is_full(client):
-    pallets = [ship(f"P{i}", stackable=True) for i in range(9)]
-    data = (await client.post("/api/solve", json=body(*pallets))).json()
-    assert data["num_trucks"] == 1
-    top = [s["placement"] for s in data["trucks"][0]["shipments"] if s["placement"]["level"] == 1]
-    assert top and all(p["z_mm"] == 1200 for p in top)
-    by_id = {s["id"]: s["placement"] for s in data["trucks"][0]["shipments"]}
-    for p in top:
-        base = by_id[p["stack_base"]]
-        assert base["level"] == 0 and (base["x_mm"], base["y_mm"]) == (p["x_mm"], p["y_mm"])
-    assert data["trucks"][0]["max_height_mm"] == 2400
-    # Too tall to stack under 2,700 mm: two trucks.
-    pallets = [ship(f"P{i}", height_mm=1400, stackable=True) for i in range(9)]
-    data = (await client.post("/api/solve", json=body(*pallets))).json()
-    assert data["num_trucks"] == 2
-
-
-async def test_demo_endpoint_b_double_uses_both_decks(client):
-    pallets = [ship(f"P{i}") for i in range(30)]
-    r = await client.post("/api/solve", json=body(*pallets, vehicle_id="B_DOUBLE"))
-    assert r.status_code == 200, r.text
-    data = r.json()
-    assert [d["id"] for d in data["capacity"]["decks"]] == ["lead", "rear"]
-    assert data["num_trucks"] == 1
-    assert {s["placement"]["deck_id"] for s in data["trucks"][0]["shipments"]} == {"lead", "rear"}
-
-
-async def test_demo_endpoint_segregates_dg_classes(client):
-    r = await client.post("/api/solve", json=body(ship("Thinners", dg_class="3"),
-                                                  ship("Chlorine gas", dg_class="2.3"), ship("Bricks")))
-    assert r.status_code == 200, r.text
-    data = r.json()
-    assert data["segregated"] is True and data["lower_bound"] == 1 and data["num_trucks"] == 2
-    for t in data["trucks"]:
-        assert not {"3", "2.3"} <= {s["dg_class"] for s in t["shipments"]}
-
-
-async def test_demo_endpoint_payload_binds(client):
-    r = await client.post("/api/solve", json=body(*[ship(f"Steel {i}", 3000) for i in range(3)]))
-    data = r.json()
-    assert data["lower_bounds"]["weight"] == 2 and data["num_trucks"] == 2
-    assert all(t["load"] <= 8000 for t in data["trucks"])
-
-
-async def test_demo_endpoint_flat_top_height(client):
-    # No roof: inside height is the 4,300 mm height limit less the 1,100 mm deck height.
-    r = await client.post("/api/solve", json=body(ship("Tall", height_mm=3000), body_type="FLAT_TOP"))
-    assert r.status_code == 200, r.text
-    assert r.json()["capacity"]["decks"][0]["height_mm"] == 3200
-
-
-@pytest.mark.parametrize("extra, message", [
-    ({"vehicle_id": "SPACESHIP"}, "Unknown vehicle 'SPACESHIP'"),
-    ({"body_type": "HOVERCRAFT"}, "Unknown body type 'HOVERCRAFT'"),
-    ({"body_type": "DROP_DECK"}, "can't have"),
-    ({"vehicle_id": "SEMI_TRAILER", "body_type": "SKELETAL"}, "doesn't carry pallets"),
-])
-async def test_demo_endpoint_rejects_bad_vehicles(client, extra, message):
-    r = await client.post("/api/solve", json=body(ship("A"), **extra))
-    assert r.status_code == 400 and message in r.json()["detail"]
-
-
-async def test_demo_endpoint_rejects_unknown_pallets(client):
-    r = await client.post("/api/solve", json=body(ship("A", pallet_type="MOON")))
-    assert r.status_code == 400 and "'MOON'" in r.json()["detail"]
-
-
-async def test_demo_endpoint_validation(client):
-    r = await client.post("/api/solve", json=body())
-    assert r.status_code == 400 and r.json()["detail"] == "Add at least one shipment."
-    for bad in [ship("A", kind="loose"), ship("A", length_mm=100, width_mm=100),
-                ship("A", kind="loose", length_mm=100, width_mm=100, pallet_type="EURO"),
-                ship("A", weight=0), ship("A", dg_class="3", subsidiary=["3"])]:
-        r = await client.post("/api/solve", json=body(bad))
-        assert r.status_code == 422, bad
-    r = await client.post("/api/solve", json=body(*[ship(f"S{i}") for i in range(41)]))
-    assert r.status_code == 422
-
-
-async def test_demo_endpoint_northline_rule_set(client):
-    shipments = [ship("Matches", dg_class="4.3"), ship("Paint", dg_class="3")]
-    # ADG + Northline is the default; the ADG Code alone accepts Class 4.3.
-    r = await client.post("/api/solve", json=body(*shipments))
-    assert r.status_code == 400 and "'Matches' (Class 4.3)" in r.json()["detail"]
-    assert "Paint" not in r.json()["detail"]
-    r = await client.post("/api/solve", json=body(*shipments, rule_set="adg"))
-    assert r.status_code == 200
-
-
-async def test_demo_solve_is_capped(client):
-    payload = body(ship("A", 5000), ship("B", 4000))
-    held = [demo._solve_slots.acquire(blocking=False) for _ in range(demo.MAX_CONCURRENT_SOLVES)]
-    try:
-        assert all(held)
-        r = await client.post("/api/solve", json=payload)
-        assert r.status_code == 429 and "busy" in r.json()["detail"]
-    finally:
-        for _ in held:
-            demo._solve_slots.release()
-    r = await client.post("/api/solve", json=payload)
-    assert r.status_code == 200 and r.json()["num_trucks"] == 2
-
-
 async def test_oversized_bodies_are_rejected(client):
-    r = await client.post("/api/solve", content=b"x" * (2 * 1024 * 1024),
+    r = await client.post("/api/plan", content=b"x" * (2 * 1024 * 1024),
                           headers={"content-type": "application/json"})
     assert r.status_code == 413
 
