@@ -24,3 +24,13 @@ export function codeWords(k: string): string {
   return k === "N" ? "incompatible" : "compatible";
 }
 
+
+/** The reference tabs of /ops/dg (?ref= in the URL). */
+export type RefTab = "exceptions" | "t92" | "segregation" | "northline";
+const REF_TABS: RefTab[] = ["exceptions", "t92", "segregation", "northline"];
+
+/** The tab to show for a ?ref= value: unknown values, and Northline under the ADG rule set, fall back to exceptions. */
+export function refTabOf(value: string | null, northline: boolean): RefTab {
+  const t = REF_TABS.find((x) => x === value) ?? "exceptions";
+  return t === "northline" && !northline ? "exceptions" : t;
+}

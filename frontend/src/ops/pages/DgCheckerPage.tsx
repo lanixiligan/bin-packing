@@ -16,10 +16,10 @@ import {
   newLoad, primaryName, primaryOfCol, primaryText, toDg, withPrimary, DEFAULT_EXPLOSIVE,
   type LoadState, type PackingGroup, type Primary,
 } from "../dg/load";
-import { codeKind, codeWords } from "../dg/codes";
+import { codeKind, codeWords, refTabOf, type RefTab } from "../dg/codes";
 import MatrixTable, { Code } from "../dg/MatrixTable";
-import NorthlineSection from "../dg/NorthlineSection";
-import { ExceptionsCard, SegregationCard, SourcesNote, Table92Card } from "../dg/ReferenceSections";
+import ReferenceTabs from "../dg/ReferenceTabs";
+import { SourcesNote } from "../dg/ReferenceSections";
 import "../dg-checker.css";
 
 type Side = "A" | "B";
@@ -27,13 +27,16 @@ const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce
 
 export default function DgCheckerPage() {
   const [params, setParams] = useSearchParams();
-  const ruleSet: RuleSet = params.get("rules") === "northline" ? "northline" : "adg";
-  const setRuleSet = (r: RuleSet) => {
+  const setParam = (key: string, value: string | null) => {
     const next = new URLSearchParams(params);
-    if (r === "northline") next.set("rules", r);
-    else next.delete("rules");
+    if (value) next.set(key, value);
+    else next.delete(key);
     setParams(next, { replace: true });
   };
+  const ruleSet: RuleSet = params.get("rules") === "northline" ? "northline" : "adg";
+  const setRuleSet = (r: RuleSet) => setParam("rules", r === "northline" ? r : null);
+  const refTab = refTabOf(params.get("ref"), ruleSet === "northline");
+  const setRefTab = (t: RefTab) => setParam("ref", t === "exceptions" ? null : t);
 
   const [a, setA] = useState<LoadState>(() => newLoad("3"));
   const [b, setB] = useState<LoadState>(() => newLoad("5.1"));
@@ -84,12 +87,7 @@ export default function DgCheckerPage() {
         </p>
       </section>
 
-      <div className="dgc-grid2">
-        <ExceptionsCard />
-        <Table92Card />
-      </div>
-      <SegregationCard />
-      {ruleSet === "northline" ? <NorthlineSection /> : null}
+      <ReferenceTabs value={refTab} onChange={setRefTab} northline={ruleSet === "northline"} />
       <SourcesNote />
     </div>
   );
