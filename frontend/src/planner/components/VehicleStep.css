@@ -1,0 +1,28 @@
+/* Step 1, compact: one summary line with a Change button; the picker opens below it. */
+
+.vs { container: vehicle-step / inline-size; display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+
+/* In the rail: the name and Change on one line, the facts under them. Wide: all on one line. */
+.vs-line { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--space-3); min-width: 0; }
+.vs-summary { display: contents; }
+.vs-name { flex: 1 1 0; min-width: 0; font-size: var(--text-sm); font-weight: var(--weight-semibold); overflow-wrap: anywhere; }
+.vs-facts { order: 2; flex: 1 1 100%; min-width: 0; font-size: var(--text-sm); color: var(--color-text-muted); }
+.vs-fact { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.vs-sep-first { display: none; } /* the facts start their own line here */
+.vs-summary abbr { text-decoration: none; }
+.vs-change { order: 1; flex: none; }
+
+@container vehicle-step (min-width: 640px) {
+  .vs-line { flex-wrap: nowrap; gap: var(--space-1); }
+  .vs-name { flex: none; }
+  .vs-facts { order: 1; flex: 1 1 0; }
+  .vs-sep-first { display: inline; }
+  .vs-change { order: 2; }
+}
+
+.vs-panel { display: flex; flex-direction: column; gap: var(--space-4); padding-top: var(--space-3);
+  border-top: var(--border); }
+.vs-panel[hidden] { display: none; }
+.vs-panel-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.mass-scheme { margin: 0; min-width: 0; }
+.vs-done { min-width: 72px; }

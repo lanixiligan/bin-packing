@@ -4,20 +4,24 @@
 // rows into the request's items, or explains in plain language what to fix, per field. The
 // backend still checks everything again (and owns the real rules); this only catches typos early.
 
-import type { DgInfo, FreightItem, ReferenceData } from "../api/types.ts";
+import type { DgInfo, FreightItem, FreightKind, ReferenceData } from "../api/types.ts";
 import { isGeneral, normalise, validateDg } from "../../dg/rules.ts";
-import { MAX_UNITS } from "../api/types.ts";
+import { LOOSE_TYPE, MAX_HEIGHT_MM, MAX_LOOSE_SIDE_MM, MAX_UNIT_WEIGHT_KG, MAX_UNITS } from "../api/types.ts";
 
 export interface FreightRow {
   /** Stable row id (also the API item id). */
   id: string;
   label: string;
-  kind: "pallet" | "container";
+  /** "loose": a long or odd item with its own size (type_id "LOOSE"). */
+  kind: FreightKind;
   type_id: string;
   quantity: number | null;
   /** Per unit, kg, incl. pallet tare. */
   gross_weight_kg: number | null;
-  /** Pallets only, mm incl. the pallet. */
+  /** Loose items only, mm. */
+  length_mm: number | null;
+  width_mm: number | null;
+  /** Pallets (mm incl. the pallet) and loose items. */
   height_mm: number | null;
   stackable: boolean;
   temp_controlled: boolean;
@@ -25,7 +29,7 @@ export interface FreightRow {
   dg: DgInfo | null;
 }
 
-export type RowField = "label" | "type_id" | "quantity" | "gross_weight_kg" | "height_mm" | "dg";
+export type RowField = "label" | "type_id" | "quantity" | "gross_weight_kg" | "length_mm" | "width_mm" | "height_mm" | "dg";
 /** Errors per row id, then per field: plain-language messages. */
 export type RowErrors = Record<string, Partial<Record<RowField, string>>>;
 
@@ -53,12 +57,22 @@ export function newRow(ref: ReferenceData | null, overrides: Partial<FreightRow>
     type_id: ref?.pallet_defaults.default_pallet ?? "AU_STD",
     quantity: 1,
     gross_weight_kg: 500,
+    length_mm: null,
+    width_mm: null,
     height_mm: 1200,
     stackable: false,
     temp_controlled: false,
     dg: null,
     ...overrides,
   };
+}
+
+/** Starting sizes for a line switched to a loose item: a 3 m bundle. */
+export const LOOSE_DEFAULTS = { length_mm: 3000, width_mm: 1000, height_mm: 500 } as const;
+
+/** A loose row: its own length × width × height instead of a pallet type. */
+export function newLooseRow(ref: ReferenceData | null, overrides: Partial<FreightRow> = {}): FreightRow {
+  return newRow(ref, { kind: "loose", type_id: LOOSE_TYPE, ...LOOSE_DEFAULTS, ...overrides });
 }
 
 /** The rows a first visit starts with, so a plan shows straight away. */
@@ -79,15 +93,18 @@ export function validateRows(rows: FreightRow[], ref: ReferenceData | null): Val
 
   for (const r of rows) {
     const e: Partial<Record<RowField, string>> = {};
+    const loose = r.kind === "loose";
     const table = r.kind === "pallet" ? ref?.pallets : ref?.containers;
-    if (ref && !table?.[r.type_id]) e.type_id = `Pick a ${r.kind} type.`;
+    if (ref && !loose && !table?.[r.type_id]) e.type_id = `Pick a ${r.kind} type.`;
     if (r.quantity == null || !Number.isInteger(r.quantity) || r.quantity < 1) {
       e.quantity = "Enter how many, a whole number from 1.";
     } else if (r.quantity > 200) {
       e.quantity = "At most 200 per line: split it into more lines.";
     }
     if (r.gross_weight_kg == null || !(r.gross_weight_kg > 0)) {
-      e.gross_weight_kg = `Enter the weight of one ${r.kind} in kg.`;
+      e.gross_weight_kg = `Enter the weight of one ${loose ? "item" : r.kind} in kg.`;
+    } else if (r.gross_weight_kg > MAX_UNIT_WEIGHT_KG) {
+      e.gross_weight_kg = `One unit can weigh at most ${kg(MAX_UNIT_WEIGHT_KG)}.`;
     } else if (r.kind === "pallet" && ref) {
       const p = ref.pallets[r.type_id];
       const max = p?.max_gross_kg ?? ref.pallet_defaults.max_gross_kg;
@@ -113,6 +130,17 @@ export function validateRows(rows: FreightRow[], ref: ReferenceData | null): Val
         e.height_mm = `This pallet is ${metres(r.height_mm)} tall; the max stack height is ${metres(ref.pallet_defaults.max_stack_height_mm)}.`;
       }
     }
+    // Loose items bring their own size: all three sides, whole millimetres, within what the planner takes.
+    if (loose) {
+      const side = (field: "length_mm" | "width_mm" | "height_mm", name: string, max: number) => {
+        const v = r[field];
+        if (v == null || !(v > 0)) e[field] = `Enter the item's ${name} in mm.`;
+        else if (v > max) e[field] = `That's ${metres(v)}; the ${name} can be at most ${metres(max)}.`;
+      };
+      side("length_mm", "length", MAX_LOOSE_SIDE_MM);
+      side("width_mm", "width", MAX_LOOSE_SIDE_MM);
+      side("height_mm", "height", MAX_HEIGHT_MM);
+    }
     const dgProblems = validateDg(r.dg);
     if (dgProblems.length) e.dg = dgProblems.join(" ");
     if (Object.keys(e).length) errors[r.id] = e;
@@ -126,14 +154,18 @@ export function validateRows(rows: FreightRow[], ref: ReferenceData | null): Val
 }
 
 export function toItem(r: FreightRow): FreightItem {
+  const loose = r.kind === "loose";
+  const mm = (v: number | null) => (v == null ? null : Math.round(v));
   return {
     id: r.id,
     label: r.label,
     kind: r.kind,
-    type_id: r.type_id,
+    type_id: loose ? LOOSE_TYPE : r.type_id,
+    // The backend takes a length and width on loose items only, so other kinds leave them out.
+    ...(loose ? { length_mm: mm(r.length_mm), width_mm: mm(r.width_mm) } : {}),
     quantity: r.quantity ?? 1,
     gross_weight_kg: r.gross_weight_kg ?? 0,
-    height_mm: r.kind === "pallet" ? r.height_mm : null,
+    height_mm: loose ? mm(r.height_mm) : r.kind === "pallet" ? r.height_mm : null,
     stackable: r.stackable,
     temp_controlled: r.temp_controlled,
     dg: isGeneral(r.dg) ? null : normalise(r.dg),

@@ -1,7 +1,8 @@
-/* Step 2: freight rows as compact cards (a two-column grid of fields in the 420px rail, four
-   columns when the rail is wide, one when very narrow), DG badges and hint, actions, presets and toast. */
+/* Step 2: freight lines as compact summary rows (the open line shows its form: a two-column grid
+   of fields in the 420px rail, four columns when the rail is wide, one when very narrow), DG badges
+   and hint, actions, presets and toast. */
 
-.ft { container: freight / inline-size; display: flex; flex-direction: column; gap: var(--space-4); }
+.ft { container: freight / inline-size; display: flex; flex-direction: column; gap: var(--space-3); }
 
 /* ---- List-level errors and empty state ---- */
 .ft-list-errors { margin: 0; padding: var(--space-3) var(--space-3) var(--space-3) var(--space-6);
@@ -29,18 +30,47 @@
   border-radius: var(--radius-md); background: var(--color-surface-2); }
 .ft-empty-title { font-size: var(--text-sm); color: var(--color-text-muted); }
 
-/* ---- Rows ---- */
-.ft-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+/* ---- Rows: one compact summary row per line; the open line shows its form below ---- */
+.ft-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 
-.ft-row { padding: var(--space-3); background: var(--color-surface); border: var(--border);
-  border-color: var(--color-border-strong); border-radius: var(--radius-md); }
+.ft-row { padding: var(--space-1); background: var(--color-surface);
+  border: var(--border); border-color: var(--color-border-strong); border-radius: var(--radius-md); }
 .ft-row:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.ft-row-open { border-color: var(--color-accent); box-shadow: inset 0 0 0 1px var(--color-accent); }
+/* A line with a problem: a thick edge, an icon and the problem in words (not colour alone). */
 .ft-row-invalid { border-left: 3px solid var(--color-error); }
 
-.ft-row-header { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); min-width: 0; }
-.ft-row-title { flex: 1; min-width: 0; font-size: var(--text-sm); font-weight: var(--weight-semibold);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* In the rail: the name and the actions on one line, the summary under them. Wide: all on one line. */
+.ft-row-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-2); min-width: 0; }
+.ft-row-title { flex: 1 1 0; min-width: 0; font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.ft-row-toggle { display: flex; align-items: center; gap: var(--space-1); width: 100%; min-height: 32px; min-width: 0;
+  padding: 0 var(--space-1) 0 2px; font: inherit; color: inherit; text-align: left; background: none; border: 0;
+  border-radius: var(--radius-sm); cursor: pointer; }
+.ft-row-toggle:hover { background: var(--color-surface-2); }
+.ft-chevron { flex: none; color: var(--color-text-muted); transition: transform var(--motion-fast) var(--ease); }
+.ft-row-toggle[aria-expanded="true"] .ft-chevron { transform: rotate(90deg); }
+.ft-row-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ft-row-label { font-weight: var(--weight-regular); color: var(--color-text-muted); }
+
+/* An inline flow, so it wraps between facts like a sentence. */
+.ft-row-summary { order: 3; flex: 1 1 100%; min-width: 0; padding: 0 var(--space-1) 2px 6px; font-size: var(--text-xs);
+  line-height: 1.7; color: var(--color-text-muted); cursor: pointer; }
+.ft-row-fact { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ft-row-flag { display: inline-flex; align-items: center; gap: 3px; padding: 0 var(--space-2); line-height: 1.5;
+  vertical-align: middle; color: var(--color-text); background: var(--color-surface-2); border-radius: var(--radius-pill);
+  white-space: nowrap; }
+.ft-row-flag svg { color: var(--color-text-muted); }
+.ft-row-summary .ft-dg-badge { vertical-align: middle; line-height: 1.5; }
+
+.ft-row-errors { list-style: none; margin: 2px 0 var(--space-1); padding: 0 var(--space-1) 0 6px; display: flex; flex-direction: column;
+  gap: 2px; font-size: var(--text-xs); color: var(--color-error); }
+.ft-row-errors li { display: flex; align-items: flex-start; gap: var(--space-1); }
+.ft-row-error-icon { flex: none; margin-top: 2px; }
+
+.ft-row-panel { margin-top: var(--space-1); padding: var(--space-3) var(--space-2) var(--space-1);
+  border-top: var(--border); }
+.ft-row-done { display: flex; justify-content: flex-end; margin-top: var(--space-3); }
+
 /* Read-only DG badge: a small placard (square turned 45°, code upright) and the label. */
 .ft-dg-badge { flex: none; display: inline-flex; align-items: center; gap: var(--space-1);
   padding: 1px var(--space-2) 1px 2px; font-size: var(--text-xs); font-weight: var(--weight-medium);
@@ -54,8 +84,9 @@
   background: var(--color-surface); border: 1.5px solid var(--ft-dg-edge); border-radius: 2px; }
 .ft-dg-diamond > span { transform: rotate(-45deg); font-size: 8px; font-weight: var(--weight-semibold); line-height: 1;
   letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-.ft-row-total { flex: none; font-size: var(--text-xs); color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
-.ft-row-actions { flex: none; display: flex; gap: var(--space-1); }
+.ft-row-total { order: 1; flex: none; font-size: var(--text-xs); font-weight: var(--weight-medium); color: var(--color-text);
+  font-variant-numeric: tabular-nums; }
+.ft-row-actions { order: 2; flex: none; display: flex; gap: 0; }
 .ft-row-actions .btn-icon { color: var(--color-text-muted); }
 .ft-row-actions .ft-delete:hover:not(:disabled) { color: var(--color-error); background: var(--color-error-soft); }
 
@@ -70,6 +101,11 @@
 @container freight (min-width: 640px) {
   .ft-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .ft-label { grid-column: span 2; }
+  .ft-row-header { flex-wrap: nowrap; gap: var(--space-3); }
+  .ft-row-title { flex: 1 1 30%; }
+  .ft-row-summary { order: 1; flex: 2 1 70%; padding-left: 0; }
+  .ft-row-total { order: 2; }
+  .ft-row-actions { order: 3; }
 }
 
 .ft-kind { margin: 0; padding: 0; border: 0; min-width: 0; }
@@ -95,13 +131,14 @@
 
 .ft-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 
-/* ---- Presets ---- */
-.ft-presets { display: flex; flex-direction: column; gap: var(--space-2); padding-top: var(--space-4);
-  border-top: var(--border); }
+/* ---- Presets: short chips that wrap, several to a line ---- */
+.ft-presets { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2);
+  padding-top: var(--space-3); border-top: var(--border); }
 .ft-presets-label { font-size: var(--text-xs); font-weight: var(--weight-medium); color: var(--color-text-muted);
   text-transform: uppercase; letter-spacing: 0.04em; }
-.ft-presets-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.ft-preset { border-radius: var(--radius-pill); font-variant-numeric: tabular-nums; }
+.ft-presets-list { display: contents; }
+.ft-preset { gap: var(--space-1); min-height: 28px; padding: 0 var(--space-2); border-radius: var(--radius-pill);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ft-preset svg { color: var(--color-accent); width: 12px; height: 12px; }
 
 /* ---- Toast ---- */

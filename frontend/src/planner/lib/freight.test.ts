@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { reference } from "../test/fixtures.ts";
-import { newRow, newRowId, sampleRows, toItem, validateRows } from "./freight.ts";
+import { newLooseRow, newRow, newRowId, sampleRows, toItem, validateRows } from "./freight.ts";
 
 const pallet = (o = {}) => newRow(reference, o);
 const container = (o = {}) => newRow(reference, { kind: "container", type_id: "HC40", gross_weight_kg: 20000, height_mm: null, ...o });
@@ -60,6 +60,48 @@ describe("validateRows", () => {
     });
     expect(v.errors[light.id].gross_weight_kg).toMatch(/an empty 20' General purpose weighs 2,250 kg/i);
     expect(toItem(ok).height_mm).toBeNull();
+  });
+
+  it("sends a loose item with its own size and no pallet type", () => {
+    const r = newLooseRow(reference, { label: "Pipes", quantity: 3, gross_weight_kg: 450, length_mm: 6000, width_mm: 800.4,
+                                       height_mm: 400, stackable: true });
+    const v = validateRows([r, pallet()], reference);
+    expect(v.errors).toEqual({});
+    expect(v.items![0]).toEqual({
+      id: r.id, label: "Pipes", kind: "loose", type_id: "LOOSE", length_mm: 6000, width_mm: 800, quantity: 3,
+      gross_weight_kg: 450, height_mm: 400, stackable: true, temp_controlled: false, dg: null,
+    });
+    // Pallets and containers take their footprint from the type: the backend rejects a length or width on them.
+    expect(v.items![1]).not.toHaveProperty("length_mm");
+    expect(v.items![1]).not.toHaveProperty("width_mm");
+    expect(toItem(container({ length_mm: 5000, width_mm: 2000 }))).not.toHaveProperty("length_mm");
+  });
+
+  it("asks for a loose item's length, width and height, within the planner's limits", () => {
+    const empty = newLooseRow(reference, { length_mm: null, width_mm: 0, height_mm: null, gross_weight_kg: null });
+    const big = newLooseRow(reference, { length_mm: 20001, width_mm: 25000, height_mm: 5001, gross_weight_kg: 60001 });
+    const edge = newLooseRow(reference, { length_mm: 20000, width_mm: 2400, height_mm: 5000, gross_weight_kg: 60000 });
+    const v = validateRows([empty, big, edge], reference);
+    expect(v.items).toBeNull();
+    expect(v.errors[empty.id]).toEqual({
+      gross_weight_kg: "Enter the weight of one item in kg.",
+      length_mm: "Enter the item's length in mm.",
+      width_mm: "Enter the item's width in mm.",
+      height_mm: "Enter the item's height in mm.",
+    });
+    expect(v.errors[big.id]).toEqual({
+      gross_weight_kg: "One unit can weigh at most 60,000 kg.",
+      length_mm: "That's 20 m; the length can be at most 20 m.",
+      width_mm: "That's 25 m; the width can be at most 20 m.",
+      height_mm: "That's 5 m; the height can be at most 5 m.",
+    });
+    expect(v.errors[edge.id]).toBeUndefined();
+  });
+
+  it("doesn't hold a loose item to the pallet weight or height rules", () => {
+    // 2.4 m tall and 3 t: fine for a loose item, too tall and too heavy for one pallet.
+    const r = newLooseRow(reference, { height_mm: 2400, gross_weight_kg: 3000 });
+    expect(validateRows([r], reference).errors).toEqual({});
   });
 
   it("limits the units in one plan", () => {

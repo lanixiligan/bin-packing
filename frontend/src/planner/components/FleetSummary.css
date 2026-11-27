@@ -1,0 +1,49 @@
+.fleet-summary { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.fleet-summary-top { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3); }
+.fleet-summary-status { min-width: 0; }
+.fleet-back { flex: none; }
+
+/* The verdict: a soft pill in the semantic colour, with an icon and the words (like the plan status). */
+.fleet-headline { display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3); font-size: var(--text-lg); font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight); border-radius: var(--radius-md); }
+.fleet-headline .icon { flex: none; }
+.fleet-summary--proven .fleet-headline { color: var(--color-success); background: var(--color-success-soft); }
+.fleet-summary--best .fleet-headline { color: var(--color-info); background: var(--color-info-soft); }
+.fleet-summary--problem .fleet-headline { color: var(--color-error); background: var(--color-error-soft); }
+
+.fleet-explanation { font-size: var(--text-sm); color: var(--color-text-muted); }
+
+.fleet-bounds { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); }
+.fleet-bounds-label { font-size: var(--text-xs); color: var(--color-text-muted); }
+.fleet-bounds-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.fleet-bound { display: inline-flex; align-items: baseline; gap: var(--space-2); padding: 2px var(--space-3);
+  font-size: var(--text-xs); color: var(--color-text-muted); background: var(--color-surface-2);
+  border: 1px solid transparent; border-radius: var(--radius-pill); }
+.fleet-bound-value { font-weight: var(--weight-semibold); color: var(--color-text); }
+/* The bound that sets the minimum: a stronger edge and weight, not colour alone. */
+.fleet-bound--binding { border-color: var(--color-border-strong); }
+.fleet-bound--binding .fleet-bound-name { font-weight: var(--weight-semibold); color: var(--color-text); }
+
+.fleet-note { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm); background: var(--color-warning-soft); border: 1px solid var(--color-warning);
+  border-left-width: 4px; border-radius: var(--radius-sm); }
+.fleet-note-icon { flex: none; margin-top: 2px; color: var(--color-warning); }
+
+.fleet-unplaced { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3);
+  font-size: var(--text-sm); background: var(--color-error-soft); border: 1px solid var(--color-error);
+  border-left-width: 4px; border-radius: var(--radius-sm); }
+.fleet-unplaced-title { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+.fleet-unplaced-title .badge { background: var(--color-surface); }
+.fleet-unplaced-list, .fleet-reasons { margin: 0; padding-left: var(--space-5); overflow-wrap: anywhere; }
+.fleet-unplaced-list li + li, .fleet-reasons li + li { margin-top: var(--space-1); }
+
+@media (max-width: 600px) {
+  .fleet-headline { font-size: var(--text-md); }
+}
+
+@media print {
+  .fleet-headline, .fleet-bound, .fleet-note, .fleet-unplaced { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+}

@@ -12,13 +12,18 @@ monkeypatch them and a better implementation plugs in without touching this file
 2. `checks.precheck` reports problems with the requested freight (unknown types, mixed freight,
    body compatibility, heights, reefers...). Its warnings are kept as they are.
 3. Units with an unknown type_id can't be placed and go straight to `unplaced` (precheck already
-   reported them). If the request mixes pallets and containers nothing is placed (precheck
-   reports MIXED_FREIGHT). Otherwise pallets go to `place_pallets` and containers to
-   `place_containers`.
-4. `axles.estimate_axle_loads` estimates axle group loads from the placements, then
-   `checks.postcheck` checks payload, overall height and axle limits.
+   reported them). If the request mixes containers with pallets or loose items nothing is placed
+   (precheck reports MIXED_FREIGHT). Otherwise pallets and loose items go to `place_pallets` and
+   containers to `place_containers`.
+4. `finish_plan` (shared with the fleet planner, app/planner/fleet.py): `axles.estimate_axle_loads`
+   estimates axle group loads from the placements, then `checks.postcheck` checks payload, overall
+   height and axle limits.
 5. Utilisation, total weight (of the PLACED units) and the tallest point above the ground are
    computed, and `fits` / `reasons` follow the fit rule in models.py: fits = no error warnings.
+
+Loose items (kind "loose") are deck freight like pallets, with their own footprint
+(`unit_footprint`): a long item becomes a long row. They stack only on loose items with the same
+length x width.
 
 The heuristic itself only emits OVER_CAPACITY (error), CONTAINER_COMBO (error) and
 UNSTACKABLE_FLOOR_SPACE (warning). Every other code comes from `checks`.
@@ -28,7 +33,8 @@ Pallets (`place_pallets`)
 1. Height: a unit without `height_mm` is treated as a full stack (pallet_defaults.max_stack_height_mm).
    The stack height cap is min(max_stack_height_mm, body internal height, overall height limit
    minus deck height). Stacks are built before decks are chosen, so the highest cargo deck is used.
-2. Stacks (`build_stacks`): only stackable units with the same type_id share a stack, while the
+2. Stacks (`build_stacks`): only stackable units with the same type_id (loose items: the same
+   length x width) share a stack, while the
    summed height stays within the cap. Units are taken heaviest first and each goes into the first
    stack it fits (first-fit decreasing on weight), so the heaviest unit of a stack is at the
    bottom. Unstackable or too-tall units are stacks of one.
@@ -81,7 +87,15 @@ from app.planner.models import (
     Usage,
     Utilisation,
 )
-from app.reference.schemas import BodyType, ContainerType, Deck, ReferenceData, Support, VehicleConfig
+from app.reference.schemas import (
+    BodyType,
+    ContainerType,
+    Deck,
+    MassScheme,
+    ReferenceData,
+    Support,
+    VehicleConfig,
+)
 
 AU_PALLET = "AU_STD"
 AU_SIDE_MM = 1165
@@ -103,7 +117,7 @@ SIZE_CLASS_ORDER = ["20", "40", "45", "48"]
 
 @dataclass(frozen=True)
 class Unit:
-    """One physical pallet or container: an item expanded by quantity."""
+    """One physical pallet, loose item or container: an item expanded by quantity."""
     unit_id: str
     item: FreightItem
 
@@ -118,8 +132,25 @@ def expand_units(items: list[FreightItem]) -> list[Unit]:
 
 
 def _is_known(unit: Unit, ref: ReferenceData) -> bool:
+    if unit.item.kind == "loose":
+        return True
     table = ref.pallets if unit.item.kind == "pallet" else ref.containers
     return unit.item.type_id in table
+
+
+def unit_footprint(unit: Unit, ref: ReferenceData) -> tuple[int, int]:
+    """(length, width) of a deck unit before any turn: the pallet type's, or a loose item's own."""
+    item = unit.item
+    if item.kind == "loose":
+        return item.length_mm, item.width_mm
+    p = ref.pallets[item.type_id]
+    return p.length_mm, p.width_mm
+
+
+def stack_key(unit: Unit) -> str:
+    """Units may share a stack only with the same key: the pallet type, or a loose item's exact size."""
+    item = unit.item
+    return f"loose:{item.length_mm}x{item.width_mm}" if item.kind == "loose" else f"pallet:{item.type_id}"
 
 
 def _plural(n: float, word: str) -> str:
@@ -137,7 +168,8 @@ def _a(name: str, *, capital: bool = False) -> str:
 
 @dataclass
 class Stack:
-    """Units sharing one floor position, bottom first. Footprint is the pallet type's, unrotated."""
+    """Units sharing one floor position, bottom first. Footprint is the unit's (`unit_footprint`),
+    unrotated."""
     type_id: str
     length_mm: int
     width_mm: int
@@ -171,21 +203,22 @@ def stack_height_cap(vehicle: VehicleConfig, body: BodyType, ref: ReferenceData)
 
 
 def build_stacks(units: list[Unit], cap_mm: int, ref: ReferenceData) -> list[Stack]:
-    """Group pallet units into stacks (first-fit decreasing on weight, same type_id only).
+    """Group pallet and loose units into stacks (first-fit decreasing on weight, same `stack_key`
+    only: the same pallet type, or loose items with the same length x width).
 
     Returned in the order of each stack's first unit in `units`."""
     order = {u.unit_id: i for i, u in enumerate(units)}
 
     def new_stack(unit: Unit, height: int) -> Stack:
-        p = ref.pallets[unit.item.type_id]
-        return Stack(unit.item.type_id, p.length_mm, p.width_mm, [(unit, height)])
+        length, width = unit_footprint(unit, ref)
+        return Stack(unit.item.type_id, length, width, [(unit, height)])
 
     stacks: list[Stack] = []
     groups: dict[str, list[tuple[Unit, int]]] = defaultdict(list)
     for u in units:
         h = unit_height(u, ref)
         if u.item.stackable and h <= cap_mm:
-            groups[u.item.type_id].append((u, h))
+            groups[stack_key(u)].append((u, h))
         else:
             stacks.append(new_stack(u, h))
     for members in groups.values():
@@ -385,7 +418,7 @@ def rows_to_placements(rows: list[Row], first_stack_id: int = 1) -> list[Placeme
             for level, (unit, height) in enumerate(slot.stack.units):
                 item = unit.item
                 placements.append(Placement(
-                    unit_id=unit.unit_id, item_id=item.id, label=item.label or item.id, kind="pallet",
+                    unit_id=unit.unit_id, item_id=item.id, label=item.label or item.id, kind=item.kind,
                     type_id=item.type_id, deck_id=row.deck_id, x_mm=row.x_mm, y_mm=slot.y_mm, z_mm=z,
                     length_mm=slot.length_mm, width_mm=slot.width_mm, height_mm=height,
                     rotated=slot.rotated, stack_id=stack_id, stack_level=level,
@@ -399,7 +432,7 @@ def rows_to_placements(rows: list[Row], first_stack_id: int = 1) -> list[Placeme
 
 def place_pallets(units: list[Unit], vehicle: VehicleConfig, body: BodyType,
                   ref: ReferenceData) -> tuple[list[Placement], list[str]]:
-    """Place pallet units (known type_ids only). Returns (placements, unplaced unit_ids)."""
+    """Place pallet and loose units (known type_ids only). Returns (placements, unplaced unit_ids)."""
     stacks = order_stacks(build_stacks(units, stack_height_cap(vehicle, body, ref), ref))
     rows, unplaced = fill_rows(stacks, vehicle.cargo_decks, vehicle.pallet_spaces)
     rows = balance_rows(rows, vehicle)
@@ -411,11 +444,12 @@ def place_pallets(units: list[Unit], vehicle: VehicleConfig, body: BodyType,
 # ---------------------------------------------------------------------------
 
 def oversize_warning(units: list[Unit], vehicle: VehicleConfig, ref: ReferenceData) -> PlanWarning | None:
-    """OVERSIZE_FOOTPRINT for pallets narrower than no deck in either orientation (they can't go on
-    this vehicle at all, so a bigger vehicle of the same width won't help)."""
+    """OVERSIZE_FOOTPRINT for pallets that fit no deck in either orientation (they can't go on this
+    vehicle at all, so a bigger vehicle of the same width won't help). Loose items that fit no deck
+    are reported by `checks.precheck`."""
     widest = max((d.width_mm for d in vehicle.cargo_decks), default=0)
     ids = oversize_unit_ids(units, vehicle, ref)
-    big = [u for u in units if u.unit_id in ids]
+    big = [u for u in units if u.unit_id in ids and u.item.kind == "pallet"]
     if not big:
         return None
     p = ref.pallets[big[0].item.type_id]
@@ -429,9 +463,8 @@ def oversize_warning(units: list[Unit], vehicle: VehicleConfig, ref: ReferenceDa
 
 
 def oversize_unit_ids(units: list[Unit], vehicle: VehicleConfig, ref: ReferenceData) -> set[str]:
-    widest = max((d.width_mm for d in vehicle.cargo_decks), default=0)
-    return {u.unit_id for u in units
-            if min(ref.pallets[u.item.type_id].length_mm, ref.pallets[u.item.type_id].width_mm) > widest}
+    """Units whose footprint fits no cargo deck, whichever way they turn."""
+    return {u.unit_id for u in units if not checks.footprint_fits(*unit_footprint(u, ref), vehicle)}
 
 
 def floor_au_equivalent(type_id: str, length_mm: int, width_mm: int) -> float:
@@ -445,7 +478,7 @@ def over_capacity_warning(unplaced_units: list[Unit], placements: list[Placement
     stacks = build_stacks(unplaced_units, stack_height_cap(vehicle, body, ref), ref)
     over = len(stacks)
     needed = sum(floor_au_equivalent(p.type_id, p.length_mm, p.width_mm)
-                 for p in placements if p.kind == "pallet" and p.stack_level == 0)
+                 for p in placements if p.kind != "container" and p.stack_level == 0)
     needed += sum(floor_au_equivalent(s.type_id, s.length_mm, s.width_mm) for s in stacks)
     needed_spaces = math.ceil(round(needed, 6))
     bigger = sorted(
@@ -460,9 +493,10 @@ def over_capacity_warning(unplaced_units: list[Unit], placements: list[Placement
     else:
         suggestion = f"Split into {loads} loads."
     item_ids = list(dict.fromkeys(u.item.id for u in unplaced_units))
+    word = "pallet" if all(u.item.kind == "pallet" for u in unplaced_units) else "floor position"
     return PlanWarning(
         code="OVER_CAPACITY", severity="error",
-        message=(f"Over by {_plural(over, 'pallet')}: {_plural(len(unplaced_units), 'unit')} didn't fit "
+        message=(f"Over by {_plural(over, word)}: {_plural(len(unplaced_units), 'unit')} didn't fit "
                  f"on the {vehicle.name}, which has {_plural(vehicle.pallet_spaces, 'pallet space')}."),
         suggestion=suggestion, item_ids=item_ids,
     )
@@ -487,9 +521,10 @@ def unstackable_floor_warning(units: list[Unit], cap_mm: int, ref: ReferenceData
         return None
     total = sum(extra.values())
     named = ", ".join(f"{i} ({_plural(n, 'extra position')})" for i, n in extra.items())
+    word = "pallets" if all(by_item[i][0].item.kind == "pallet" for i in extra) else "items"
     return PlanWarning(
         code="UNSTACKABLE_FLOOR_SPACE", severity="warning" if short_of_space else "info",
-        message=f"Unstackable pallets take {_plural(total, 'more floor position')} than stacked: {named}.",
+        message=f"Unstackable {word} take {_plural(total, 'more floor position')} than stacked: {named}.",
         suggestion=f"If they can be stacked (up to {cap_mm} mm), mark them stackable to free "
                    f"{_plural(total, 'position')}.",
         item_ids=list(extra),
@@ -594,7 +629,7 @@ def _usage(used: float, available: float, ndigits: int) -> Usage:
 def utilisation(placements: list[Placement], vehicle: VehicleConfig, body: BodyType,
                 ref: ReferenceData) -> Utilisation:
     floor = sum(floor_au_equivalent(p.type_id, p.length_mm, p.width_mm)
-                for p in placements if p.kind == "pallet" and p.stack_level == 0)
+                for p in placements if p.kind != "container" and p.stack_level == 0)
     teu = sum(ref.containers[p.type_id].teu for p in placements if p.kind == "container")
     payload = sum(p.weight_kg for p in placements)
     volume = sum(p.length_mm * p.width_mm * p.height_mm for p in placements) / 1e9
@@ -617,6 +652,31 @@ def max_load_height_mm(placements: list[Placement], vehicle: VehicleConfig) -> i
     return max((vehicle.deck(p.deck_id).deck_height_mm + p.z_mm + p.height_mm for p in placements), default=0)
 
 
+def finish_plan(*, vehicle: VehicleConfig, body: BodyType, mass_scheme: MassScheme, ref: ReferenceData,
+                placements: list[Placement], unplaced: list[str], warnings: list[PlanWarning],
+                planner: str) -> PlanResult:
+    """The single-vehicle result for a finished placement: axle loads, the post-placement checks
+    (added to `warnings`, the precheck and placement warnings so far), utilisation and the fit
+    rule. Shared by `HeuristicPlanner.plan` and every truck of the fleet planner."""
+    warnings = list(warnings)
+    total_weight = round(sum(p.weight_kg for p in placements), 1)
+    axle_loads = axles.estimate_axle_loads(vehicle, placements, mass_scheme)
+    # Precheck already reports freight that is too tall or too heavy on its own: don't repeat it.
+    seen = {w.code for w in warnings} & {"OVER_HEIGHT_LIMIT", "OVER_PAYLOAD"}
+    warnings += [w for w in checks.postcheck(placements, vehicle, body, axle_loads, total_weight,
+                                             mass_scheme, ref).warnings if w.code not in seen]
+    reasons = [w.message for w in warnings if w.severity == "error"]
+    return PlanResult(
+        fits=not reasons, reasons=reasons, warnings=warnings,
+        vehicle_id=vehicle.id, vehicle_name=vehicle.name, body_type=body.id, mass_scheme=mass_scheme,
+        placements=placements, unplaced=unplaced,
+        utilisation=utilisation(placements, vehicle, body, ref),
+        axle_loads=axle_loads, total_weight_kg=total_weight,
+        max_load_height_mm=max_load_height_mm(placements, vehicle),
+        planner=planner,
+    )
+
+
 class HeuristicPlanner:
     name = "heuristic"
 
@@ -630,28 +690,31 @@ class HeuristicPlanner:
 
         placements: list[Placement] = []
         unplaced: list[str] = []
-        if len({i.kind for i in req.items}) > 1:
+        kinds = {i.kind for i in req.items}
+        if "container" in kinds and len(kinds) > 1:
             unplaced = [u.unit_id for u in units]  # MIXED_FREIGHT comes from precheck
         else:
             unplaced = [u.unit_id for u in units if not _is_known(u, ref)]  # UNKNOWN_TYPE: precheck
             known = [u for u in units if _is_known(u, ref)]
-            pallet_units = [u for u in known if u.item.kind == "pallet"]
+            deck_units = [u for u in known if u.item.kind != "container"]  # pallets and loose items
             container_units = [u for u in known if u.item.kind == "container"]
-            if pallet_units:
-                oversize = oversize_unit_ids(pallet_units, vehicle, ref)
+            if deck_units:
+                oversize = oversize_unit_ids(deck_units, vehicle, ref)
                 if oversize:
-                    warnings.append(oversize_warning(pallet_units, vehicle, ref))
-                    unplaced += [u.unit_id for u in pallet_units if u.unit_id in oversize]
-                    pallet_units = [u for u in pallet_units if u.unit_id not in oversize]
-                placed, missed = place_pallets(pallet_units, vehicle, body, ref)
+                    warning = oversize_warning(deck_units, vehicle, ref)
+                    if warning is not None:
+                        warnings.append(warning)
+                    unplaced += [u.unit_id for u in deck_units if u.unit_id in oversize]
+                    deck_units = [u for u in deck_units if u.unit_id not in oversize]
+                placed, missed = place_pallets(deck_units, vehicle, body, ref)
                 placements += placed
                 unplaced += missed
                 if missed:
                     missed_set = set(missed)
-                    missed_units = [u for u in pallet_units if u.unit_id in missed_set]
+                    missed_units = [u for u in deck_units if u.unit_id in missed_set]
                     warnings.append(over_capacity_warning(missed_units, placed, vehicle, body, ref))
                 cap = stack_height_cap(vehicle, body, ref)
-                unstackable = unstackable_floor_warning(pallet_units, cap, ref, short_of_space=bool(missed))
+                unstackable = unstackable_floor_warning(deck_units, cap, ref, short_of_space=bool(missed))
                 if unstackable is not None:
                     warnings.append(unstackable)
             if container_units:
@@ -661,20 +724,5 @@ class HeuristicPlanner:
                 warnings += container_warnings
         order = {u.unit_id: i for i, u in enumerate(units)}
         unplaced.sort(key=order.__getitem__)
-
-        total_weight = round(sum(p.weight_kg for p in placements), 1)
-        axle_loads = axles.estimate_axle_loads(vehicle, placements, req.mass_scheme)
-        # Precheck already reports freight that is too tall on its own: don't repeat it for the stacks.
-        seen = {w.code for w in warnings} & {"OVER_HEIGHT_LIMIT"}
-        warnings += [w for w in checks.postcheck(placements, vehicle, body, axle_loads, total_weight,
-                                                 req.mass_scheme, ref).warnings if w.code not in seen]
-        reasons = [w.message for w in warnings if w.severity == "error"]
-        return PlanResult(
-            fits=not reasons, reasons=reasons, warnings=warnings,
-            vehicle_id=vehicle.id, vehicle_name=vehicle.name, body_type=body.id, mass_scheme=req.mass_scheme,
-            placements=placements, unplaced=unplaced,
-            utilisation=utilisation(placements, vehicle, body, ref),
-            axle_loads=axle_loads, total_weight_kg=total_weight,
-            max_load_height_mm=max_load_height_mm(placements, vehicle),
-            planner=self.name,
-        )
+        return finish_plan(vehicle=vehicle, body=body, mass_scheme=req.mass_scheme, ref=ref,
+                           placements=placements, unplaced=unplaced, warnings=warnings, planner=self.name)

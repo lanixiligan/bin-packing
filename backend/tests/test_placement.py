@@ -11,7 +11,7 @@ from app.planner import axles, checks, heuristic
 from app.planner.heuristic import HeuristicPlanner, expand_units, place_containers, place_pallets
 from app.planner.models import Placement, PlanWarning
 from app.reference.schemas import ContainerType, ReferenceData, VehicleConfig
-from tests.factories import BDOUBLE, RIGID, SEMI, containers, pallets, reference, request
+from tests.factories import BDOUBLE, RIGID, SEMI, containers, loose, pallets, reference, request
 
 
 @pytest.fixture(autouse=True)
@@ -301,6 +301,66 @@ def test_utilisation_for_containers(ref):
     result = plan(ref, containers("GP20"), containers("GP40"), vehicle="BDOUBLE", body="SKELETAL")
     assert (result.utilisation.teu.used, result.utilisation.teu.available) == (3, 3)
     assert result.utilisation.pallet_spaces.used == 0
+
+
+# --- Loose items ---------------------------------------------------------------
+
+def test_loose_items_are_placed_with_their_own_footprint(ref):
+    result = plan(ref, loose(2, 6000, 400, id="pipe"), vehicle="SEMI")
+    assert result.fits and result.unplaced == []
+    assert [(p.kind, p.type_id, p.length_mm, p.width_mm, p.rotated) for p in result.placements] \
+        == [("loose", "LOOSE", 6000, 400, False)] * 2
+    assert len({p.x_mm for p in result.placements}) == 1          # side by side: one long row
+    assert sorted(p.y_mm for p in result.placements) == [0, 400]
+    assert_within_decks(result.placements, SEMI)
+    assert result.utilisation.pallet_spaces.used == 3.5           # 2 x 6000 x 400 / 1165²
+
+
+def test_a_loose_item_turns_to_fit_the_deck_width(ref):
+    (p,) = plan(ref, loose(1, 2000, 3000), vehicle="RIGID").placements   # the deck is 2,400 wide
+    assert (p.length_mm, p.width_mm, p.rotated) == (3000, 2000, True)
+
+
+def test_loose_items_stack_only_on_the_same_footprint(ref):
+    result = plan(ref, loose(2, 3000, 1000, id="A", stackable=True),
+                  loose(2, 3000, 900, id="B", stackable=True), loose(1, 3000, 1000, id="C", stackable=True),
+                  loose(1, 3000, 1000, id="D"), vehicle="SEMI")
+    stacks: dict[int, list[str]] = {}
+    for p in result.placements:
+        stacks.setdefault(p.stack_id, []).append(p.item_id)
+    assert sorted(sorted(s) for s in stacks.values()) == [["A", "A", "C"], ["B", "B"], ["D"]]
+    for stack_id in stacks:
+        members = [p for p in result.placements if p.stack_id == stack_id]
+        assert len({(p.x_mm, p.y_mm, p.length_mm, p.width_mm) for p in members}) == 1
+    assert_no_overlap(result.placements)
+
+
+def test_pallets_and_loose_items_share_a_plan(ref):
+    result = plan(ref, pallets(6), loose(2, 5000, 600, id="timber"), vehicle="SEMI")
+    assert result.fits and result.unplaced == []
+    assert sorted({p.kind for p in result.placements}) == ["loose", "pallet"]
+    assert_no_overlap(result.placements)
+    assert_within_decks(result.placements, SEMI)
+    assert result.total_weight_kg == 6 * 500 + 2 * 300
+
+
+def test_a_loose_item_longer_than_the_deck_is_unplaced_not_over_capacity(ref):
+    result = plan(ref, loose(1, 6000, 400, id="pipe"), pallets(2), vehicle="RIGID")   # 4,800 deck
+    assert result.unplaced == ["pipe#1"]
+    assert [p.item_id for p in result.placements] == ["P", "P"]
+    assert "OVER_CAPACITY" not in codes(result)   # precheck reports it (OVERSIZE_FOOTPRINT)
+
+
+def test_loose_items_that_run_out_of_floor_are_over_capacity(ref):
+    result = plan(ref, loose(4, 4000, 2000, id="crate"), vehicle="SEMI")   # 3 fit along 13,600
+    assert len(result.placements) == 3 and result.unplaced == ["crate#4"]
+    (warning,) = [w for w in result.warnings if w.code == "OVER_CAPACITY"]
+    assert "Over by 1 floor position" in warning.message
+
+
+def test_loose_items_and_containers_place_nothing(ref):
+    result = plan(ref, loose(1, 2000, 1000), containers("GP20"))
+    assert result.placements == [] and result.unplaced == ["L#1", "GP20#1"]
 
 
 def test_mixed_freight_places_nothing(ref, monkeypatch):

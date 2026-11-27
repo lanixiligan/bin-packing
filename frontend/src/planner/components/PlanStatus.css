@@ -13,6 +13,10 @@
 .plan-status-reasons { margin: 0; padding-left: var(--space-5); font-size: var(--text-sm); }
 .plan-status-reasons li + li { margin-top: var(--space-1); }
 
+/* Split across trucks: the way forward when one truck isn't enough. */
+.plan-status-split { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3); }
+.plan-status-split-note { font-size: var(--text-sm); color: var(--color-text-muted); }
+
 /* Suggest mode */
 .plan-status-suggest { font-size: var(--text-sm); display: flex; flex-direction: column; align-items: flex-start;
   gap: var(--space-1); }

@@ -1,6 +1,6 @@
 // Real planner responses for tests, generated from the backend with `make fixtures`
 // (backend/scripts/export_fixtures.py). Never edit the JSON by hand.
-import type { PlanRequest, PlanResult, ReferenceData } from "../api/types.ts";
+import type { FleetResult, PlanRequest, PlanResult, ReferenceData } from "../api/types.ts";
 import referenceJson from "../../__fixtures__/reference.json";
 import multidrop from "../../__fixtures__/plan-multidrop.json";
 import axleOverload from "../../__fixtures__/plan-axle-overload.json";
@@ -8,6 +8,7 @@ import overCapacity from "../../__fixtures__/plan-over-capacity.json";
 import bdoubleContainers from "../../__fixtures__/plan-bdouble-containers.json";
 import suggest from "../../__fixtures__/plan-suggest.json";
 import dgConflict from "../../__fixtures__/plan-dg-conflict.json";
+import fleet from "../../__fixtures__/fleet-sample.json";
 
 export interface PlanFixture {
   request: PlanRequest;
@@ -29,3 +30,12 @@ export const planSuggest = suggest as unknown as PlanFixture;
 /** Dangerous goods: paint (3), pool chlorine (5.1), battery acid (8) and general freight on a semi;
  * chlorine is incompatible with both the paint and the acid (2 DG_INCOMPATIBLE errors). */
 export const planDgConflict = dgConflict as unknown as PlanFixture;
+
+export interface FleetFixture {
+  request: PlanRequest;
+  result: FleetResult;
+}
+
+/** Split mode: paint (3), pool chlorine (5.1) and cement on medium rigids; the DG clash and the
+ *  floor space make it 2 trucks, proven fewest. */
+export const fleetSample = fleet as unknown as FleetFixture;

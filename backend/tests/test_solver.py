@@ -8,8 +8,12 @@ from ortools.sat.python import cp_model
 from app import solver as solver_mod
 from app.demo_models import SolveResponse
 from app.dg import DgInfo
+from app.planner.axles import estimate_axle_loads
+from app.planner.fleet import axle_coefficients
+from app.planner.models import Placement
 from app.routers import demo
 from app.solver import DeckSpec, Item, Solution, Truck, pallet_key, solve
+from tests import factories
 
 AU = (1165, 1165)
 EURO = (1200, 800)
@@ -183,6 +187,161 @@ def test_cpsat_improves_on_a_poor_start(monkeypatch, items, truck, expected):
     result = solve(items, truck, 5)
     assert result.status == "OPTIMAL" and len(result.trucks) == expected
     check(result, items, truck)
+
+
+# ---------------------------------------------------------------------------
+# Axle limits
+# ---------------------------------------------------------------------------
+
+def tight_rigid():
+    """tests/factories.py RIGID with a weaker rear axle: steer may take 2,800 kg of freight and the
+    rear 4,700 kg, so the axles (7,500 kg together) bind before the 8,000 kg payload."""
+    groups = [g if g.id != "rear" else g.model_copy(update={"gml_kg": 7000.0})
+              for g in factories.RIGID.axle_groups]
+    return factories.RIGID.model_copy(update={"id": "TIGHT", "name": "Tight rigid", "axle_groups": groups})
+
+
+def truck_of(vehicle, height: int = 2700) -> Truck:
+    decks = tuple(DeckSpec(d.id, d.name, d.length_mm, d.width_mm, height) for d in vehicle.cargo_decks)
+    return Truck(int(vehicle.max_payload_kg), decks, vehicle.name, axle_limits=axle_coefficients(vehicle))
+
+
+def planner_axle_loads(vehicle, items: list[Item], load) -> dict[str, tuple[float, float]]:
+    """{group: (load, limit)} for one truck of a packing, from the planner's own beam model."""
+    by_id = {it.id: it for it in items}
+    placements = [Placement(unit_id=f"u#{p.id}", item_id="u", label="", kind="loose", type_id="LOOSE",
+                            deck_id=vehicle.cargo_decks[p.deck].id, x_mm=p.x, y_mm=p.y, z_mm=p.z,
+                            length_mm=p.length, width_mm=p.width, height_mm=p.height, stack_id=p.base,
+                            stack_level=p.level, weight_kg=by_id[p.id].weight) for p in load]
+    return {a.group_id: (a.load_kg, a.limit_kg) for a in estimate_axle_loads(vehicle, placements)}
+
+
+@pytest.mark.parametrize("vehicle", [factories.RIGID, factories.SEMI, factories.BDOUBLE], ids=lambda v: v.id)
+def test_axle_coefficients_match_the_axle_estimate(vehicle):
+    rng = random.Random(7)
+    limits = axle_coefficients(vehicle)
+    assert [lim.name for lim in limits] == [g.name for g in vehicle.axle_groups]
+    assert [lim.cap_kg for lim in limits] == [g.gml_kg - g.tare_kg for g in vehicle.axle_groups]
+    decks = vehicle.cargo_decks
+    for _ in range(20):
+        loads = []   # (deck index, x, length, weight)
+        for _ in range(rng.randint(1, 30)):
+            d = rng.randrange(len(decks))
+            length = rng.choice([800, 1165, 2400, 4000])
+            loads.append((d, rng.randint(0, decks[d].length_mm - length), length, rng.randint(50, 1500)))
+        placements = [Placement(unit_id=f"u#{n}", item_id="u", label="", kind="pallet", type_id="AU_STD",
+                                deck_id=decks[d].id, x_mm=x, y_mm=0, z_mm=0, length_mm=length, width_mm=1000,
+                                height_mm=1000, stack_id=n, stack_level=0, weight_kg=w)
+                      for n, (d, x, length, w) in enumerate(loads)]
+        estimate = estimate_axle_loads(vehicle, placements)
+        for lim, group, a in zip(limits, vehicle.axle_groups, estimate, strict=True):
+            added = sum(w * lim.share(d, x + length / 2) for d, x, length, w in loads)
+            assert group.tare_kg + added == pytest.approx(a.load_kg, abs=1.0)
+    hml = axle_coefficients(vehicle, "HML")
+    assert [lim.cap_kg for lim in hml] == [g.limit("HML") - g.tare_kg for g in vehicle.axle_groups]
+
+
+def test_axle_limits_force_another_truck():
+    """8 x 950 kg is under the payload, but the two axle groups can only add 7,500 kg."""
+    vehicle = tight_rigid()
+    items = [pallet(i, weight=950) for i in range(8)]
+    plain = Truck(8000, truck_of(vehicle).decks, "No axles")
+    assert len(solve(items, plain, 5).trucks) == 1
+    truck = truck_of(vehicle)
+    result = solve(items, truck, 5)
+    assert len(result.trucks) == 2 and result.status == "OPTIMAL"
+    assert result.lower_bounds["weight"] == 1 and result.lower_bound == 1   # more than the weight bound
+    check(result, items, truck)
+    for load in result.trucks:
+        for group, (kg, limit) in planner_axle_loads(vehicle, items, load).items():
+            assert kg <= limit + 1e-6, group
+
+
+def test_axle_limits_move_the_load_instead_of_adding_a_truck():
+    """4 x 1,400 kg packed at the front overloads the steer axle; further back it is fine."""
+    items = [pallet(i, weight=1400) for i in range(4)]
+    truck = truck_of(factories.RIGID)
+    result = solve(items, truck, 5)
+    assert len(result.trucks) == 1 and result.optimal
+    loads = planner_axle_loads(factories.RIGID, items, result.trucks[0])
+    assert all(kg <= limit + 1e-6 for kg, limit in loads.values())
+    front = [Placement(unit_id=f"u#{i}", item_id="u", label="", kind="pallet", type_id="AU_STD",
+                       deck_id="body", x_mm=1165 * (i // 2), y_mm=1165 * (i % 2), z_mm=0, length_mm=1165,
+                       width_mm=1165, height_mm=1200, stack_id=i, stack_level=0, weight_kg=1400)
+             for i in range(4)]
+    assert estimate_axle_loads(factories.RIGID, front)[0].status == "over"   # the unconstrained spot
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_axle_limits_hold_for_random_instances(seed, monkeypatch):
+    rng = random.Random(100 + seed)
+    vehicle = [tight_rigid(), factories.SEMI, factories.BDOUBLE][seed % 3]
+    items = _random_items(rng, rng.randint(6, 16))
+    heavy = [Item(it.id, it.name, it.weight * 2, it.length, it.width, it.height, it.stackable, it.footprint,
+                  it.dg) for it in items]
+    truck = truck_of(vehicle)
+    if seed >= 3:   # the axle-aware greedy packing on its own
+        monkeypatch.setattr(cp_model.CpSolver, "solve", lambda self, model: cp_model.UNKNOWN)
+    result = solve(heavy, truck, 3)
+    check(result, heavy, truck)
+    for load in result.trucks:
+        for group, (kg, limit) in planner_axle_loads(vehicle, heavy, load).items():
+            assert kg <= limit + 1e-6, group
+
+
+def test_stacked_items_load_the_axles_at_their_base():
+    """10 pallets on 8 floor positions must stack; a stacked pallet counts at its column's position."""
+    vehicle = tight_rigid()
+    items = [pallet(i, 1000, weight=700, stackable=True) for i in range(10)]
+    truck = truck_of(vehicle)
+    result = solve(items, truck, 5)
+    check(result, items, truck)
+    (load,) = result.trucks
+    assert sum(1 for p in load if p.level > 0) >= 2
+    loads = planner_axle_loads(vehicle, items, load)
+    assert all(kg <= limit + 1e-6 for kg, limit in loads.values())
+
+
+def test_an_item_that_overloads_an_axle_wherever_it_stands_never_fits():
+    vehicle = tight_rigid()
+    truck = truck_of(vehicle)
+    # 6,000 kg on a 4,800 mm long footprint has one position: 1,560 kg on the steer, 4,440 kg rear.
+    assert solver_mod.never_fit([loose(0, 4800, 2000, weight=6000)], truck) == []
+    # 7,000 kg there puts 5,180 kg on the rear axle, which can add 4,700 kg.
+    with pytest.raises(ValueError, match="'L0' weighs 7,000 kg and would overload the Rear single wherever"):
+        solve([loose(0, 4800, 2000, weight=7000)], truck, 2)
+    assert solver_mod.never_fit([pallet(0, weight=4700)], truck) == []   # over the rear axle: all on it
+
+
+def test_without_axle_limits_the_model_is_unchanged():
+    items = [pallet(i, weight=950) for i in range(8)]
+    order = list(range(8))
+    group, conflicts = solver_mod._dg_groups(items)
+    sig = [solver_mod._signature(it, 0) for it in items]
+    args = (items, RIGID, 2, 1, order, order, sig, group, conflicts)
+    model, var = solver_mod._build_model(*args)
+    assert var.c2 == {} and var.g == {}
+    truck = truck_of(tight_rigid())
+    axles = solver_mod._axles(items, truck)
+    assert [ax.name for ax in axles] == ["Steer", "Rear single"]
+    with_axles, var = solver_mod._build_model(items, truck, 2, 1, order, order, sig, group, conflicts, axles)
+    assert len(var.g) == 8 + 7   # item k may go in trucks 0..k
+    assert len(with_axles.proto.constraints) > len(model.proto.constraints)
+    # Axle groups that the payload alone keeps under their limit are left out of the model.
+    easy = Truck(8000, RIGID.decks, "Easy", axle_limits=tuple(
+        solver_mod.AxleLimit(lim.name, 11000.0, lim.coef) for lim in truck.axle_limits))
+    assert solver_mod._axles(items, easy) == []
+
+
+def test_floor_cap():
+    """max_floor_mm2 caps the floor in use below the deck area (the planner's pallet spaces)."""
+    items = [pallet(i) for i in range(8)]
+    capped = Truck(8000, (BODY,), "Capped", max_floor_mm2=6 * 1165 * 1165)
+    result = solve(items, capped, 5)
+    assert [len(load) for load in result.trucks] == [6, 2] and result.lower_bounds["floor"] == 2
+    check(result, items, capped)
+    with pytest.raises(ValueError, match="of floor"):
+        solve([loose(0, 4000, 2400)], capped, 2)
 
 
 def test_floor_items_come_first():

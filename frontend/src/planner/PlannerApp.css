@@ -14,7 +14,7 @@
 .brand-mark { width: 32px; height: 32px; padding: 5px; color: var(--color-on-accent); background: var(--color-accent);
   border-radius: var(--radius-sm); }
 .header-controls { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-.header-controls fieldset, .mass-scheme { margin: 0; min-width: 0; }
+.header-controls fieldset { margin: 0; min-width: 0; }
 
 .app-disclaimer { max-width: var(--content-max); margin: 0 auto; padding: var(--space-3) var(--space-6) 0; }
 
@@ -24,17 +24,19 @@
 .rail, .workspace { display: flex; flex-direction: column; gap: var(--space-5); min-width: 0; }
 .workspace:focus { outline: none; }
 
-.step-header { display: flex; align-items: flex-start; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
+.step-header { display: flex; align-items: flex-start; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-3); }
 .step-header-text { flex: 1 1 220px; min-width: 0; }
 .step-number { flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: var(--radius-pill);
   font-size: var(--text-sm); font-weight: var(--weight-semibold); color: var(--color-accent); background: var(--color-accent-soft); }
 .step-title { font-size: var(--text-lg); }
-.mass-scheme { margin-top: var(--space-4); }
 .rule-set { margin-top: var(--space-4); font-size: var(--text-sm); color: var(--color-text-muted); }
 
 .plan { display: flex; flex-direction: column; gap: var(--space-5); transition: opacity var(--motion-base) var(--ease); }
 .plan-stale { opacity: 0.6; }
 .plan-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: var(--space-5); }
+
+/* Split across trucks: the summary, the truck tabs, then the selected truck's panels. */
+.fleet-panel[hidden] { display: none; }
 
 .loading { padding: var(--space-8) var(--space-4); text-align: center; color: var(--color-text-muted); }
 

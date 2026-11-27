@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ExportMenu from "./ExportMenu.tsx";
-import { planMultidrop, reference } from "../test/fixtures.ts";
+import { fleetSample, planMultidrop, reference } from "../test/fixtures.ts";
 
 const original = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
 
@@ -31,6 +31,26 @@ describe("ExportMenu", () => {
     expect(click).toHaveBeenCalledOnce();
     const link = click.mock.contexts[0] as HTMLAnchorElement;
     expect(link.download).toMatch(/^load-plan-SEMI_TRAILER-\d{4}-\d{2}-\d{2}\.csv$/);
+  });
+
+  it("downloads every truck of a split in one CSV with a Truck column", async () => {
+    const create = vi.fn((_blob: Blob) => "blob:fleet");
+    Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    render(<ExportMenu fleet={fleetSample.result} request={fleetSample.request} reference={reference} />);
+    await userEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+
+    const text = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(create.mock.calls[0][0]);
+    });
+    expect(text).toContain("Load plan: split across trucks");
+    expect(text).toContain("Truck,Unit,Item,Type,Deck");
+    expect(text).toContain("2,chlor#1,Pool chlorine");
+    const link = click.mock.contexts[0] as HTMLAnchorElement;
+    expect(link.download).toMatch(/^load-plan-RIGID_MEDIUM-2-trucks-\d{4}-\d{2}-\d{2}\.csv$/);
   });
 
   it("opens the print dialog", async () => {

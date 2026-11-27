@@ -4,7 +4,7 @@ from app.planner.axles import estimate_axle_loads
 from app.planner.checks import postcheck, precheck, resolve_body
 from app.planner.models import FreightItem, PlanWarning
 from app.reference.schemas import VehicleConfig
-from tests.factories import BODIES, RIGID, SEMI, containers, pallets, reference
+from tests.factories import BODIES, RIGID, SEMI, containers, loose, pallets, reference
 from tests.test_axles import place, rows
 
 REF = reference()
@@ -108,6 +108,45 @@ def test_mixed_freight_is_an_error():
     w = one(pre(pallets(2), containers("GP20"), body="FLAT_TOP"), "MIXED_FREIGHT")
     assert w.severity == "error"
     assert set(w.item_ids) == {"P", "GP20"}
+
+
+def test_pallets_and_loose_items_may_share_a_plan():
+    assert pre(pallets(4), loose(2, 6000, 400)) == []
+
+
+def test_loose_items_and_containers_are_mixed_freight():
+    w = one(pre(loose(1, 2000, 1000), containers("GP20"), body="FLAT_TOP"), "MIXED_FREIGHT")
+    assert "loose items and containers" in w.message
+    w = one(pre(pallets(1), loose(1, 2000, 1000), containers("GP20"), body="FLAT_TOP"), "MIXED_FREIGHT")
+    assert "pallets and loose items and containers" in w.message
+
+
+def test_loose_items_on_skeletal_are_incompatible():
+    w = one(pre(loose(1, 2000, 1000), body="SKELETAL"), "BODY_INCOMPATIBLE")
+    assert w.message.startswith("Loose items can't go") and w.item_ids == ["L"]
+
+
+def test_loose_item_too_tall():
+    warnings = pre(loose(1, 2000, 1000, height=2800), body="PANTECH")   # 2.6 m inside, 1.8 m max stack
+    assert one(warnings, "STACK_TOO_HIGH").message.startswith('Item "L" is 2.8 m tall')
+    assert one(warnings, "OVER_INTERNAL_HEIGHT").item_ids == ["L"]
+    warnings = pre(loose(1, 2000, 1000, height=3200), body="FLAT_TOP")  # 1.3 m deck + 3.2 m > 4.3 m
+    assert one(warnings, "OVER_HEIGHT_LIMIT").message.startswith('Item "L" would reach 4.5 m')
+
+
+def test_loose_item_too_heavy_for_the_vehicle():
+    w = one(pre(loose(1, 2000, 1000, weight=9000), vehicle=RIGID), "OVER_PAYLOAD")
+    assert w.severity == "error" and w.item_ids == ["L"]
+    assert w.message == 'Item "L" weighs 9.0 t; the Rigid 8 t can carry 8.0 t.'
+    assert pre(loose(1, 2000, 1000, weight=8000), vehicle=RIGID) == []   # no per-pallet limit for loose
+
+
+def test_loose_item_too_long_or_too_wide():
+    w = one(pre(loose(1, 6000, 400), vehicle=RIGID), "OVERSIZE_FOOTPRINT")
+    assert w.severity == "error" and "is 6.0 m long; the Rigid 8 t's deck is 4.8 m long" in w.message
+    w = one(pre(loose(1, 2500, 2500), vehicle=RIGID), "OVERSIZE_FOOTPRINT")
+    assert "is 2.5 m wide; the Rigid 8 t's deck is 2.4 m wide" in w.message
+    assert pre(loose(1, 1000, 4800), vehicle=RIGID) == []                # fits turned
 
 
 def test_unknown_types():

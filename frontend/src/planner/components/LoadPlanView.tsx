@@ -118,12 +118,12 @@ export interface StackEvents {
 // ---- Model building --------------------------------------------------------------------
 
 const MARGIN_MM = 300;
-/** Below this scale the drawing stops shrinking and its container scrolls instead. */
-const MIN_PX_PER_MM = 0.045;
+/** Zoom 1 is "fit": the drawing is as wide as its box, at any width. Above that the box scrolls. */
 const ZOOM_STEPS = [1, 1.5, 2, 3, 4];
 const MAX_ZOOM = ZOOM_STEPS[ZOOM_STEPS.length - 1];
 
 function typeNameOf(reference: ReferenceData, p: Pick<Placement, "kind" | "type_id">): string {
+  if (p.kind === "loose") return "Loose item";
   if (p.kind === "container") {
     const c = reference.containers[p.type_id];
     return c ? `${c.name} container` : p.type_id;
@@ -335,8 +335,8 @@ export default function LoadPlanView({ result, reference, request }: LoadPlanVie
   // Zoom: steps for the buttons, continuous for a pinch.
   const zoomIn = () => setZoom((z) => ZOOM_STEPS.find((s) => s > z + 0.01) ?? MAX_ZOOM);
   const zoomOut = () => setZoom((z) => [...ZOOM_STEPS].reverse().find((s) => s < z - 0.01) ?? 1);
-  const minPx = frame ? Math.round(frame.width * MIN_PX_PER_MM) : 0;
-  const svgWidth = `calc(max(${minPx}px, 100%) * ${zoom})`;
+  // A share of the box, so "fit" follows the box as the page is resized, with nothing to recompute.
+  const svgWidth = `${Math.round(zoom * 10000) / 100}%`;
 
   // Keep both drawings on the same x scroll so they stay aligned; hide the popover while scrolling.
   const syncScroll = (from: HTMLDivElement) => {
@@ -438,8 +438,7 @@ export default function LoadPlanView({ result, reference, request }: LoadPlanVie
             {unplaced.map((g) => (
               <li key={g.itemId}>
                 <strong>{g.label}</strong>{" "}
-                <span className="muted num">× {g.unitIds.length}</span>{" "}
-                <span className="subtle">({g.unitIds.join(", ")})</span>
+                <span className="muted num">× {g.unitIds.length}</span>
               </li>
             ))}
           </ul>

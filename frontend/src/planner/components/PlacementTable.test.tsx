@@ -20,25 +20,42 @@ describe("PlacementTable", () => {
     expect(rows).toHaveLength(planMultidrop.result.placements.length + 1);
   });
 
-  it("formats numbers with units and lists stacked levels", async () => {
+  /** The row of a unit, by its id (kept on the row; the table shows "label #n"). */
+  const rowOf = (unitId: string) => document.querySelector<HTMLElement>(`tr[data-unit="${unitId}"]`)!;
+  const cellsOf = (unitId: string) => within(rowOf(unitId)).getAllByRole("cell").map((c) => c.textContent);
+  const headers = () => screen.getAllByRole("columnheader").map((h) => h.textContent);
+
+  it("has one column for the position and one for the size, units and stacked levels included", async () => {
     render(<PlacementTable id="t" placements={planMultidrop.result.placements} decks={vehicle.decks} typeName={typeName} />);
     await userEvent.click(screen.getByText("Show the plan as a table"));
+    expect(headers()).toEqual(["Item", "DG", "Type", "Position (x, y, z)", "Size (L × W × H)", "Weight", "Level"]);
     const upper = planMultidrop.result.placements.find((p) => p.stack_level === 1)!;
-    const row = screen.getByRole("row", { name: new RegExp(upper.unit_id.replace("#", "\\#")) });
-    const cells = within(row).getAllByRole("cell").map((c) => c.textContent);
-    const mm = (n: number) => `${n.toLocaleString("en-AU")} mm`;
-    expect(cells).toEqual([
-      upper.unit_id, upper.label, "–", "type AU_STD", "Trailer", mm(upper.x_mm), mm(upper.y_mm),
-      `${upper.length_mm.toLocaleString("en-AU")} × ${upper.width_mm.toLocaleString("en-AU")} × ${upper.height_mm} mm`,
-      `${upper.weight_kg} kg`, "2",
+    const n = (v: number) => v.toLocaleString("en-AU");
+    expect(cellsOf(upper.unit_id)).toEqual([
+      `${upper.label} unit #${upper.unit_id.split("#")[1]}`, "–", "type AU_STD",
+      `${n(upper.x_mm)} · ${n(upper.y_mm)} · ${n(upper.z_mm)} mm`,
+      `${n(upper.length_mm)} × ${n(upper.width_mm)} × ${n(upper.height_mm)} mm`,
+      `${n(upper.weight_kg)} kg`, "2",
     ]);
+    expect(upper.z_mm).toBeGreaterThan(0); // the upper unit of a stack: z is its height off the deck
+    expect(rowOf(upper.unit_id)).not.toHaveTextContent(upper.item_id); // line ids are internal
   });
 
-  it("orders multi-deck placements by vehicle position", async () => {
+  it("has no inner scroll box: the table is as tall as its rows", async () => {
+    const { container } = render(
+      <PlacementTable id="t" placements={planMultidrop.result.placements} decks={vehicle.decks} typeName={typeName} />,
+    );
+    const wrapper = container.querySelector<HTMLElement>(".table-scroll")!;
+    expect(wrapper.style.maxHeight).toBe("");
+    expect(screen.getByRole("table", { hidden: true }).closest("details")).not.toHaveAttribute("open");
+  });
+
+  it("names the deck only on a multi-deck vehicle, in vehicle position order", async () => {
     render(<PlacementTable id="t" placements={planBdoubleContainers.result.placements}
                            decks={reference.vehicles.B_DOUBLE.decks} typeName={typeName} />);
     await userEvent.click(screen.getByText("Show the plan as a table"));
-    const decks = screen.getAllByRole("row").slice(1).map((r) => within(r).getAllByRole("cell")[4].textContent);
+    expect(headers()).toEqual(["Item", "DG", "Type", "Deck", "Position (x, y, z)", "Size (L × W × H)", "Weight", "Level"]);
+    const decks = screen.getAllByRole("row").slice(1).map((r) => within(r).getAllByRole("cell")[3].textContent);
     expect(decks).toEqual(["Lead trailer", "Rear trailer"]);
   });
 
@@ -47,7 +64,7 @@ describe("PlacementTable", () => {
                            dg={dgByItem(planDgConflict.request)} />);
     await userEvent.click(screen.getByText("Show the plan as a table"));
     expect(screen.getByRole("columnheader", { name: "DG" })).toBeInTheDocument();
-    const dgOf = (unit: string) => within(screen.getByRole("row", { name: new RegExp(unit) })).getAllByRole("cell")[2].textContent;
+    const dgOf = (unit: string) => cellsOf(unit)[1];
     expect(dgOf("chlorine#1")).toBe("5.1 Oxidising substance");
     expect(dgOf("paint#2")).toBe("3 Flammable liquid");
     expect(dgOf("acid#1")).toBe("8 Corrosive");

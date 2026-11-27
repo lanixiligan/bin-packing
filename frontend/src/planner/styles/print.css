@@ -47,6 +47,13 @@
   .disclaimer-more[hidden], .plan-status-tried[hidden] { display: block !important; }
   .disclaimer { color: var(--color-text); }
 
+  /* Split across trucks: print every truck, one after another, each starting a new page under its
+     own "Truck n of N" heading (on screen only the selected truck's panel shows). */
+  .print-only { display: block !important; }
+  .fleet-panel[hidden] { display: flex !important; }
+  .fleet-panel { break-before: page; }
+  .fleet-panel-title { font-size: 16pt; }
+
   /* Keep each panel, row and warning on one page where possible. */
   .card, .plan-status, .util, .axle-panel, .warnings, .warning, .util-row, .axle-row, .empty-state {
     break-inside: avoid;
