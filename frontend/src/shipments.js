@@ -136,10 +136,3 @@ export function parseWeights(text) {
   }
   return { weights, invalid };
 }
-
-// A small case where First-Fit Decreasing needs 4 trucks but 3 are enough:
-// 560+440 | 490+360+150 | 370+340+190.
-export const FFD_LOSES_EXAMPLE = {
-  capacity: 1000,
-  weights: [560, 490, 440, 370, 360, 340, 190, 150],
-};

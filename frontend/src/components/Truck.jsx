@@ -28,7 +28,7 @@ function BlockLabel({ s, h, dg }) {
 }
 
 export default function Truck({
-  truck, numTrucks, capacity, height, step, dropIndex, activeId, onHover, onFocusBlock, extra,
+  truck, numTrucks, capacity, height, step, dropIndex, activeId, onHover, onFocusBlock,
 }) {
   if (usesDeck(truck.shipments, capacity)) {
     return (
@@ -42,7 +42,6 @@ export default function Truck({
         activeId={activeId}
         onHover={onHover}
         onFocusBlock={onFocusBlock}
-        extra={extra}
       />
     );
   }
@@ -56,7 +55,7 @@ export default function Truck({
   const holdsActive = activeId != null && truck.shipments.some((s) => s.id === activeId);
 
   return (
-    <div className={`truck${extra ? " extra" : ""}${holdsActive ? " holds-active" : ""}`}>
+    <div className={`truck${holdsActive ? " holds-active" : ""}`}>
       <div className="truck-fill" aria-hidden="true">{fill}%</div>
       <div
         className="truck-body"
@@ -89,7 +88,6 @@ export default function Truck({
       </div>
       <div className="truck-name">Truck {truck.truck}</div>
       <div className="truck-empty">{done ? `${truck.empty} kg free` : "loading…"}</div>
-      {extra && <div className="truck-extra-tag">beyond optimum</div>}
     </div>
   );
 }

@@ -36,7 +36,7 @@ function colX(col, across, widthMm) {
 const rowY = (row) => ROW_GAP_MM + row * (PALLET_MM + ROW_GAP_MM);
 
 export default function DeckTruck({
-  truck, numTrucks, cap, height, step, dropIndex, activeId, onHover, onFocusBlock, extra,
+  truck, numTrucks, cap, height, step, dropIndex, activeId, onHover, onFocusBlock,
 }) {
   const name = `Truck ${truck.truck}`;
   // A number is kg only: weight is then the only limited dimension.
@@ -68,7 +68,7 @@ export default function DeckTruck({
   });
 
   return (
-    <div className={`truck multi deck${extra ? " extra" : ""}${over ? " over" : ""}${holdsActive ? " holds-active" : ""}`}>
+    <div className={`truck multi deck${over ? " over" : ""}${holdsActive ? " holds-active" : ""}`}>
       <DimBars usage={usage} cap={limits} compact />
       <div className="truck-fill" aria-hidden="true">{fill}%</div>
       <div className="deck-cab" style={{ width: w * 0.86 }} aria-hidden="true" />
@@ -142,7 +142,6 @@ export default function DeckTruck({
       <div className="truck-empty">
         {!done ? "loading…" : over ? <b className="truck-over">⚠ over capacity</b> : deck.limited ? spacesFree(deck.slots, full.pallets) : palletCount(full.pallets)}
       </div>
-      {extra && <div className="truck-extra-tag">beyond optimum</div>}
     </div>
   );
 }

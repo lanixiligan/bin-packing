@@ -231,9 +231,9 @@ function SlotOutlines({ deck, len, colors }) {
   });
 }
 
-function TruckModel({ truck, position, capacity, step, dropIndex, colors, activeId, onHover, extra, animate, maxLen }) {
+function TruckModel({ truck, position, capacity, step, dropIndex, colors, activeId, onHover, animate, maxLen }) {
   const { holdsActive, over } = truckStatus(truck, capacity, step, dropIndex, activeId);
-  const frameColor = holdsActive ? colors.active : extra || over ? colors.warn : colors.frame;
+  const frameColor = holdsActive ? colors.active : over ? colors.warn : colors.frame;
   const d = deckOf(truck, capacity);
   const len = d ? d.len : L;
   const crates = d ? palletLayout(truck, d, len) : crateLayout(truck, capacity);
@@ -347,7 +347,7 @@ function LabelTracker({ positions, labels, anchorX }) {
 }
 
 export default function TruckScene3D({
-  data, capacity, step, dropIndex, activeId, onHover, onFocusBlock, extraFrom, height,
+  data, capacity, step, dropIndex, activeId, onHover, onFocusBlock, height,
 }) {
   const dark = useMediaQuery(DARK_SCHEME);
   const reducedMotion = useMediaQuery(REDUCED_MOTION);
@@ -409,7 +409,6 @@ export default function TruckScene3D({
             colors={colors}
             activeId={activeId}
             onHover={onHover}
-            extra={extraFrom != null && t.truck > extraFrom}
             animate={!reducedMotion}
             maxLen={maxLen}
           />
@@ -429,16 +428,14 @@ export default function TruckScene3D({
       <div className="scene3d-labels" aria-hidden="true">
         {data.trucks.map((t, i) => {
           const { fill, sub, holdsActive, over } = truckStatus(t, capacity, step, dropIndex, activeId);
-          const extra = extraFrom != null && t.truck > extraFrom;
           return (
             <div
               key={t.truck}
               ref={(el) => (labels.current[i] = el)}
-              className={`truck3d-label${holdsActive ? " active" : ""}${extra || over ? " extra" : ""}`}
+              className={`truck3d-label${holdsActive ? " active" : ""}${over ? " extra" : ""}`}
             >
               <span className="truck3d-title"><b>{truckName(t)}</b> · {fill}%</span>
               <span className="truck3d-sub">{sub}</span>
-              {extra && <span className="truck3d-extra">beyond optimum</span>}
             </div>
           );
         })}

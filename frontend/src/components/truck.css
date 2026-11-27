@@ -32,12 +32,8 @@
 .dim-bar-pct { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 .dim-bar.over .dim-bar-pct { color: var(--bad-text, var(--bad)); }
 
-/* ---------- Summary: lower bound per dimension ---------- */
-.bound-details { margin-top: 14px; }
-.bound-details-title { margin: 0 0 4px; }
-.bound-details-list { display: flex; flex-wrap: wrap; gap: 4px 18px; list-style: none; margin: 0; padding: 0; }
-.bound-details-list li.binding { font-weight: 600; }
-.bound-binding { color: var(--muted); font-weight: 400; }
+/* ---------- Summary: lower bound per dimension and solve time ---------- */
+.summary-stats { display: flex; flex-wrap: wrap; gap: 4px 18px; list-style: none; margin: 0; padding: 0; }
 
 .panel-head h3 { margin: 0; font-size: 1.15rem; }
 
@@ -89,7 +85,6 @@
   background: repeating-linear-gradient(45deg, var(--stripe-a), var(--stripe-a) 6px, var(--stripe-b) 6px, var(--stripe-b) 12px);
 }
 .truck.deck.over .truck-body, .truck.deck.over .deck-bed { outline: 2px solid var(--bad); outline-offset: 3px; }
-.truck.deck.extra .deck-bed { outline: 2px dashed var(--warn); outline-offset: 3px; }
 .deck-slot {
   position: absolute;
   box-sizing: border-box;

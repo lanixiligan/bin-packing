@@ -200,50 +200,7 @@ button.icon:hover { color: var(--bad); }
 
 /* Three rows on one shared scale: each cell is one truck, the dashed line is
    the lower bound. --n (scale) and --lb are set inline by Summary.jsx. */
-.tally {
-  display: grid;
-  /* track only as wide as the scale needs, so each count sits next to its bars */
-  grid-template-columns: max-content minmax(0, calc(var(--n) * 40px)) minmax(9rem, 1fr);
-  gap: 12px 16px;
-  align-items: center;
-}
-.tally-row { display: contents; }
-.tally-label { font-weight: 600; }
-.tally-track {
-  position: relative;
-  display: grid;
-  grid-template-columns: repeat(var(--n), 1fr);
-  max-width: calc(var(--n) * 40px);
-  height: 26px;
-}
-.tally-track::after { /* lower-bound line, between truck lb and lb+1 */
-  content: "";
-  position: absolute;
-  top: -6px;
-  bottom: -6px;
-  left: calc(var(--lb) / var(--n) * 100% - 1px);
-  border-left: 2px dashed var(--text);
-}
-.tally-cell { margin: 0 2px; border-radius: 4px; background: var(--primary); }
-.tally-cell.extra {
-  background: repeating-linear-gradient(45deg, var(--warn), var(--warn) 4px, transparent 4px, transparent 7px);
-  outline: 2px solid var(--warn);
-  outline-offset: -2px;
-}
-.bound .tally-cell { background: transparent; border: 2px dashed var(--muted); }
-.tally-count b { font-size: 1.5rem; }
-.tally-note { font-size: 0.8rem; color: var(--muted); }
-
-.tally-legend { display: flex; flex-wrap: wrap; gap: 4px 18px; list-style: none; padding: 0; margin: 16px 0 0; }
-.tally-legend li { display: flex; align-items: center; gap: 6px; }
-.swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; }
-.swatch.ffd { background: var(--primary); }
-.swatch.extra {
-  background: repeating-linear-gradient(45deg, var(--warn), var(--warn) 3px, transparent 3px, transparent 5px);
-  outline: 2px solid var(--warn);
-  outline-offset: -2px;
-}
-.swatch.line { width: 0; height: 16px; border-radius: 0; border-left: 2px dashed var(--text); }
+.bound 
 
 /* ---------- Hover/focus inspector ---------- */
 .inspector {
@@ -265,13 +222,10 @@ button.icon:hover { color: var(--bad); }
 .inspector-name { font-weight: 700; }
 
 /* ---------- Panels ---------- */
-.panels { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-@media (max-width: 900px) { .panels { grid-template-columns: 1fr; } }
 .panel { margin-bottom: 0; min-width: 0; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 .panel-head h2 { margin: 0; font-size: 1.25rem; }
 .panel-stats { margin: 6px 0 12px; }
-.panel-extra { color: var(--warn); font-weight: 600; }
 
 .badge { font-size: 0.8rem; padding: 3px 10px; border-radius: 999px; font-weight: 600; }
 .badge.good { background: var(--good-bg); color: var(--good); }
@@ -326,9 +280,6 @@ button.icon:hover { color: var(--bad); }
 .truck.holds-active .truck-name { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
 .truck-empty { font-size: 0.78rem; color: var(--muted); }
 
-/* A truck FFD needed that OR-Tools did without */
-.truck.extra .truck-body { outline: 2px dashed var(--warn); outline-offset: 3px; }
-.truck-extra-tag { margin-top: 2px; font-size: 0.72rem; font-weight: 600; color: var(--warn); }
 
 @keyframes drop {
   from { transform: translateY(-320px); opacity: 0; }
@@ -342,9 +293,7 @@ button.icon:hover { color: var(--bad); }
   .card { padding: 12px; }
   .trucks { gap: 10px; }
   .truck { width: 66px; } /* 4 per row at 360 px; heights shrink to 200 px in JS */
-  .tally { grid-template-columns: minmax(0, 1fr) max-content; gap: 4px 12px; }
-  .tally-label { grid-column: 1 / -1; margin-top: 8px; }
-}
+    }
 
 @media (prefers-reduced-motion: reduce) {
   .block { animation: none; transition: none; }
@@ -390,7 +339,6 @@ button.icon:hover { color: var(--bad); }
 .truck3d-sub { color: var(--muted); }
 .truck3d-label.active { border-color: var(--text); box-shadow: 0 0 0 1px var(--text); }
 .truck3d-label.extra { border: 2px dashed var(--warn); }
-.truck3d-extra { color: var(--warn); font-weight: 600; }
 
 .sr-only {
   position: absolute;

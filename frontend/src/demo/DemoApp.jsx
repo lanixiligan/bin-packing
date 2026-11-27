@@ -5,7 +5,7 @@ import Summary from "../components/Summary.jsx";
 import { dgClassText } from "../components/capacity.ts";
 import { palletFootprint } from "../components/deck.ts";
 import { checkAll } from "../dg/rules.ts";
-import { demoDg, FFD_LOSES_EXAMPLE, randomShipments, shipmentsFromWeights } from "../shipments.js";
+import { demoDg, randomShipments } from "../shipments.js";
 import { NARROW_SCREEN, REDUCED_MOTION, SMALL_SCREEN, useMediaQuery } from "../useMediaQuery.js";
 
 const DROP_INTERVAL_MS = 150; // time between each shipment dropping in
@@ -29,24 +29,6 @@ function palletsProblem(text) {
 }
 
 const palletsOf = (s) => Math.max(0, Number(s.pallets) || 0);
-
-/**
- * Summary.jsx's result with a per-dimension lower bound when the trucks have a
- * pallet limit (the bound is then the larger of the weight and pallet bounds).
- */
-function summaryResult(result) {
-  if (!result.max_pallets) return result;
-  const shipments = result.ffd.trucks.flatMap((t) => t.shipments);
-  const pallets = shipments.reduce((sum, s) => sum + palletsOf(s), 0);
-  const byWeight = Math.ceil(result.total_weight / result.capacity);
-  const byPallets = Math.ceil(pallets / result.max_pallets);
-  const details = [
-    { label: "Weight", text: `⌈${result.total_weight.toLocaleString()} ÷ ${result.capacity.toLocaleString()}⌉ = ${byWeight}`, binding: byWeight === result.lower_bound },
-    { label: "Pallets", text: `⌈${pallets} ÷ ${result.max_pallets}⌉ = ${byPallets}`, binding: byPallets === result.lower_bound },
-  ];
-  const binding = details.filter((d) => d.binding).map((d) => d.label.toLowerCase()).join(" and ");
-  return { ...result, bound_note: `by ${binding}: no plan can use fewer`, bound_details: details };
-}
 
 export default function App() {
   const [capacityText, setCapacityText] = useState("1000");
@@ -80,7 +62,7 @@ export default function App() {
   const lowerBound = capacity
     ? Math.max(Math.ceil(totalWeight / capacity), maxPallets ? Math.ceil(totalPallets / maxPallets) : 0)
     : null;
-  const activeId = hoverId ?? focusId; // shipment highlighted in both panels
+  const activeId = hoverId ?? focusId; // shipment highlighted in the truck view
   const dgCount = shipments.filter((s) => s.dgClass).length;
   // Pairs of shipments that must travel apart (the server decides on Solve).
   const dgConflicts = useMemo(
@@ -114,7 +96,7 @@ export default function App() {
   useEffect(() => {
     if (reducedMotion && result) {
       clearInterval(timer.current);
-      setStep(result.ffd.drop_order.length);
+      setStep(result.drop_order.length);
     }
   }, [reducedMotion, result]);
 
@@ -214,7 +196,7 @@ export default function App() {
         throw new Error(detail || `Server error (${res.status})`);
       }
       setResult(data);
-      startAnimation(data.ffd.drop_order.length);
+      startAnimation(data.drop_order.length);
     } catch (e) {
       setError(
         e instanceof TypeError
@@ -244,23 +226,11 @@ export default function App() {
     setUndoList(null);
   }
 
-  function loadExample() {
-    setCapacityText(String(FFD_LOSES_EXAMPLE.capacity));
-    setCapacityChecked(false);
-    setError("");
-    changeShipments(shipmentsFromWeights(FFD_LOSES_EXAMPLE.weights));
-  }
-
-  // Where each shipment ended up, per method: id -> { ffd, ortools } truck numbers
+  // Where each shipment ended up: id -> { shipment, truck }
   const placement = useMemo(() => {
-    if (!result) return {};
     const map = {};
-    for (const key of ["ffd", "ortools"]) {
-      for (const t of result[key].trucks) {
-        for (const s of t.shipments) {
-          map[s.id] = { ...map[s.id], shipment: s, [key]: t.truck };
-        }
-      }
+    for (const t of result?.trucks ?? []) {
+      for (const s of t.shipments) map[s.id] = { shipment: s, truck: t.truck };
     }
     return map;
   }, [result]);
@@ -269,7 +239,6 @@ export default function App() {
   // The capacity the truck views get: kg only, or kg and pallet spaces.
   const viewCapacity = result?.max_pallets ? { weight_kg: result.capacity, pallets: result.max_pallets } : result?.capacity;
   const usesPallets = Boolean(result?.max_pallets) || shipments.some((s) => palletsOf(s) > 0);
-  const optimumTrucks = result ? result.ortools.num_trucks : null;
   const linkProps = { activeId, onHover: setHoverId, onFocusBlock: setFocusId };
   const active = activeId != null ? placement[activeId] : null;
 
@@ -278,8 +247,8 @@ export default function App() {
       <header>
         <h1>🚚 Truck Loading Optimizer</h1>
         <p className="subtitle">
-          The 1D bin packing problem: load every shipment using the fewest trucks.
-          We compare a quick rule of thumb (First-Fit Decreasing) with Google OR-Tools.
+          The bin packing problem: load every shipment using the fewest trucks. Google OR-Tools
+          (CP-SAT) searches for the best loading and proves when no better one exists.
         </p>
       </header>
 
@@ -364,9 +333,6 @@ export default function App() {
           <button type="button" onClick={() => changeShipments(randomShipments(capacity ?? undefined, 20))}>
             🎲 Load random shipments
           </button>
-          <button type="button" onClick={loadExample}>
-            🧪 Example where FFD loses
-          </button>
           <button type="button" className="secondary" onClick={clearAll} disabled={!shipments.length}>
             Clear all
           </button>
@@ -377,7 +343,7 @@ export default function App() {
             <button
               type="button"
               className="secondary"
-              onClick={() => startAnimation(result.ffd.drop_order.length)}
+              onClick={() => startAnimation(result.drop_order.length)}
             >
               ↻ Replay animation
             </button>
@@ -401,7 +367,7 @@ export default function App() {
       <div className="results" ref={resultsRef}>
         {loading && <SolvingProgress elapsed={elapsed} count={shipments.length} />}
 
-        {result && <Summary result={summaryResult(result)} />}
+        {result && <Summary result={result} />}
 
         {result && (
           <>
@@ -412,12 +378,11 @@ export default function App() {
                   <span>{active.shipment.weight} kg</span>
                   <span>{palletFootprint(active.shipment.pallets) || "loose freight"}</span>
                   {active.shipment.dg_class && <span>DG: <b>{dgClassText(active.shipment.dg_class, active.shipment.subsidiary)}</b></span>}
-                  <span>FFD: <b>truck {active.ffd}</b></span>
-                  <span>OR-Tools: <b>truck {active.ortools}</b></span>
+                  <span><b>Truck {active.truck}</b></span>
                 </>
               ) : (
                 <span className="muted">
-                  Hover over a shipment, or Tab to it, to see where each method put it.
+                  Hover over a shipment, or Tab to it, to see what it is.
                 </span>
               )}
             </div>
@@ -434,35 +399,19 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <div className="panels">
-              <ResultPanel
-                title="FFD (quick rule)"
-                explanation="Sort shipments heaviest → lightest. Put each one in the first truck with room; open a new truck if none fits."
-                data={result.ffd}
-                capacity={viewCapacity}
-                step={step}
-                truckHeight={narrowScreen ? 200 : 280}
-                optimumTrucks={optimumTrucks}
-                badge={result.ffd.hits_lower_bound
-                  ? { text: "Optimal (hits lower bound)", kind: "good" }
-                  : { text: "Heuristic – not guaranteed best", kind: "neutral" }}
-                view={view}
-                {...linkProps}
-              />
-              <ResultPanel
-                title="OR-Tools (optimal)"
-                explanation="CP-SAT solver searches all possible loadings for the fewest trucks, and proves when no better answer exists."
-                data={result.ortools}
-                capacity={viewCapacity}
-                step={step}
-                truckHeight={narrowScreen ? 200 : 280}
-                badge={result.ortools.optimal
-                  ? { text: "Proven optimal", kind: "good" }
-                  : { text: `Best found in ${result.ortools.time_limit_s} s (not proven)`, kind: "warn" }}
-                view={view}
-                {...linkProps}
-              />
-            </div>
+            <ResultPanel
+              title="OR-Tools CP-SAT"
+              explanation="Searches every possible loading for the fewest trucks, and proves when no better one exists."
+              data={result}
+              capacity={viewCapacity}
+              step={step}
+              truckHeight={narrowScreen ? 200 : 280}
+              badge={result.optimal
+                ? { text: "Proven optimal", kind: "good" }
+                : { text: `Best found in ${result.time_limit_s} s (not proven)`, kind: "warn" }}
+              view={view}
+              {...linkProps}
+            />
           </>
         )}
       </div>
@@ -478,8 +427,8 @@ function SolvingProgress({ elapsed, count }) {
         Solving {count} shipment{count === 1 ? "" : "s"}…
       </p>
       <p className="muted small">
-        FFD finishes almost instantly. OR-Tools keeps searching until it proves the
-        best answer, or stops at the {SOLVER_TIME_LIMIT_S} s limit.
+        OR-Tools keeps searching until it proves the best loading, or stops at
+        the {SOLVER_TIME_LIMIT_S} s limit with the best one found.
       </p>
       <progress max={SOLVER_TIME_LIMIT_S} value={shown} aria-label="Time used of the solver limit" />
       <p className="small progress-time" aria-hidden="true">
