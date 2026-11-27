@@ -86,9 +86,14 @@ export default function ElevationView({ vehicle, stacks, frame, mode, width, max
       <g className="elev-stacks">
         {ordered.map((s) => {
           const dim = events.highlighted && events.highlighted !== s.key;
+          // Over-limit and conflict marks share the space above the stack: side by side when both show.
+          const shift = s.overLimit && s.conflict ? 260 : 0;
+          const markY = Math.max(380, Y(s.top) - 120);
           return (
             <g key={s.base.unit_id} data-stack={s.key} data-over-limit={s.overLimit || undefined}
-               className={`elev-stack${s.overLimit ? " is-over" : ""}${dim ? " is-dimmed" : ""}${events.highlighted === s.key ? " is-highlighted" : ""}`}
+               className={`elev-stack${s.overLimit ? " is-over" : ""}${dim ? " is-dimmed" : ""}${events.highlighted === s.key ? " is-highlighted" : ""}`
+                 + `${s.conflict ? ` has-conflict is-conflict-${s.conflict.severity}` : ""}`}
+               data-conflict={s.conflict?.severity}
                style={{ transform: `translate(${s.x}px, 0px)` }}
                onMouseEnter={(e) => events.onEnter(s.key, e.currentTarget)}
                onMouseLeave={() => events.onLeave(s.key)}
@@ -107,8 +112,15 @@ export default function ElevationView({ vehicle, stacks, frame, mode, width, max
                 );
               })}
               {s.overLimit && (
-                <g className="elev-warning" transform={`translate(${s.length / 2} ${Math.max(380, Y(s.top) - 120)})`}>
+                <g className="elev-warning" transform={`translate(${s.length / 2 - shift} ${markY})`}>
                   <title>Over the height limit</title>
+                  <path d="M 0 -340 L 200 0 L -200 0 Z" />
+                  <text x={0} y={-50} textAnchor="middle">!</text>
+                </g>
+              )}
+              {s.conflict && (
+                <g className={`elev-conflict is-${s.conflict.severity}`} transform={`translate(${s.length / 2 + shift} ${markY})`}>
+                  <title>{s.conflict.severity === "error" ? "Incompatible dangerous goods" : "Dangerous goods to check"}</title>
                   <path d="M 0 -340 L 200 0 L -200 0 Z" />
                   <text x={0} y={-50} textAnchor="middle">!</text>
                 </g>

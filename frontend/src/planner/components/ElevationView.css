@@ -16,6 +16,13 @@
 .elev-unit-edge { fill: none; stroke: var(--color-text); stroke-opacity: 0.4; stroke-width: 1px; vector-effect: non-scaling-stroke; }
 .elev-stack.is-highlighted .elev-unit-edge { stroke: var(--color-focus); stroke-opacity: 1; stroke-width: 2.5px; }
 .elev-stack.is-over .elev-unit-edge { stroke: var(--color-error); stroke-opacity: 1; stroke-width: 2.5px; }
+/* Incompatible DG (plan warnings): dashed outline plus a warning triangle, like the deck view. */
+.elev-stack.has-conflict .elev-unit-edge { stroke-opacity: 1; stroke-width: 3px; stroke-dasharray: 8 5; }
+.elev-stack.is-conflict-error .elev-unit-edge { stroke: var(--color-error); }
+.elev-stack.is-conflict-warning .elev-unit-edge { stroke: var(--color-warning); }
+.elev-conflict.is-error path { fill: var(--color-error); }
+.elev-conflict.is-warning path { fill: var(--color-warning); }
+.elev-conflict text { fill: var(--color-surface); font-size: 240px; font-weight: var(--weight-semibold); }
 .elev-warning path { fill: var(--color-error); }
 .elev-warning text { fill: var(--color-surface); font-size: 240px; font-weight: var(--weight-semibold); }
 

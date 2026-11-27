@@ -55,6 +55,27 @@ export default function ItemDetails({ id, stack, anchor, heightLimit }: ItemDeta
           limit
         </p>
       )}
+      {stack.dg.map((d) => (
+        <p key={d.itemId} className="item-details-dg">
+          <span className="item-details-dg-code" aria-hidden="true"><span>{d.code}</span></span>
+          <span>
+            Dangerous goods{stack.dg.length > 1 ? ` (${d.label})` : ""}: <strong>{d.text}</strong>
+            {d.info.un_number ? <span className="subtle num"> · UN {d.info.un_number}</span> : null}
+            {d.info.packing_group ? <span className="subtle"> · PG {d.info.packing_group}</span> : null}
+          </span>
+        </p>
+      ))}
+      {stack.conflict && (
+        <div className={`item-details-alert item-details-conflict is-${stack.conflict.severity}`}>
+          <p className="item-details-conflict-title">
+            <span aria-hidden="true">⚠</span>{" "}
+            {stack.conflict.severity === "error" ? "Incompatible dangerous goods" : "Dangerous goods to check"}
+          </p>
+          <ul>
+            {stack.conflict.messages.map((m) => <li key={m}>{m}</li>)}
+          </ul>
+        </div>
+      )}
       <dl className="item-details-grid">
         <dt>Dimensions</dt>
         <dd className="num item-details-nowrap">{dims(units, base)}{base.rotated ? " (turned)" : ""}</dd>

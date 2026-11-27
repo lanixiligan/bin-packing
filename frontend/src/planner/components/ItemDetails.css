@@ -15,6 +15,17 @@
 .item-details-title { font-weight: var(--weight-semibold); overflow-wrap: anywhere; }
 .item-details-alert { margin-bottom: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm);
   background: var(--color-error-soft); color: var(--color-error); font-weight: var(--weight-medium); }
+.item-details-dg { display: flex; align-items: flex-start; gap: var(--space-2); margin-bottom: var(--space-2); }
+/* A small placard-style diamond (rotated square) with the class code. */
+.item-details-dg-code { position: relative; flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px;
+  font-size: 10px; font-weight: var(--weight-semibold); line-height: 1; color: var(--color-text); }
+.item-details-dg-code::before { content: ""; position: absolute; inset: 4px; transform: rotate(45deg);
+  border: 1.5px solid var(--color-text); background: var(--color-surface); }
+.item-details-dg-code > span { position: relative; }
+.item-details-conflict { font-weight: var(--weight-regular); }
+.item-details-conflict.is-warning { background: var(--color-warning-soft); color: var(--color-warning); }
+.item-details-conflict-title { font-weight: var(--weight-semibold); }
+.item-details-conflict ul { margin: var(--space-1) 0 0; padding-left: var(--space-4); color: var(--color-text); }
 .item-details-grid { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--space-3); margin: 0; }
 .item-details-grid dt { color: var(--color-text-muted); }
 .item-details-grid dd { margin: 0; text-align: right; }

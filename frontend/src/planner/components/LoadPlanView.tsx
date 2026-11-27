@@ -6,11 +6,13 @@
 // stack_id) and drawn where the API put them. Nothing here moves or re-plans a unit.
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type TouchEvent } from "react";
-import type { Deck, Placement, PlanRequest, PlanResult, ReferenceData, VehicleConfig } from "../api/types.ts";
+import type { Deck, DgInfo, Placement, PlanRequest, PlanResult, PlanWarning, ReferenceData, VehicleConfig } from "../api/types.ts";
+import { dgByItem, dgConflicts, dgLabel, dgName, placardCode } from "../lib/dg.ts";
 import { heatColor, stopBadge, stopColor, stopTextColor, typePattern, type PatternKind } from "../lib/colors.ts";
 import { useUnits, type Units } from "../lib/units.ts";
 import DeckView from "./DeckView.tsx";
 import ElevationView from "./ElevationView.tsx";
+import { AlertIcon } from "./icons.tsx";
 import ItemDetails, { type Anchor } from "./ItemDetails.tsx";
 import Legend from "./Legend.tsx";
 import PlacementTable from "./PlacementTable.tsx";
@@ -36,6 +38,25 @@ export interface Paint {
   badge: string;
 }
 
+/** A dangerous goods line carried in a stack (from the request's `items[].dg`). */
+export interface StackDg {
+  itemId: string;
+  label: string;
+  info: DgInfo;
+  /** Placard code: "3", "5.1", "1.4S", "F", "R". */
+  code: string;
+  /** "Class 5.1 Oxidising substance", plus subsidiaries: "Class 3 Flammable liquid, subsidiary 6.1". */
+  text: string;
+}
+
+/** The stack's lines named in DG_INCOMPATIBLE (error) / DG_CHECK (warning) plan warnings. */
+export interface StackConflict {
+  severity: "error" | "warning";
+  /** "Pool chlorine (Class 5.1)" for each other line this stack's goods conflict with. */
+  with: string[];
+  messages: string[];
+}
+
 /** One floor position: the floor unit and anything stacked on it. */
 export interface PlanStack {
   key: string;
@@ -59,6 +80,9 @@ export interface PlanStack {
   stop: number | null;
   overLimit: boolean;
   paint: Paint;
+  /** DG lines in the stack, floor first; empty for general freight. */
+  dg: StackDg[];
+  conflict: StackConflict | null;
   /** Full details for assistive tech. */
   description: string;
 }
@@ -115,8 +139,48 @@ function unique<T>(xs: T[]): T[] {
   return [...new Set(xs)];
 }
 
+/** "Class 5.1 Oxidising substance", "Class 3 Flammable liquid, subsidiary 6.1", "Food". */
+function dgText(dg: DgInfo): string {
+  if (!dg.dg_class) return dgName(dg);
+  const subs = [...(dg.subsidiary ?? [])].sort();
+  return `Class ${placardCode(dg)} ${dgName(dg)}${subs.length ? `, subsidiary ${subs.join(", ")}` : ""}`;
+}
+
+/** DG and conflict data for the plan: the request's DG per line and the plan's warnings (never recalculated). */
+interface DgContext {
+  dg: Map<string, DgInfo>;
+  conflicts: ReturnType<typeof dgConflicts>;
+  /** Item label by id. */
+  labels: Map<string, string>;
+}
+
+function stackDg(units: Placement[], ctx: DgContext): { dg: StackDg[]; conflict: StackConflict | null } {
+  const ids = unique(units.map((u) => u.item_id));
+  const dg = ids.flatMap((id) => {
+    const info = ctx.dg.get(id);
+    const code = placardCode(info);
+    return info && code ? [{ itemId: id, label: ctx.labels.get(id) ?? id, info, code, text: dgText(info) }] : [];
+  });
+  const found = ids.map((id) => ctx.conflicts.get(id)).filter((c) => c !== undefined);
+  if (!found.length) return { dg, conflict: null };
+  const others = unique(found.flatMap((c) => c.with)).filter((id) => !ids.includes(id));
+  const named = (id: string) => {
+    const label = ctx.labels.get(id) ?? id;
+    const info = ctx.dg.get(id);
+    return info ? `${label} (${dgLabel(info).replace(/ \(sub .*\)$/, "")})` : label;
+  };
+  return {
+    dg,
+    conflict: {
+      severity: found.some((c) => c.severity === "error") ? "error" : "warning",
+      with: others.map(named),
+      messages: unique(found.flatMap((c) => c.messages)),
+    },
+  };
+}
+
 function buildStacks(result: PlanResult, vehicle: VehicleConfig, reference: ReferenceData, mode: ColorMode,
-                     units: Units): PlanStack[] {
+                     units: Units, ctx: DgContext): PlanStack[] {
   const decks = new Map(vehicle.decks.map((d) => [d.id, d]));
   const groups = new Map<string, Placement[]>();
   for (const p of result.placements) {
@@ -154,6 +218,7 @@ function buildStacks(result: PlanResult, vehicle: VehicleConfig, reference: Refe
       paint = { fill: stopColor(base.stop), text: stopTextColor(base.stop), pattern: null, badge: stopBadge(base.stop) };
     }
     const n = sorted.length;
+    const { dg, conflict } = stackDg(sorted, ctx);
     const description = [
       label,
       `${typeName} ${units.footprint(base.length_mm, base.width_mm)}`,
@@ -162,11 +227,13 @@ function buildStacks(result: PlanResult, vehicle: VehicleConfig, reference: Refe
       ...(n > 1 ? [`stack of ${n}`] : []),
       ...(multiDeck ? [`on the ${deck.name.toLowerCase()}`] : []),
       ...(overLimit ? ["over the height limit"] : []),
+      ...dg.map((d) => `dangerous goods${dg.length > 1 ? ` (${d.label})` : ""}: ${d.text}`),
+      ...(conflict?.with.length ? [`conflicts with ${conflict.with.join(", ")}`] : []),
     ].join(", ");
     return {
       key, units: sorted, base, deck,
       x: deck.x_mm + base.x_mm, y: base.y_mm, length: base.length_mm, width: base.width_mm,
-      weight, top, label, typeName, typeCode: pattern.code, stop: base.stop, overLimit, paint, description,
+      weight, top, label, typeName, typeCode: pattern.code, stop: base.stop, overLimit, paint, dg, conflict, description,
     };
   }).sort((a, b) => a.x - b.x || b.y - a.y);
 }
@@ -193,10 +260,16 @@ export default function LoadPlanView({ result, reference, request }: LoadPlanVie
   const pinch = useRef<{ dist: number; zoom: number } | null>(null);
 
   const vehicle = reference.vehicles[result.vehicle_id] as VehicleConfig | undefined;
+  const dgCtx = useMemo<DgContext>(() => ({
+    dg: dgByItem(request),
+    conflicts: dgConflicts(result.warnings),
+    labels: new Map(request.items.map((i) => [i.id, i.label?.trim() || i.id])),
+  }), [request, result.warnings]);
   const stacks = useMemo(
-    () => (vehicle ? buildStacks(result, vehicle, reference, mode, units) : []),
-    [result, vehicle, reference, mode, units],
+    () => (vehicle ? buildStacks(result, vehicle, reference, mode, units, dgCtx) : []),
+    [result, vehicle, reference, mode, units, dgCtx],
   );
+  const dgBanner = useMemo(() => incompatibleSummary(result.warnings, dgCtx.labels), [result.warnings, dgCtx.labels]);
   const frame = useMemo(() => (vehicle ? frameFor(vehicle) : null), [vehicle]);
 
   const anchorFor = useCallback((el: Element): Anchor => {
@@ -272,7 +345,8 @@ export default function LoadPlanView({ result, reference, request }: LoadPlanVie
     return (
       <div className="lp" data-testid="load-plan-view">
         <p className="muted">No drawing for vehicle “{result.vehicle_name || result.vehicle_id}”.</p>
-        <PlacementTable id={tableId} placements={result.placements} decks={[]} typeName={(p) => typeNameOf(reference, p)} />
+        <PlacementTable id={tableId} placements={result.placements} decks={[]} typeName={(p) => typeNameOf(reference, p)}
+                        dg={dgCtx.dg} />
       </div>
     );
   }
@@ -302,6 +376,15 @@ export default function LoadPlanView({ result, reference, request }: LoadPlanVie
                   aria-label="Fit to width">Fit</button>
         </div>
       </div>
+
+      {dgBanner && (
+        <p className="lp-dg-banner" role="note">
+          <AlertIcon className="lp-dg-banner-icon" />
+          <span>
+            <strong>Incompatible dangerous goods on this vehicle:</strong> {dgBanner}. Split them into separate loads.
+          </span>
+        </p>
+      )}
 
       <figure className="lp-figure">
         <div className="lp-scroll" ref={deckScroll} {...scrollProps}>
@@ -340,7 +423,7 @@ export default function LoadPlanView({ result, reference, request }: LoadPlanVie
       )}
 
       <PlacementTable id={tableId} placements={result.placements} decks={vehicle.decks}
-                      typeName={(p) => typeNameOf(reference, p)} />
+                      typeName={(p) => typeNameOf(reference, p)} dg={dgCtx.dg} />
 
       {shown && shownStack && (
         <ItemDetails id={detailsId} stack={shownStack} anchor={shown.anchor}
@@ -366,4 +449,30 @@ function groupUnplaced(unitIds: string[], request: PlanRequest): UnplacedGroup[]
     groups.set(itemId, g);
   }
   return [...groups.values()];
+}
+
+/**
+ * "Pool chlorine with Paint, Battery acid" from the DG_INCOMPATIBLE warnings (each names a pair of
+ * lines): the line with the most conflicts first, with all of them, then whatever pairs are left.
+ * Null without DG_INCOMPATIBLE warnings.
+ */
+function incompatibleSummary(warnings: PlanWarning[], labels: Map<string, string>): string | null {
+  const pairs = warnings.filter((w) => w.code === "DG_INCOMPATIBLE" && w.item_ids.length >= 2)
+    .map((w) => [w.item_ids[0], w.item_ids[1]]);
+  if (!pairs.length) return null;
+  const left = new Set(pairs.map((_, i) => i));
+  const groups: string[] = [];
+  const name = (id: string) => labels.get(id) ?? id;
+  while (left.size) {
+    const partners = new Map<string, string[]>();
+    for (const i of left) {
+      const [a, b] = pairs[i];
+      partners.set(a, [...(partners.get(a) ?? []), b]);
+      partners.set(b, [...(partners.get(b) ?? []), a]);
+    }
+    const [id, others] = [...partners.entries()].sort((x, y) => y[1].length - x[1].length)[0];
+    for (const i of [...left]) if (pairs[i].includes(id)) left.delete(i);
+    groups.push(`${name(id)} with ${unique(others).map(name).join(", ")}`);
+  }
+  return groups.join("; ");
 }

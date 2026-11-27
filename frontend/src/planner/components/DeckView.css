@@ -32,6 +32,21 @@
 .deck-badge-dark rect { fill: var(--color-text); fill-opacity: 0.85; }
 .deck-badge-dark text { fill: var(--color-surface); }
 
+/* Dangerous goods: a placard-style diamond with the class code (shape plus text, not colour alone). */
+.dg-diamond-outer { fill: var(--color-surface); stroke: var(--color-text); stroke-width: 1.5px; vector-effect: non-scaling-stroke;
+  stroke-linejoin: round; }
+.dg-diamond-inner { fill: none; stroke: var(--color-text); stroke-opacity: 0.6; stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.dg-diamond text { fill: var(--color-text); font-weight: var(--weight-semibold); }
+
+/* Incompatible DG (plan warnings): a thick dashed outline and a warning triangle with "!". */
+.deck-conflict-outline { fill: none; stroke-width: 3.5px; stroke-dasharray: 8 5; vector-effect: non-scaling-stroke; }
+.deck-conflict-outline.is-error { stroke: var(--color-error); }
+.deck-conflict-outline.is-warning { stroke: var(--color-warning); }
+.deck-conflict-icon path { stroke: var(--color-surface); stroke-width: 1.5px; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.deck-conflict-icon.is-error path { fill: var(--color-error); }
+.deck-conflict-icon.is-warning path { fill: var(--color-warning); }
+.deck-conflict-icon text { fill: var(--color-surface); font-weight: var(--weight-semibold); }
+
 .deck-highlight { pointer-events: none; transition: transform var(--motion-fast) var(--ease); }
 .deck-highlight-halo { fill: none; stroke: var(--color-surface); stroke-width: 6px; vector-effect: non-scaling-stroke; }
 .deck-highlight-ring { fill: none; stroke: var(--color-focus); stroke-width: 3px; vector-effect: non-scaling-stroke; }
