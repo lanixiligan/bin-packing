@@ -1,4 +1,4 @@
-// Step 3's drawing: a top-down deck view to scale (colour by stop / weight / type, with a legend),
+// Step 3's drawing: a top-down deck view to scale (colour by DG class / weight / type, with a legend),
 // the side elevation against the height limit, item details on hover / tap / focus, and the same
 // placements as a table for screen readers.
 //
@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type TouchEvent } from "react";
 import type { Deck, DgInfo, Placement, PlanRequest, PlanResult, PlanWarning, ReferenceData, VehicleConfig } from "../api/types.ts";
 import { dgByItem, dgConflicts, dgLabel, dgName, placardCode } from "../lib/dg.ts";
-import { heatColor, stopBadge, stopColor, stopTextColor, typePattern, type PatternKind } from "../lib/colors.ts";
+import { catColor, catTextColor, heatColor, typePattern, type PatternKind } from "../lib/colors.ts";
 import { useUnits, type Units } from "../lib/units.ts";
 import DeckView from "./DeckView.tsx";
 import ElevationView from "./ElevationView.tsx";
@@ -21,20 +21,21 @@ import "./LoadPlanView.css";
 export interface LoadPlanViewProps {
   result: PlanResult;
   reference: ReferenceData;
-  /** The request that produced `result` (item labels, stops). */
+  /** The request that produced `result` (item labels, DG data). */
   request: PlanRequest;
 }
 
 // ---- Shared model (types only; the views draw it) ------------------------------------
 
-export type ColorMode = "stop" | "weight" | "type";
+export type ColorMode = "dg" | "weight" | "type";
 
 export interface Paint {
   fill: string;
   text: string;
   /** Type mode: the pattern laid over the fill. */
   pattern: PatternKind | null;
-  /** The badge that carries the colour's meaning: "S2" (stop mode), "AU" (type mode) or "". */
+  /** The badge that carries the colour's meaning: "AU" (type mode) or "" (the DG class mode has the
+   *  DG diamonds instead). */
   badge: string;
 }
 
@@ -57,6 +58,16 @@ export interface StackConflict {
   messages: string[];
 }
 
+/** A DG class present in the plan and its colour in the DG class mode. */
+export interface DgClassColour {
+  /** Placard code: "3", "5.1", "F". */
+  code: string;
+  /** "Flammable liquid", "Food". */
+  name: string;
+  fill: string;
+  text: string;
+}
+
 /** One floor position: the floor unit and anything stacked on it. */
 export interface PlanStack {
   key: string;
@@ -77,7 +88,6 @@ export interface PlanStack {
   label: string;
   typeName: string;
   typeCode: string;
-  stop: number | null;
   overLimit: boolean;
   paint: Paint;
   /** DG lines in the stack, floor first; empty for general freight. */
@@ -146,6 +156,19 @@ function dgText(dg: DgInfo): string {
   return `Class ${placardCode(dg)} ${dgName(dg)}${subs.length ? `, subsidiary ${subs.join(", ")}` : ""}`;
 }
 
+/** Each distinct DG class in the plan (by placard code) gets the next categorical colour, in order of
+ *  first appearance in the placements. General freight has none (it takes --cat-none). */
+export function dgClassColours(placements: Placement[], dg: Map<string, DgInfo>): Map<string, DgClassColour> {
+  const out = new Map<string, DgClassColour>();
+  for (const p of placements) {
+    const info = dg.get(p.item_id);
+    const code = placardCode(info);
+    if (!code || out.has(code)) continue;
+    out.set(code, { code, name: dgName(info), fill: catColor(out.size), text: catTextColor(out.size) });
+  }
+  return out;
+}
+
 /** DG and conflict data for the plan: the request's DG per line and the plan's warnings (never recalculated). */
 interface DgContext {
   dg: Map<string, DgInfo>;
@@ -180,7 +203,7 @@ function stackDg(units: Placement[], ctx: DgContext): { dg: StackDg[]; conflict:
 }
 
 function buildStacks(result: PlanResult, vehicle: VehicleConfig, reference: ReferenceData, mode: ColorMode,
-                     units: Units, ctx: DgContext): PlanStack[] {
+                     units: Units, ctx: DgContext, classes: Map<string, DgClassColour>): PlanStack[] {
   const decks = new Map(vehicle.decks.map((d) => [d.id, d]));
   const groups = new Map<string, Placement[]>();
   for (const p of result.placements) {
@@ -208,6 +231,7 @@ function buildStacks(result: PlanResult, vehicle: VehicleConfig, reference: Refe
     const typeName = typeNameOf(reference, base);
     const pattern = typePattern(base.type_id, typeIds);
     const overLimit = top > vehicle.overall_height_limit_mm;
+    const { dg, conflict } = stackDg(sorted, ctx);
     let paint: Paint;
     if (mode === "weight") {
       const heat = heatColor(weight, minW, maxW);
@@ -215,15 +239,15 @@ function buildStacks(result: PlanResult, vehicle: VehicleConfig, reference: Refe
     } else if (mode === "type") {
       paint = { fill: "var(--color-surface)", text: "var(--color-text)", pattern: pattern.kind, badge: pattern.code };
     } else {
-      paint = { fill: stopColor(base.stop), text: stopTextColor(base.stop), pattern: null, badge: stopBadge(base.stop) };
+      // Coloured by the stack's first (lowest) DG line; general freight takes the neutral.
+      const cls = dg.length ? classes.get(dg[0].code) : undefined;
+      paint = { fill: cls?.fill ?? catColor(null), text: cls?.text ?? catTextColor(null), pattern: null, badge: "" };
     }
     const n = sorted.length;
-    const { dg, conflict } = stackDg(sorted, ctx);
     const description = [
       label,
       `${typeName} ${units.footprint(base.length_mm, base.width_mm)}`,
       n > 1 ? `${units.weight(weight)} in total` : units.weight(weight),
-      base.stop == null ? "no stop" : `stop ${base.stop}`,
       ...(n > 1 ? [`stack of ${n}`] : []),
       ...(multiDeck ? [`on the ${deck.name.toLowerCase()}`] : []),
       ...(overLimit ? ["over the height limit"] : []),
@@ -233,7 +257,7 @@ function buildStacks(result: PlanResult, vehicle: VehicleConfig, reference: Refe
     return {
       key, units: sorted, base, deck,
       x: deck.x_mm + base.x_mm, y: base.y_mm, length: base.length_mm, width: base.width_mm,
-      weight, top, label, typeName, typeCode: pattern.code, stop: base.stop, overLimit, paint, dg, conflict, description,
+      weight, top, label, typeName, typeCode: pattern.code, overLimit, paint, dg, conflict, description,
     };
   }).sort((a, b) => a.x - b.x || b.y - a.y);
 }
@@ -250,7 +274,7 @@ export default function LoadPlanView({ result, reference, request }: LoadPlanVie
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const tableId = `${uid}-table`;
   const detailsId = `${uid}-details`;
-  const [mode, setMode] = useState<ColorMode>("stop");
+  const [mode, setMode] = useState<ColorMode>("dg");
   const [zoom, setZoom] = useState(1);
   const [hovered, setHovered] = useState<Shown | null>(null);
   const [active, setActive] = useState<Shown | null>(null);
@@ -265,9 +289,10 @@ export default function LoadPlanView({ result, reference, request }: LoadPlanVie
     conflicts: dgConflicts(result.warnings),
     labels: new Map(request.items.map((i) => [i.id, i.label?.trim() || i.id])),
   }), [request, result.warnings]);
+  const dgClasses = useMemo(() => dgClassColours(result.placements, dgCtx.dg), [result.placements, dgCtx.dg]);
   const stacks = useMemo(
-    () => (vehicle ? buildStacks(result, vehicle, reference, mode, units, dgCtx) : []),
-    [result, vehicle, reference, mode, units, dgCtx],
+    () => (vehicle ? buildStacks(result, vehicle, reference, mode, units, dgCtx, dgClasses) : []),
+    [result, vehicle, reference, mode, units, dgCtx, dgClasses],
   );
   const dgBanner = useMemo(() => incompatibleSummary(result.warnings, dgCtx.labels), [result.warnings, dgCtx.labels]);
   const frame = useMemo(() => (vehicle ? frameFor(vehicle) : null), [vehicle]);
@@ -357,7 +382,7 @@ export default function LoadPlanView({ result, reference, request }: LoadPlanVie
         <div className="lp-toolbar-group">
           <span className="lp-toolbar-label" id={`${uid}-colour`}>Colour by</span>
           <fieldset className="segmented" aria-labelledby={`${uid}-colour`}>
-            {([["stop", "Stop"], ["weight", "Weight"], ["type", "Type"]] as [ColorMode, string][]).map(([value, label]) => (
+            {([["dg", "DG class"], ["weight", "Weight"], ["type", "Type"]] as [ColorMode, string][]).map(([value, label]) => (
               <label key={value}>
                 <input type="radio" name={`${uid}-colour-mode`} value={value} checked={mode === value}
                        onChange={() => setMode(value)} />
@@ -394,7 +419,7 @@ export default function LoadPlanView({ result, reference, request }: LoadPlanVie
         <figcaption className="subtle lp-caption">Top-down view, driver’s side at the bottom.</figcaption>
       </figure>
 
-      <Legend mode={mode} stacks={stacks} />
+      <Legend mode={mode} stacks={stacks} dgClasses={dgClasses} />
 
       <figure className="lp-figure">
         <div className="lp-scroll" ref={elevScroll} {...scrollProps}>

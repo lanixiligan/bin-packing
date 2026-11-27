@@ -2,30 +2,26 @@
 // Everything returns CSS custom-property references, never raw colours, so themes keep working.
 // Colour never carries meaning alone: each helper also hands back a badge, code or pattern.
 
-/** Number of distinct stop colours (--stop-1..8); stops past 8 cycle. */
-export const STOP_COLOURS = 8;
+/** Number of distinct categorical colours (--cat-1..8); categories past 8 cycle. */
+export const CAT_COLOURS = 8;
 /** Number of steps in the weight heat scale (--heat-1..6). */
 export const HEAT_STEPS = 6;
 
-/** Fill for a delivery stop: `var(--stop-N)`, cycling past 8; `var(--stop-none)` without a stop. */
-export function stopColor(stop: number | null | undefined): string {
-  if (stop == null || !Number.isFinite(stop)) return "var(--stop-none)";
-  const n = ((((Math.round(stop) - 1) % STOP_COLOURS) + STOP_COLOURS) % STOP_COLOURS) + 1;
-  return `var(--stop-${n})`;
+/** Fill for the nth category (0 = first): `var(--cat-N)`, cycling past 8; `var(--cat-none)` for none
+ *  (general freight in the DG class mode). */
+export function catColor(index: number | null | undefined): string {
+  if (index == null || !Number.isFinite(index)) return "var(--cat-none)";
+  const n = (((Math.round(index) % CAT_COLOURS) + CAT_COLOURS) % CAT_COLOURS) + 1;
+  return `var(--cat-${n})`;
 }
 
-/** Text colour on any stop fill (dark text passes AA on every stop colour, see tokens.css). */
-export const ON_STOP = "var(--on-stop)";
+/** Text colour on any categorical fill (dark text passes AA on every one, see tokens.css). */
+export const ON_CAT = "var(--on-cat)";
 
-/** Text on a stop fill. --stop-none is a neutral that turns dark in the dark theme, so it takes the
- *  theme's text colour rather than the fixed dark --on-stop. */
-export function stopTextColor(stop: number | null | undefined): string {
-  return stop == null || !Number.isFinite(stop) ? "var(--color-text)" : ON_STOP;
-}
-
-/** Short badge for a stop: "S2"; empty without a stop. */
-export function stopBadge(stop: number | null | undefined): string {
-  return stop == null ? "" : `S${stop}`;
+/** Text on a categorical fill. --cat-none is a neutral that turns dark in the dark theme, so it takes
+ *  the theme's text colour rather than the fixed dark --on-cat. */
+export function catTextColor(index: number | null | undefined): string {
+  return index == null || !Number.isFinite(index) ? "var(--color-text)" : ON_CAT;
 }
 
 // ---- Weight heat scale ---------------------------------------------------------
