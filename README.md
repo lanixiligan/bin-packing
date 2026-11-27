@@ -72,7 +72,8 @@ bin-packing/
 │   │   │                        WarningsList, ExportMenu, EmptyState, Disclaimer
 │   │   ├── lib/                 units, freight validation, random freight, DG, colours, export
 │   │   └── styles/              design tokens, base styles, print styles
-│   └── src/dg/                  ADG segregation rules port, DG class diamonds
+│   └── src/dg/                  ADG segregation rules port, DG placard colours and diamonds,
+│                                the DG checker page (CheckerApp.tsx, served as checker.html)
 ├── scripts/dev.sh               runs the API and the web app together
 └── Makefile                     `make help` lists every target
 ```
@@ -96,6 +97,9 @@ make dev
 The API runs on <http://localhost:8000> (Swagger at `/docs`) and the web app on
 **<http://localhost:5173>**. The web app forwards `/api` to the API. Other ports:
 `API_PORT=8010 WEB_PORT=5180 scripts/dev.sh`.
+
+The dangerous goods checker (can two DG classes travel together? ADG Table 9.1 / 9.2, with
+Northline's rules) is at **<http://localhost:5173/checker.html>**, linked from the planner header.
 
 ## Tests
 
