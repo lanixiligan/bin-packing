@@ -25,14 +25,15 @@ warnings. Pallets and loose items only; every truck is the same vehicle and body
    stack height cap.
 3. Heuristic path, more than EXACT_LIMIT units (`_heuristic_trucks`): truck by truck. Each truck
    takes a set of dangerous goods groups that may travel together (greedy colouring of the
-   app/dg.py conflict graph, most conflicts first, redone for every truck from what is left), the
-   single-truck placement (`place_pallets`) loads what fits of them, and while the truck is over
+   app/dg.py conflict graph, most conflicts first, redone for every truck from what is left; the
+   groups that still have a conflict are offered first), the single-truck placement
+   (`place_pallets`) loads what fits of them, and while the truck is over
    its payload or an axle limit a unit goes back to the pool: for the payload the lightest unit
    that fixes it (else the heaviest), for an axle group the heaviest unit on the decks that feed
    it. Units that can't be loaded even into an empty truck end up `unplaced`. This runs twice
    and the split with fewer trucks wins: once offering each truck every unit left (so the biggest
    and heaviest go first), once offering it a mix of heavy and light units that fills the payload
-   and the floor together (`_balanced_pick`).
+   and the floor together (`_offer`).
 4. Every truck becomes a PlanResult through `finish_plan`, with the precheck warnings of its own
    items only (e.g. DG_ON_BOARD names just the classes on that truck).
 5. Bounds come from `solver.lower_bounds`. `optimal` means CP-SAT proved it, or the number of
@@ -175,10 +176,10 @@ def _exact_trucks(units: list[Unit], items: list[solver.Item], truck: solver.Tru
 # ---------------------------------------------------------------------------
 
 def _compatible_groups(pool: list[int], items: list[solver.Item], group: list[int],
-                       conflicts: set[tuple[int, int]]) -> set[int]:
+                       conflicts: set[tuple[int, int]]) -> tuple[set[int], set[int]]:
     """One colour of a greedy colouring of the dangerous goods groups still in `pool`: the group
     with the most conflicts first (then the heaviest), then every group that may travel with all
-    the groups chosen so far."""
+    the groups chosen so far. Returns (the groups, those of them with a conflict left in the pool)."""
     weight: Counter[int] = Counter()
     for i in pool:
         weight[group[i]] += items[i].weight
@@ -188,45 +189,49 @@ def _compatible_groups(pool: list[int], items: list[solver.Item], group: list[in
     for g in sorted(left, key=lambda g: (-degree[g], -weight[g], g)):
         if not any((min(g, h), max(g, h)) in conflicts for h in chosen):
             chosen.add(g)
-    return chosen
+    return chosen, {g for g in chosen if degree[g]}
 
 
-def _balanced_pick(candidates: list[Unit], vehicle: VehicleConfig, cap_mm: int,
-                   ref: ReferenceData) -> list[Unit]:
-    """About one truck's worth of `candidates`, mixing heavy and light units so that the payload and
-    the floor fill up together: the heaviest unit left while the floor is the fuller of the two,
-    else the lightest. A stackable unit counts for its share of a full-height stack."""
+def _offer(first: list[Unit], rest: list[Unit], vehicle: VehicleConfig, cap_mm: int, ref: ReferenceData,
+           balanced: bool) -> list[Unit]:
+    """About one truck's worth of units, by weight and floor area (a stackable unit counts for its
+    share of a full-height stack): the `first` units, heaviest first, then from `rest`.
+
+    `balanced` mixes heavy and light units so that the payload and the floor fill up together: the
+    heaviest unit left while the floor is the fuller of the two, else the lightest. Otherwise the
+    heaviest is always next."""
     payload = vehicle.max_payload_kg
     floor = min(vehicle.pallet_spaces * AU_AREA_MM2,
                 sum(d.length_mm * d.width_mm for d in vehicle.cargo_decks))
-    if floor <= 0:
-        return candidates
-
-    def floor_share(unit: Unit) -> float:
-        length, width = unit_footprint(unit, ref)
-        height = unit_height(unit, ref)
-        return length * width * (height / cap_mm if unit.item.stackable and height <= cap_mm else 1.0)
-
-    queue = sorted(candidates, key=lambda u: -u.weight_kg)
-    first, last = 0, len(queue) - 1
     picked: list[Unit] = []
     weight = area = 0.0
-    while first <= last:
-        heavy = weight / payload <= area / floor
-        unit = queue[first if heavy else last]
-        if heavy:
-            first += 1
-        else:
-            last -= 1
-        if weight + unit.weight_kg > payload + 1e-6:
-            if heavy:
-                continue    # a lighter one may still fit
-            break           # not even the lightest does
-        share = floor_share(unit)
+
+    def take(unit: Unit) -> None:
+        nonlocal weight, area
+        length, width = unit_footprint(unit, ref)
+        height = unit_height(unit, ref)
+        share = length * width * (height / cap_mm if unit.item.stackable and height <= cap_mm else 1.0)
         if area + share <= floor:
             picked.append(unit)
             weight += unit.weight_kg
             area += share
+
+    for unit in sorted(first, key=lambda u: -u.weight_kg):
+        if weight + unit.weight_kg <= payload + 1e-6:
+            take(unit)
+    queue = sorted(rest, key=lambda u: -u.weight_kg)
+    front, back = 0, len(queue) - 1
+    while front <= back:
+        heavy = not balanced or weight * floor <= area * payload
+        unit = queue[front if heavy else back]
+        if heavy:
+            front += 1
+        else:
+            back -= 1
+        if weight + unit.weight_kg <= payload + 1e-6:
+            take(unit)
+        elif not heavy:
+            break   # not even the lightest unit left fits the payload
     return picked
 
 
@@ -263,19 +268,27 @@ def _load_one_truck(candidates: list[Unit], vehicle: VehicleConfig, body: BodyTy
 def _heuristic_trucks(units: list[Unit], items: list[solver.Item], vehicle: VehicleConfig, body: BodyType,
                       scheme: MassScheme, ref: ReferenceData,
                       balanced: bool) -> tuple[list[list[Placement]], list[Unit]]:
-    """(placements per truck, units that couldn't be loaded even into an empty truck). `balanced`
-    offers each truck a mix of heavy and light units (`_balanced_pick`) instead of every unit left."""
+    """(placements per truck, units that couldn't be loaded even into an empty truck).
+
+    Each truck is offered the units of dangerous goods groups that still have a conflict in the
+    pool first, so they are not left for a truck of their own. `balanced` then offers a mix of
+    heavy and light units (`_offer`); otherwise every unit left is offered and the placement takes
+    the biggest and heaviest."""
     group, conflicts = solver.dg_groups(items)
     cap = stack_height_cap(vehicle, body, ref)
     pool = list(range(len(units)))
     trucks: list[list[Placement]] = []
     stuck: list[Unit] = []
     while pool:
-        chosen = _compatible_groups(pool, items, group, conflicts)
+        chosen, restricted = _compatible_groups(pool, items, group, conflicts)
         candidates = [units[i] for i in pool if group[i] in chosen]
-        offer = _balanced_pick(candidates, vehicle, cap, ref) if balanced else candidates
+        offer = candidates
+        if balanced or restricted:
+            first = [units[i] for i in pool if group[i] in restricted]
+            rest = [units[i] for i in pool if group[i] in chosen - restricted]
+            offer = _offer(first, rest, vehicle, cap, ref, balanced)
         placements = _load_one_truck(offer, vehicle, body, scheme, ref)
-        if not placements and balanced:
+        if not placements and len(offer) < len(candidates):
             placements = _load_one_truck(candidates, vehicle, body, scheme, ref)
         if placements:
             trucks.append(placements)
