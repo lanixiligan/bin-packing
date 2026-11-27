@@ -1,0 +1,42 @@
+/* Top-down deck view. Geometry is in mm (the viewBox); strokes that should stay crisp at any zoom
+   use non-scaling strokes in px. */
+
+.deck-view { display: block; height: auto; max-width: none; font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums; user-select: none; }
+
+.deck-arrow { fill: var(--color-text-subtle); }
+.deck-direction { font-size: 260px; font-weight: var(--weight-semibold); letter-spacing: 30px; fill: var(--color-text-muted); }
+.deck-name { font-size: 220px; font-weight: var(--weight-semibold); fill: var(--color-text-muted); }
+
+.deck-cab { fill: var(--color-surface-2); stroke: var(--color-border-strong); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.deck-cab-screen { stroke: var(--color-border-strong); stroke-width: 60px; stroke-linecap: round; }
+.deck-chassis { fill: var(--color-surface-2); stroke: var(--color-border-strong); stroke-width: 1px; stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke; }
+.deck-floor { fill: var(--color-surface-3); stroke: var(--color-border-strong); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.deck-headboard { stroke: var(--color-text-subtle); stroke-width: 80px; }
+
+.deck-axle-label { font-size: 230px; font-weight: var(--weight-medium); fill: var(--color-text-muted); }
+.deck-scale path { fill: none; stroke: var(--color-text-subtle); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.deck-scale text { font-size: 190px; fill: var(--color-text-subtle); }
+
+/* Stacks: animate to their new place when the plan changes (0 ms under reduced motion). */
+.deck-stack { cursor: pointer; outline: none;
+  transition: transform var(--motion-base) var(--ease), opacity var(--motion-fast) var(--ease); }
+.deck-stack.is-dimmed { opacity: 0.55; }
+.deck-unit-edge { fill: none; stroke: var(--color-text); stroke-opacity: 0.4; stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.deck-unit-label { font-weight: var(--weight-regular); }
+.deck-unit-label-main { font-weight: var(--weight-semibold); }
+
+.deck-badge rect { fill: var(--color-surface); fill-opacity: 0.92; }
+.deck-badge text { fill: var(--color-text); font-weight: var(--weight-semibold); }
+.deck-badge-dark rect { fill: var(--color-text); fill-opacity: 0.85; }
+.deck-badge-dark text { fill: var(--color-surface); }
+
+.deck-highlight { pointer-events: none; transition: transform var(--motion-fast) var(--ease); }
+.deck-highlight-halo { fill: none; stroke: var(--color-surface); stroke-width: 6px; vector-effect: non-scaling-stroke; }
+.deck-highlight-ring { fill: none; stroke: var(--color-focus); stroke-width: 3px; vector-effect: non-scaling-stroke; }
+
+@media print {
+  .deck-stack.is-dimmed { opacity: 1; }
+  .deck-highlight { display: none; }
+}
