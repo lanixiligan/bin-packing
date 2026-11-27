@@ -11,7 +11,7 @@
     "lint": "eslint . && tsc --noEmit -p .",
     "typecheck": "tsc --noEmit -p .",
     "dev:mock": "VITE_MOCK_API=1 vite",
-    "test": "node --test src/dg/ src/portal/tests/ src/components/capacity.test.mjs src/shipments.test.mjs src/ops/mocks.test.mjs src/ops/plan/solveView.test.mjs"
+    "test": "node --test 'src/dg/**/*.test.ts' 'src/portal/tests/**/*.test.ts' src/components/capacity.test.mjs src/shipments.test.mjs src/ops/mocks.test.mjs src/ops/plan/solveView.test.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",
