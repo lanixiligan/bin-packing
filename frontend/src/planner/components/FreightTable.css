@@ -33,7 +33,7 @@
 /* ---- Rows: one compact summary row per line; the open line shows its form below ---- */
 .ft-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 
-.ft-row { padding: var(--space-1) var(--space-2) var(--space-2) var(--space-1); background: var(--color-surface);
+.ft-row { padding: var(--space-1); background: var(--color-surface);
   border: var(--border); border-color: var(--color-border-strong); border-radius: var(--radius-md); }
 .ft-row:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 .ft-row-open { border-color: var(--color-accent); box-shadow: inset 0 0 0 1px var(--color-accent); }
@@ -53,7 +53,7 @@
 .ft-row-label { font-weight: var(--weight-regular); color: var(--color-text-muted); }
 
 /* An inline flow, so it wraps between facts like a sentence. */
-.ft-row-summary { order: 3; flex: 1 1 100%; min-width: 0; padding: 0 var(--space-1) 0 24px; font-size: var(--text-xs);
+.ft-row-summary { order: 3; flex: 1 1 100%; min-width: 0; padding: 0 var(--space-1) 2px 6px; font-size: var(--text-xs);
   line-height: 1.7; color: var(--color-text-muted); cursor: pointer; }
 .ft-row-fact { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .ft-row-flag { display: inline-flex; align-items: center; gap: 3px; padding: 0 var(--space-2); line-height: 1.5;
@@ -62,12 +62,12 @@
 .ft-row-flag svg { color: var(--color-text-muted); }
 .ft-row-summary .ft-dg-badge { vertical-align: middle; line-height: 1.5; }
 
-.ft-row-errors { list-style: none; margin: var(--space-1) 0 0; padding: 0 0 0 24px; display: flex; flex-direction: column;
+.ft-row-errors { list-style: none; margin: 2px 0 var(--space-1); padding: 0 var(--space-1) 0 6px; display: flex; flex-direction: column;
   gap: 2px; font-size: var(--text-xs); color: var(--color-error); }
 .ft-row-errors li { display: flex; align-items: flex-start; gap: var(--space-1); }
 .ft-row-error-icon { flex: none; margin-top: 2px; }
 
-.ft-row-panel { margin: var(--space-2) 0 0 var(--space-1); padding: var(--space-3) var(--space-1) var(--space-1);
+.ft-row-panel { margin-top: var(--space-1); padding: var(--space-3) var(--space-2) var(--space-1);
   border-top: var(--border); }
 .ft-row-done { display: flex; justify-content: flex-end; margin-top: var(--space-3); }
 

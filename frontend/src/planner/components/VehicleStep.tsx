@@ -80,7 +80,13 @@ export default function VehicleStep({
       <div className="vs-line">
         <p className="vs-summary" data-testid="vehicle-summary">
           <strong className="vs-name">{title}</strong>
-          {facts.map((fact, i) => <span key={i}>{SEPARATOR}<span className="vs-fact">{fact}</span></span>)}
+          <span className="vs-facts">
+            {facts.map((fact, i) => (
+              <span key={i}>
+                <span className={i === 0 ? "vs-sep-first" : undefined}>{SEPARATOR}</span><span className="vs-fact">{fact}</span>
+              </span>
+            ))}
+          </span>
         </p>
         <button type="button" className="btn btn-sm vs-change" ref={changeRef} aria-expanded={open} aria-controls={panelId}
                 onClick={() => (open ? close() : setOpen(true))}>
