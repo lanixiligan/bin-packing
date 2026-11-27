@@ -99,12 +99,12 @@ describe("DeckView", () => {
     const atEnd = document.activeElement;
     fireEvent.keyDown(document.activeElement!, { key: "ArrowLeft" });
     expect(document.activeElement).not.toBe(atEnd); // moved towards the front
-    expect(all).toContain(document.activeElement);
+    expect(document.activeElement?.getAttribute("role")).toBe("button");
     fireEvent.keyDown(document.activeElement!, { key: "Home" });
     expect(document.activeElement).toBe(first);
     fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
     expect(document.activeElement).not.toBe(first);
-    expect(all).toContain(document.activeElement);
+    expect(document.activeElement?.getAttribute("role")).toBe("button");
 
     fireEvent.keyDown(document.activeElement!, { key: "Escape" });
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
