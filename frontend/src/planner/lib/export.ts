@@ -5,7 +5,7 @@
 // axle loads, then one row per placement. Values are in mm, kg and m³ whatever the display units,
 // so the file is easy to reuse. Fields are quoted per RFC 4180, and text that a spreadsheet would
 // run as a formula (=, +, -, @ first) is prefixed with an apostrophe.
-import type { PlanRequest, PlanResult, ReferenceData } from "../api/types.ts";
+import type { FreightKind, PlanRequest, PlanResult, ReferenceData } from "../api/types.ts";
 
 const EOL = "\r\n";
 
@@ -33,8 +33,8 @@ export const PLACEMENT_HEADER = [
 export function planToCsv(result: PlanResult, request: PlanRequest, reference: ReferenceData): string {
   const vehicle = reference.vehicles[result.vehicle_id];
   const deckName = (id: string) => vehicle?.decks.find((d) => d.id === id)?.name ?? id;
-  const typeName = (kind: "pallet" | "container", id: string) =>
-    (kind === "container" ? reference.containers[id]?.name : reference.pallets[id]?.name) ?? id;
+  const typeName = (kind: FreightKind, id: string) => (kind === "loose" ? "Loose item"
+    : (kind === "container" ? reference.containers[id]?.name : reference.pallets[id]?.name) ?? id);
   const itemLabel = (id: string) => request.items.find((it) => it.id === id)?.label?.trim();
   const u = result.utilisation;
 

@@ -124,6 +124,7 @@ const ZOOM_STEPS = [1, 1.5, 2, 3, 4];
 const MAX_ZOOM = ZOOM_STEPS[ZOOM_STEPS.length - 1];
 
 function typeNameOf(reference: ReferenceData, p: Pick<Placement, "kind" | "type_id">): string {
+  if (p.kind === "loose") return "Loose item";
   if (p.kind === "container") {
     const c = reference.containers[p.type_id];
     return c ? `${c.name} container` : p.type_id;
