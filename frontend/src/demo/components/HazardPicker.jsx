@@ -6,7 +6,7 @@
 //   - which shipments in the list it can't share a truck with, and the
 //     Northline refusal when that rule set is on.
 // Edits are staged: Done applies them, Cancel / Escape / backdrop discards.
-// A native <dialog> is used so the scrolling shipment list can't clip it.
+// A native <dialog> is used so the shipment table can't clip it.
 import { useEffect, useId, useRef, useState } from "react";
 import { DgDiamond } from "../../dg/DgBadge.tsx";
 import { CLASS_NAMES, DG_CLASSES, northlineIssues, pairVerdict, SUBSIDIARIES } from "../../dg/rules.ts";

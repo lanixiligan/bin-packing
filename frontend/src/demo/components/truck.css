@@ -1,9 +1,39 @@
-/* Multi-dimension truck views: fill bars, DG blocks and the pallet deck plan
-   (DeckTruck.jsx). Colours come from the planner tokens. */
+/* The 2D truck grid: truck cards (TruckCard.jsx), fill bars, DG blocks and the
+   pallet deck plan (DeckTruck.jsx). Colours come from the planner tokens. */
 
-.truck.multi { width: 104px; }
-.truck.over .truck-body { outline: 2px solid var(--color-error); outline-offset: 3px; }
-.truck-over { color: var(--color-error); font-weight: var(--weight-semibold); }
+/* ---------- Truck cards ---------- */
+.truck-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: var(--space-3);
+  font-variant-numeric: tabular-nums;
+}
+.truck-card {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  min-width: 0; padding: var(--space-3);
+  border: var(--border); border-radius: var(--radius-md); background: var(--color-bg);
+  transition: border-color var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease);
+}
+.truck-card.is-hovered { border-color: var(--color-border-strong); }
+.truck-card.holds-active { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); }
+.truck-card.over { border-color: var(--color-error); }
+.truck-card-head { display: flex; flex-direction: column; gap: 2px; }
+.truck-card-head h3 { font-size: var(--text-md); }
+.truck-card-free { font-size: var(--text-xs); color: var(--color-text-muted); }
+.truck-card-free.is-over { color: var(--color-error); font-weight: var(--weight-semibold); }
+.truck-card .dim-bars { margin: 0; }
+.truck-card .dim-bars.compact .dim-bar { grid-template-columns: 1.7rem minmax(0, 1fr) 2.4rem; gap: var(--space-1); font-size: var(--text-xs); }
+.truck-card .dim-bar-track { height: 6px; }
+.truck-card-drawing { display: flex; justify-content: center; align-items: flex-end; padding: var(--space-1) 0; }
+.truck-card-items { display: flex; flex-wrap: wrap; gap: 3px var(--space-2); margin: 0; padding: var(--space-2) 0 0;
+  list-style: none; border-top: var(--border); font-size: var(--text-xs); }
+.truck-card-items li { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%;
+  padding: 1px 4px 1px 2px; border-radius: var(--radius-sm); }
+.truck-card-items li.active { background: var(--color-accent-soft); }
+.truck-card-items .swatch { width: 8px; height: 8px; border-radius: 2px; }
+.truck-card-item-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.truck-card-items .dg-dia { --size: 13px; flex: none; }
+.truck-grid.linking .truck-card-items li:not(.active) { opacity: 0.55; }
 
 /* ---------- Fill bars (one per limited dimension) ---------- */
 .dim-bars { display: flex; flex-direction: column; gap: 3px; width: 100%; margin-bottom: 6px; }
@@ -23,7 +53,6 @@
   background: var(--color-surface-3);
   overflow: hidden;
 }
-.dim-bars:not(.compact) .dim-bar-track { height: 10px; }
 .dim-bar-fill { position: absolute; inset: 0 auto 0 0; background: var(--color-accent); border-radius: var(--radius-pill); }
 .dim-bar.over .dim-bar-fill {
   background: repeating-linear-gradient(45deg, var(--color-error), var(--color-error) 4px, transparent 4px, transparent 7px);
@@ -31,11 +60,9 @@
 .dim-bar-pct { text-align: right; font-variant-numeric: tabular-nums; font-weight: var(--weight-semibold); }
 .dim-bar.over .dim-bar-pct { color: var(--color-error); }
 
-.panel-head h3 { font-size: var(--text-md); }
-
 @media (max-width: 600px) {
-  .truck.multi { width: 84px; }
-  .dim-bars.compact .dim-bar { grid-template-columns: 1.6rem minmax(0, 1fr) 2.1rem; font-size: 0.62rem; }
+  .truck-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+  .truck-card { padding: var(--space-2); }
 }
 
 /* ---------- Dangerous goods on the truck blocks ---------- */
@@ -52,6 +79,7 @@
   border-radius: 8px 8px 0 0;
   background: var(--color-surface-3);
 }
+.deck { display: flex; flex-direction: column; align-items: center; max-width: 100%; }
 .deck-floor {
   position: relative;
   max-width: 100%;
@@ -65,7 +93,7 @@
   background: repeating-linear-gradient(45deg, var(--color-surface-2), var(--color-surface-2) 6px,
     var(--color-surface-3) 6px, var(--color-surface-3) 12px);
 }
-.truck.deck.over .truck-body, .truck.deck.over .deck-bed { outline: 2px solid var(--color-error); outline-offset: 3px; }
+.deck.over .deck-bed { outline: 2px solid var(--color-error); outline-offset: 3px; }
 .deck-slot {
   position: absolute;
   box-sizing: border-box;

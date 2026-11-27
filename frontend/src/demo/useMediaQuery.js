@@ -30,6 +30,5 @@ export function useDarkTheme() {
 }
 
 export const REDUCED_MOTION = "(prefers-reduced-motion: reduce)";
-export const SMALL_SCREEN = "(max-width: 900px)"; // panels stack below this width
 export const NARROW_SCREEN = "(max-width: 600px)"; // trucks get shorter below this width
 export const DARK_SCHEME = "(prefers-color-scheme: dark)";

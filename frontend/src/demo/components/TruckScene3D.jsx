@@ -312,8 +312,10 @@ function CameraRig({ n, spacing }) {
     const vFov = (camera.fov * Math.PI) / 180;
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
     // The grid is seen at a slant, so it looks smaller than its bounding
-    // sphere: 0.8 trims the empty margin that a pure sphere fit leaves.
-    const dist = (0.8 * radius) / Math.sin(Math.min(vFov, hFov) / 2);
+    // sphere: 0.8 trims the empty margin that a pure sphere fit leaves on a wide
+    // canvas. A squarer canvas (the narrow results column) needs the full sphere.
+    const trim = aspect >= 1.6 ? 0.8 : 1;
+    const dist = (trim * radius) / Math.sin(Math.min(vFov, hFov) / 2);
     const len = Math.hypot(...VIEW_DIR);
     camera.position.set(...VIEW_DIR.map((v) => (v / len) * dist));
     camera.lookAt(0, FLOOR, 0);

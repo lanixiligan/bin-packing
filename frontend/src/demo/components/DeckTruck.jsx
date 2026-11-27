@@ -1,31 +1,20 @@
 import { colorFor, describeSize, describeUsage, dgCodeOf, dgTextOf, sizeOf, truckFill } from "./capacity.ts";
 import { describeDeck, layoutPallets, PALLET_MM, ROW_GAP_MM, truckDeck } from "./deck.ts";
-import DimBars from "./DimBars.jsx";
 import { DgDiamond } from "../../dg/DgBadge.tsx";
 import "./truck.css";
 
-// One truck as a top-down pallet deck plan, at real proportions (deck.ts):
-// cab at the top, pallets loaded from the cab end towards the rear doors,
-// two across. Used by Truck.jsx whenever a truck has a pallet limit or carries
-// shipments on pallets. Empty slots show as dashed outlines, a load over the
-// pallet limit hangs past the rear in red, and shipments without pallets are
-// listed as "loose" chips under the deck.
+// One truck's pallet deck, drawn top-down at real proportions (deck.ts): cab at
+// the top, pallets loaded from the cab end towards the rear doors, two across.
+// TruckCard.jsx puts the truck's name, fill and contents around it. Empty slots
+// show as dashed outlines, a load over the pallet limit hangs past the rear in
+// red, and shipments without pallets are listed as "loose" chips under the deck.
+// `deckAtLeast` sizes an unlimited deck for that many pallets, so every truck in
+// the grid gets the same deck length.
 
 /** Width of the drawn deck in px, before it is narrowed to fit `maxHeight`. */
-const DECK_PX = 76;
+const DECK_PX = 72;
 
 const pct = (n) => `${n * 100}%`;
-
-/** "5 pallets" under a truck without a pallet limit. */
-function palletCount(used) {
-  return `${used.toLocaleString(undefined, { maximumFractionDigits: 1 })} pallet${used === 1 ? "" : "s"}`;
-}
-
-/** "3 of 8 spaces free" under a truck with a pallet limit. */
-function spacesFree(slots, used) {
-  const free = Math.max(0, slots - used);
-  return `${free.toLocaleString(undefined, { maximumFractionDigits: 1 })} of ${slots} spaces free`;
-}
 
 /** Left edge (mm) of column `col` when `across` pallets share the deck width. */
 function colX(col, across, widthMm) {
@@ -36,24 +25,22 @@ function colX(col, across, widthMm) {
 const rowY = (row) => ROW_GAP_MM + row * (PALLET_MM + ROW_GAP_MM);
 
 export default function DeckTruck({
-  truck, numTrucks, cap, height, step, dropIndex, activeId, onHover, onFocusBlock,
+  truck, numTrucks, cap, deckAtLeast = 0, maxHeight = 320, step, dropIndex, activeId, onHover, onFocusBlock,
 }) {
   const name = `Truck ${truck.truck}`;
   // A number is kg only: weight is then the only limited dimension.
   const limits = typeof cap === "number" ? { weight_kg: cap } : cap;
-  const { usage, full, fill, done, over: overLimits } = truckFill(truck, limits, step, dropIndex);
-  const deck = truckDeck(truck.shipments, cap);
+  const { full, over: overLimits } = truckFill(truck, limits, step, dropIndex);
+  const deck = truckDeck(truck.shipments, cap, deckAtLeast);
   const layout = layoutPallets(truck.shipments, deck); // all shipments: stable slots while dropping
   const over = overLimits || layout.pieces.some((p) => p.over);
   const shown = (id) => dropIndex[id] < step;
-  const holdsActive = activeId != null && truck.shipments.some((s) => s.id === activeId);
   const byId = new Map(truck.shipments.map((s) => [s.id, s]));
 
   // Drawn length: the deck plus any over-capacity rows past the rear.
   const totalMm = layout.rows * (PALLET_MM + ROW_GAP_MM) + ROW_GAP_MM;
   const ratio = totalMm / deck.widthMm;
-  const maxH = 2 * height;
-  const h = Math.min(maxH, DECK_PX * ratio);
+  const h = Math.min(maxHeight, DECK_PX * ratio);
   const w = h / ratio;
 
   const label = (s) => {
@@ -68,9 +55,7 @@ export default function DeckTruck({
   });
 
   return (
-    <div className={`truck multi deck${over ? " over" : ""}${holdsActive ? " holds-active" : ""}`}>
-      <DimBars usage={usage} cap={limits} compact />
-      <div className="truck-fill" aria-hidden="true">{fill}%</div>
+    <div className={`deck${over ? " over" : ""}`}>
       <div className="deck-cab" style={{ width: w * 0.86 }} aria-hidden="true" />
       <div
         className="deck-floor"
@@ -105,6 +90,7 @@ export default function DeckTruck({
               role={p.first ? "listitem" : undefined}
               tabIndex={p.first ? 0 : undefined}
               aria-label={p.first ? label(s) : undefined}
+              title={label(s)}
               aria-hidden={p.first ? undefined : "true"}
               className={`block deck-piece${p.over ? " over" : ""}${p.id === activeId ? " active" : ""}`}
               style={{
@@ -138,10 +124,6 @@ export default function DeckTruck({
           ))}
         </div>
       )}
-      <div className="truck-name">{name}</div>
-      <div className="truck-empty">
-        {!done ? "loading…" : over ? <b className="truck-over">⚠ over capacity</b> : deck.limited ? spacesFree(deck.slots, full.pallets) : palletCount(full.pallets)}
-      </div>
     </div>
   );
 }
