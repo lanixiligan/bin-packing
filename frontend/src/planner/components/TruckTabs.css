@@ -3,7 +3,7 @@
 
 .truck-tabs { position: relative; min-width: 0; border-bottom: var(--border); }
 
-.truck-tabs-list { display: flex; gap: var(--space-1); overflow-x: auto; overscroll-behavior-x: contain;
+.truck-tabs-list { display: flex; gap: var(--space-1); overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain;
   scrollbar-width: thin; padding: 2px 2px 0; }
 
 .truck-tabs::before, .truck-tabs::after { content: ""; position: absolute; top: 0; bottom: 1px; width: var(--space-8);
