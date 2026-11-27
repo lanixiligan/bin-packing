@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  HEAT_STEPS, HEAT_TEXT, contrastRatio, heatColor, heatLevel, stopBadge, stopColor, stopTextColor, textOn, typeCode,
+  HEAT_STEPS, HEAT_TEXT, contrastRatio, heatColor, heatLevel, catColor, catTextColor, textOn, typeCode,
   typePattern,
 } from "./colors.ts";
 
@@ -20,28 +20,23 @@ function token(name: string): string {
   return m[1];
 }
 
-describe("stopColor", () => {
-  it("maps stops to the stop tokens and cycles past 8", () => {
-    expect(stopColor(1)).toBe("var(--stop-1)");
-    expect(stopColor(8)).toBe("var(--stop-8)");
-    expect(stopColor(9)).toBe("var(--stop-1)");
-    expect(stopColor(18)).toBe("var(--stop-2)");
-    expect(stopColor(0)).toBe("var(--stop-8)");
+describe("catColor", () => {
+  it("maps categories to the categorical tokens and cycles past 8", () => {
+    expect(catColor(0)).toBe("var(--cat-1)");
+    expect(catColor(7)).toBe("var(--cat-8)");
+    expect(catColor(8)).toBe("var(--cat-1)");
+    expect(catColor(17)).toBe("var(--cat-2)");
+    expect(catColor(-1)).toBe("var(--cat-8)");
   });
 
-  it("uses --stop-none without a stop", () => {
-    expect(stopColor(null)).toBe("var(--stop-none)");
-    expect(stopColor(undefined)).toBe("var(--stop-none)");
+  it("uses --cat-none without a category", () => {
+    expect(catColor(null)).toBe("var(--cat-none)");
+    expect(catColor(undefined)).toBe("var(--cat-none)");
   });
 
-  it("gives a badge so colour isn't the only cue", () => {
-    expect(stopBadge(3)).toBe("S3");
-    expect(stopBadge(null)).toBe("");
-  });
-
-  it("uses the theme text colour on the no-stop neutral", () => {
-    expect(stopTextColor(2)).toBe("var(--on-stop)");
-    expect(stopTextColor(null)).toBe("var(--color-text)");
+  it("uses the theme text colour on the neutral", () => {
+    expect(catTextColor(2)).toBe("var(--on-cat)");
+    expect(catTextColor(null)).toBe("var(--color-text)");
   });
 });
 

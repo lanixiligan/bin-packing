@@ -16,7 +16,7 @@ export interface PlanFixture {
 
 export const reference = referenceJson as unknown as ReferenceData;
 
-/** Three drops, mixed AU/EURO pallets, a stackable line: fits (drive axle near its limit). */
+/** Mixed AU/EURO pallets, a stackable line: fits (drive axle near its limit). */
 export const planMultidrop = multidrop as unknown as PlanFixture;
 /** Heavy steel at the rear: trailer tri-axle over its limit, doesn't fit. */
 export const planAxleOverload = axleOverload as unknown as PlanFixture;

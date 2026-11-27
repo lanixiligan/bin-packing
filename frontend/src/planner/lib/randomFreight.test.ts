@@ -38,7 +38,6 @@ describe("randomFreight", () => {
       expect(r.gross_weight_kg).toBeLessThanOrEqual(1000);
       expect(r.height_mm).toBeGreaterThanOrEqual(1000);
       expect(r.height_mm).toBeLessThanOrEqual(1600);
-      expect([1, 2, 3]).toContain(r.stop);
       if (r.dg) expect(r.dg).toEqual(normalise(r.dg));
     }
     const v = validateRows(rows, reference);

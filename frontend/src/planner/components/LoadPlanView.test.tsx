@@ -44,6 +44,6 @@ describe("LoadPlanView", () => {
   it("offers the three colour modes", () => {
     render(<LoadPlanView result={planMultidrop.result} reference={reference} request={planMultidrop.request} />);
     const group = screen.getByRole("group", { name: "Colour by" });
-    expect(within(group).getAllByRole("radio").map((r) => r.getAttribute("value"))).toEqual(["stop", "weight", "type"]);
+    expect(within(group).getAllByRole("radio").map((r) => r.getAttribute("value"))).toEqual(["dg", "weight", "type"]);
   });
 });
