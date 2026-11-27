@@ -11,7 +11,7 @@ from app.planner import axles, checks, heuristic
 from app.planner.heuristic import HeuristicPlanner, expand_units, place_containers, place_pallets
 from app.planner.models import Placement, PlanWarning
 from app.reference.schemas import ContainerType, ReferenceData, VehicleConfig
-from tests.factories import BDOUBLE, SEMI, containers, pallets, reference, request
+from tests.factories import BDOUBLE, RIGID, SEMI, containers, pallets, reference, request
 
 
 @pytest.fixture(autouse=True)
@@ -122,7 +122,7 @@ def test_three_euro_fit_across_the_deck(ref):
     placements, unplaced = place_pallets(expand_units([pallets(3, type_id="EURO")]), SEMI,
                                          ref.bodies["TAUTLINER"], ref)
     assert unplaced == []
-    assert {p.x_mm for p in placements} == {0}
+    assert len({p.x_mm for p in placements}) == 1  # one row
     assert sorted(p.y_mm for p in placements) == [0, 800, 1600]
 
 
@@ -166,12 +166,11 @@ def test_unstackable_warns_when_short_of_space(ref):
     assert warning.severity == "warning"
 
 
-def test_stacks_never_mix_stops(ref):
-    result = plan(ref, pallets(5, id="A", height=900, stackable=True, stop=1),
-                  pallets(5, id="B", height=900, stackable=True, stop=2))
+def test_stacks_never_mix_pallet_types(ref):
+    result = plan(ref, pallets(3, id="A", height=900, stackable=True),
+                  pallets(3, id="E", type_id="EURO", height=900, stackable=True))
     for stack_id in {p.stack_id for p in result.placements}:
-        assert len({p.stop for p in result.placements if p.stack_id == stack_id}) == 1
-    assert floor_positions(result.placements) == 6  # 3 per stop, not 5
+        assert len({p.type_id for p in result.placements if p.stack_id == stack_id}) == 1
 
 
 def test_pallet_without_height_takes_a_full_stack(ref):
@@ -181,24 +180,8 @@ def test_pallet_without_height_takes_a_full_stack(ref):
 
 
 # ---------------------------------------------------------------------------
-# Pallets: LIFO, decks, balance
+# Pallets: decks, balance
 # ---------------------------------------------------------------------------
-
-def test_lifo_last_stop_rides_at_the_front(ref):
-    result = plan(ref, pallets(4, id="S1", stop=1), pallets(4, id="S3", stop=3), pallets(4, id="S2", stop=2))
-    span = {}
-    for stop in (1, 2, 3):
-        mine = [p for p in result.placements if p.stop == stop]
-        span[stop] = (min(p.x_mm for p in mine), max(p.x_mm + p.length_mm for p in mine))
-    assert span[3][1] <= span[2][0]
-    assert span[2][1] <= span[1][0]
-
-
-def test_stops_dont_share_a_row(ref):
-    result = plan(ref, pallets(1, id="S1", stop=1), pallets(1, id="S2", stop=2))
-    by_item = {p.item_id: p for p in result.placements}
-    assert by_item["S2"].x_mm + by_item["S2"].length_mm <= by_item["S1"].x_mm
-
 
 def test_bdouble_spills_from_lead_to_rear_deck(ref):
     result = plan(ref, pallets(30), vehicle="BDOUBLE")
@@ -219,13 +202,6 @@ def test_balance_puts_the_heaviest_row_near_the_supports_midpoint(ref):
     assert heavy < deck.rear_support.position_mm - deck.x_mm  # not in the rear overhang
     assert_no_overlap(result.placements)
     assert_within_decks(result.placements, SEMI)
-
-
-def test_balance_keeps_lifo(ref):
-    result = plan(ref, pallets(4, 2000, id="S1", stop=1), pallets(8, 300, id="S2", stop=2))
-    s1 = [p for p in result.placements if p.stop == 1]
-    s2 = [p for p in result.placements if p.stop == 2]
-    assert max(p.x_mm + p.length_mm for p in s2) <= min(p.x_mm for p in s1)
 
 
 # ---------------------------------------------------------------------------
@@ -273,12 +249,22 @@ def test_containers_on_a_rigid_are_a_combo_error(ref):
     assert result.unplaced == ["GP20#1"]
 
 
-def test_heaviest_container_takes_the_slot_nearest_the_supports_midpoint(ref):
+def test_heaviest_container_takes_the_slot_nearest_the_balance_target(ref):
     result = plan(ref, containers("GP20", weight=5000, id="LIGHT"),
                   containers("GP20", weight=20000, id="HEAVY"), body="SKELETAL")
     x_of = {p.item_id: p.x_mm for p in result.placements}
-    # slot centres 3,729 and 9,829 vs the target 6,200: the front slot is nearer
-    assert x_of == {"HEAVY": 700, "LIGHT": 6800}
+    # The tri-axle has more spare capacity than the kingpin, so the target is about 6,877 mm along
+    # the deck: slot centres 3,729 and 9,829, and the rear slot is nearer.
+    assert x_of == {"HEAVY": 6800, "LIGHT": 700}
+
+
+def test_a_part_load_is_centred_over_the_axles(ref):
+    result = plan(ref, pallets(6, 1200), vehicle="RIGID")
+    deck = RIGID.deck("body")
+    xs = [p.x_mm for p in result.placements]
+    assert min(xs) > 0  # not packed against the front of the body
+    centre = (min(xs) + max(p.x_mm + p.length_mm for p in result.placements)) / 2
+    assert abs(centre - heuristic.balance_target_mm(deck, RIGID)) < 600
 
 
 def test_container_without_dimensions_uses_nominal_size(ref):

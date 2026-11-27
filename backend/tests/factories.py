@@ -143,9 +143,9 @@ def reference(**vehicles: VehicleConfig) -> ReferenceData:
 
 
 def pallets(qty: int, weight: float = 500, *, id: str = "P", type_id: str = "AU_STD", height: int = 1200,
-            stackable: bool = False, stop: int | None = None, temp: bool = False) -> FreightItem:
+            stackable: bool = False, temp: bool = False) -> FreightItem:
     return FreightItem(id=id, kind="pallet", type_id=type_id, quantity=qty, gross_weight_kg=weight,
-                       height_mm=height, stackable=stackable, stop=stop, temp_controlled=temp)
+                       height_mm=height, stackable=stackable, temp_controlled=temp)
 
 
 def containers(type_id: str, qty: int = 1, weight: float = 15000, *, id: str | None = None) -> FreightItem:

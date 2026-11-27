@@ -28,23 +28,22 @@ Pallets (`place_pallets`)
 1. Height: a unit without `height_mm` is treated as a full stack (pallet_defaults.max_stack_height_mm).
    The stack height cap is min(max_stack_height_mm, body internal height, overall height limit
    minus deck height). Stacks are built before decks are chosen, so the highest cargo deck is used.
-2. Stacks (`build_stacks`): only stackable units with the same type_id AND the same stop share a
-   stack, while the summed height stays within the cap. Units are taken heaviest first and each
-   goes into the first stack it fits (first-fit decreasing on weight), so the heaviest unit of a
-   stack is at the bottom. Unstackable or too-tall units are stacks of one.
-3. Order (`order_stacks`): stop descending (LIFO: the last drop is loaded first and rides at the
-   front; no stop counts as the highest stop), then footprint area, then weight, both descending.
+2. Stacks (`build_stacks`): only stackable units with the same type_id share a stack, while the
+   summed height stays within the cap. Units are taken heaviest first and each goes into the first
+   stack it fits (first-fit decreasing on weight), so the heaviest unit of a stack is at the
+   bottom. Unstackable or too-tall units are stacks of one.
+3. Order (`order_stacks`): footprint area, then weight, both descending (first-fit decreasing).
 4. Rows (`fill_rows`): stacks are laid in rows across the deck width, flush from the driver's
    side. A pallet may turn 90 degrees about the vertical: the orientation that fits the most across
-   the deck is tried first (ties: the shorter one along the deck). A row holds one stop only, may
-   mix pallet types when the width allows, and is as deep as its longest stack. Rows advance from
-   the deck front; when a deck is full the next cargo deck (vehicle.cargo_decks order) is used.
-   A stack that fits nowhere is unplaced and the plan reports OVER_CAPACITY, counted in floor
-   positions, with the smallest vehicle that has enough pallet spaces as the suggestion.
-5. Balance (`balance_rows`): within each stop group on each deck (so LIFO is never broken) the
-   rows are reordered so the heaviest sit nearest the midpoint of the deck's supports and out of
-   the rear overhang, then x is rewritten. It's a separate function so a better balancer can
-   replace it.
+   the deck is tried first (ties: the shorter one along the deck). A row may mix pallet types when
+   the width allows, and is as deep as its longest stack. Rows advance from the deck front; when a
+   deck is full the next cargo deck (vehicle.cargo_decks order) is used. A stack that fits nowhere
+   is unplaced and the plan reports OVER_CAPACITY, counted in floor positions, with the smallest
+   vehicle that has enough pallet spaces as the suggestion.
+5. Balance (`balance_rows`): on each deck the heaviest rows go nearest a balance target (the point
+   that shares the load between the deck's supports by their spare axle capacity), out of the rear
+   overhang, and the block slides so its centre of gravity sits on that target where the deck
+   allows. It's a separate function so a better balancer can replace it.
 6. UNSTACKABLE_FLOOR_SPACE (`unstackable_floor_warning`): unstackable items that would take fewer
    floor positions if they were stacked within the cap are named with the positions they cost.
 
@@ -52,9 +51,7 @@ Containers (`place_containers`)
 -------------------------------
 The first `vehicle.container_combos` entry that gives every container its own slot of the same
 size class is used (unused slots are fine). Within a size class the heaviest container takes the
-slot nearest the midpoint of its deck's supports; with delivery stops, the last drop takes the
-frontmost slot instead, and STOP_ORDER_BLOCKED warns when the slots force an earlier drop ahead of
-a later one. x = slot.x_mm, y = centred across the deck,
+slot nearest the midpoint of its deck's supports. x = slot.x_mm, y = centred across the deck,
 z = 0. Types without external dimensions use nominal size-class dimensions. No combo (or a
 vehicle with no combos) is a CONTAINER_COMBO error that spells out the allowed mixes, and every
 container is unplaced.
@@ -63,8 +60,9 @@ Known limitations
 -----------------
 - Rows only: no lengthwise pinwheeling, no filling a short row's leftover depth, and an open row
   is closed as soon as a stack doesn't fit it.
-- Stacks never mix pallet types or stops, even when the footprints match.
-- Balancing is greedy and approximate when row depths differ (slot centres use the average depth).
+- Stacks never mix pallet types, even when the footprints match.
+- Balancing is greedy and approximate when row depths differ (slot centres use the average depth),
+  and the axle headroom it aims by is a rough guide; the axle check afterwards is the real test.
 - Decks fill in order: a deck is not revisited once the next one is in use.
 """
 
@@ -83,7 +81,7 @@ from app.planner.models import (
     Usage,
     Utilisation,
 )
-from app.reference.schemas import BodyType, ContainerType, Deck, ReferenceData, VehicleConfig
+from app.reference.schemas import BodyType, ContainerType, Deck, ReferenceData, Support, VehicleConfig
 
 AU_PALLET = "AU_STD"
 AU_SIDE_MM = 1165
@@ -141,7 +139,6 @@ def _a(name: str, *, capital: bool = False) -> str:
 class Stack:
     """Units sharing one floor position, bottom first. Footprint is the pallet type's, unrotated."""
     type_id: str
-    stop: int | None
     length_mm: int
     width_mm: int
     units: list[tuple[Unit, int]] = field(default_factory=list)  # (unit, height_mm)
@@ -174,21 +171,21 @@ def stack_height_cap(vehicle: VehicleConfig, body: BodyType, ref: ReferenceData)
 
 
 def build_stacks(units: list[Unit], cap_mm: int, ref: ReferenceData) -> list[Stack]:
-    """Group pallet units into stacks (first-fit decreasing on weight, same type_id and stop only).
+    """Group pallet units into stacks (first-fit decreasing on weight, same type_id only).
 
     Returned in the order of each stack's first unit in `units`."""
     order = {u.unit_id: i for i, u in enumerate(units)}
 
     def new_stack(unit: Unit, height: int) -> Stack:
         p = ref.pallets[unit.item.type_id]
-        return Stack(unit.item.type_id, unit.item.stop, p.length_mm, p.width_mm, [(unit, height)])
+        return Stack(unit.item.type_id, p.length_mm, p.width_mm, [(unit, height)])
 
     stacks: list[Stack] = []
-    groups: dict[tuple[str, int | None], list[tuple[Unit, int]]] = defaultdict(list)
+    groups: dict[str, list[tuple[Unit, int]]] = defaultdict(list)
     for u in units:
         h = unit_height(u, ref)
         if u.item.stackable and h <= cap_mm:
-            groups[(u.item.type_id, u.item.stop)].append((u, h))
+            groups[u.item.type_id].append((u, h))
         else:
             stacks.append(new_stack(u, h))
     for members in groups.values():
@@ -206,8 +203,8 @@ def build_stacks(units: list[Unit], cap_mm: int, ref: ReferenceData) -> list[Sta
 
 
 def order_stacks(stacks: list[Stack]) -> list[Stack]:
-    """Loading order: stop descending (None first), then footprint area, then weight, descending."""
-    return sorted(stacks, key=lambda s: (s.stop is not None, -(s.stop or 0), -s.area_mm2, -s.weight_kg))
+    """Loading order: footprint area, then weight, both descending."""
+    return sorted(stacks, key=lambda s: (-s.area_mm2, -s.weight_kg))
 
 
 # ---------------------------------------------------------------------------
@@ -225,10 +222,9 @@ class RowSlot:
 
 @dataclass
 class Row:
-    """Stacks side by side across a deck, front edges aligned at x_mm. One stop per row."""
+    """Stacks side by side across a deck, front edges aligned at x_mm."""
     deck_id: str
     x_mm: int
-    stop: int | None
     slots: list[RowSlot] = field(default_factory=list)
 
     @property
@@ -283,8 +279,7 @@ def fill_rows(stacks: list[Stack], decks: list[Deck],
             unplaced.append(stack)
             continue
         used += spaces
-        same_stop = open_row is not None and open_row.stop == stack.stop
-        if same_stop and _join_row(open_row, stack, decks[deck_idx]):
+        if open_row is not None and _join_row(open_row, stack, decks[deck_idx]):
             deck_end[open_row.deck_id] = open_row.x_mm + open_row.depth_mm
             continue
         placed = False
@@ -293,7 +288,7 @@ def fill_rows(stacks: list[Stack], decks: list[Deck],
             x = deck_end[deck.id]
             for length, width, rotated in orientations(stack, deck.width_mm):
                 if x + length <= deck.length_mm:
-                    open_row = Row(deck.id, x, stack.stop, [RowSlot(stack, 0, length, width, rotated)])
+                    open_row = Row(deck.id, x, [RowSlot(stack, 0, length, width, rotated)])
                     rows.append(open_row)
                     deck_end[deck.id] = x + length
                     deck_idx = di
@@ -307,39 +302,74 @@ def fill_rows(stacks: list[Stack], decks: list[Deck],
     return rows, unplaced
 
 
-def balance_target_mm(deck: Deck) -> float:
-    """Midpoint between the deck's front and rear supports, in deck coordinates."""
-    return (deck.front_support.position_mm + deck.rear_support.position_mm) / 2 - deck.x_mm
+def support_headroom_kg(vehicle: VehicleConfig, support: Support) -> float:
+    """Spare capacity under a support (GML limit minus tare): its axle group, or for a coupling the
+    groups under the deck it rests on. A rough guide for where to centre the load, not a check."""
+    if support.axle_group is not None:
+        g = vehicle.axle_group(support.axle_group)
+        return max(g.gml_kg - g.tare_kg, 0.0)
+    under = vehicle.deck(support.on_deck)
+    return (support_headroom_kg(vehicle, under.front_support)
+            + support_headroom_kg(vehicle, under.rear_support))
+
+
+def balance_target_mm(deck: Deck, vehicle: VehicleConfig | None = None) -> float:
+    """Where the load's centre of gravity should sit, in deck coordinates.
+
+    With the vehicle: the point that shares the load between the deck's two supports in proportion
+    to their spare capacity, so the group with more headroom takes more (e.g. a rigid's light steer
+    axle takes less than its rear axle). Without it: the midpoint between the supports."""
+    a, b = deck.front_support.position_mm, deck.rear_support.position_mm
+    if vehicle is not None:
+        front = support_headroom_kg(vehicle, deck.front_support)
+        rear = support_headroom_kg(vehicle, deck.rear_support)
+        if front + rear > 0:
+            return a + (b - a) * rear / (front + rear) - deck.x_mm
+    return (a + b) / 2 - deck.x_mm
+
+
+def _centroid(rows: list[Row], start: float) -> float:
+    """Weighted centre of rows laid front to back from `start` (deck coordinates)."""
+    total = sum(r.weight_kg for r in rows)
+    x, moment = start, 0.0
+    for r in rows:
+        moment += r.weight_kg * (x + r.depth_mm / 2)
+        x += r.depth_mm
+    return moment / total if total else start + sum(r.depth_mm for r in rows) / 2
 
 
 def balance_rows(rows: list[Row], vehicle: VehicleConfig) -> list[Row]:
-    """Reorder rows within each (deck, stop) block so the heaviest are nearest the deck's balance
-    target and out of the rear overhang. Block positions don't move, so LIFO order is kept.
+    """Arrange each deck's rows around the deck's balance target (`balance_target_mm`).
 
-    Greedy: block slots are approximated with the block's average row depth, ranked by (in the
-    rear overhang, distance from the target), and the heaviest row takes the best slot. Then x is
-    rewritten front to back with each row's real depth. Blocks of equal-weight rows are untouched.
+    1. The heaviest rows take the row positions nearest the target, out of the rear overhang
+       (greedy; positions are approximated with the average row depth).
+    2. The whole block then slides along the deck so its weighted centre sits on the target, as far
+       as the deck allows. A part load is centred over the axles instead of packed against the
+       front, which would overload a rigid's steer axle.
     Replaceable by a better balancer with the same signature."""
     out: list[Row] = []
-    for (deck_id, _stop), block_iter in groupby(rows, key=lambda r: (r.deck_id, r.stop)):
+    for deck_id, block_iter in groupby(rows, key=lambda r: r.deck_id):
         block = list(block_iter)
-        if len(block) < 2 or len({r.weight_kg for r in block}) == 1:
-            out.extend(block)
-            continue
         deck = vehicle.deck(deck_id)
-        target = balance_target_mm(deck)
-        rear_support = deck.rear_support.position_mm - deck.x_mm
-        start = block[0].x_mm
-        avg_depth = sum(r.depth_mm for r in block) / len(block)
-        centres = [start + (k + 0.5) * avg_depth for k in range(len(block))]
-        best_slots = sorted(range(len(block)),
-                            key=lambda k: (centres[k] > rear_support, abs(centres[k] - target)))
-        heaviest_first = sorted(block, key=lambda r: -r.weight_kg)
-        arranged: list[Row] = [block[0]] * len(block)
-        for k, row in zip(best_slots, heaviest_first, strict=True):
-            arranged[k] = row
-        x = start
-        for row in arranged:
+        target = balance_target_mm(deck, vehicle)
+        span = sum(r.depth_mm for r in block)
+        room = max(deck.length_mm - span, 0)
+        start = min(max(target - span / 2, 0), room)
+
+        if len(block) > 1 and len({r.weight_kg for r in block}) > 1:
+            rear_support = deck.rear_support.position_mm - deck.x_mm
+            avg_depth = span / len(block)
+            centres = [start + (k + 0.5) * avg_depth for k in range(len(block))]
+            best_slots = sorted(range(len(block)),
+                                key=lambda k: (centres[k] > rear_support, abs(centres[k] - target)))
+            arranged: list[Row] = [block[0]] * len(block)
+            for k, row in zip(best_slots, sorted(block, key=lambda r: -r.weight_kg), strict=True):
+                arranged[k] = row
+            block = arranged
+
+        start = min(max(start + target - _centroid(block, start), 0), room)
+        x = round(start)
+        for row in block:
             out.append(replace(row, x_mm=x))
             x += row.depth_mm
     return out
@@ -359,7 +389,7 @@ def rows_to_placements(rows: list[Row], first_stack_id: int = 1) -> list[Placeme
                     type_id=item.type_id, deck_id=row.deck_id, x_mm=row.x_mm, y_mm=slot.y_mm, z_mm=z,
                     length_mm=slot.length_mm, width_mm=slot.width_mm, height_mm=height,
                     rotated=slot.rotated, stack_id=stack_id, stack_level=level,
-                    weight_kg=item.gross_weight_kg, stop=item.stop, stackable=item.stackable,
+                    weight_kg=item.gross_weight_kg, stackable=item.stackable,
                     temp_controlled=item.temp_controlled,
                 ))
                 z += height
@@ -496,7 +526,6 @@ def place_containers(units: list[Unit], vehicle: VehicleConfig,
     types = {u.unit_id: ref.containers[u.item.type_id] for u in units}
     wanted = [types[u.unit_id].size_class for u in units]
     deck_order = {d.id: i for i, d in enumerate(vehicle.decks)}
-    by_stop = any(u.item.stop is not None for u in units)
 
     for combo in vehicle.container_combos:
         if not _combo_fits(wanted, [s.size_class for s in combo.slots]):
@@ -507,20 +536,14 @@ def place_containers(units: list[Unit], vehicle: VehicleConfig,
             if not members:
                 continue
             same_size = [s for s in combo.slots if s.size_class == sc]
-            if by_stop:
-                # Multi-drop: the last drop rides at the front (as for pallets), weight breaks ties.
-                group = sorted(members, key=lambda u: (u.item.stop is not None, -(u.item.stop or 0),
-                                                        -u.weight_kg))
-                slots = sorted(same_size, key=lambda s: (deck_order[s.deck_id], s.x_mm))
-            else:
-                nominal_length = NOMINAL_CONTAINER_DIMS[sc][0]
+            nominal_length = NOMINAL_CONTAINER_DIMS[sc][0]
 
-                def off_centre(slot, nominal_length=nominal_length) -> float:
-                    deck = vehicle.deck(slot.deck_id)
-                    return abs(slot.x_mm + nominal_length / 2 - balance_target_mm(deck))
+            def off_centre(slot, nominal_length=nominal_length) -> float:
+                deck = vehicle.deck(slot.deck_id)
+                return abs(slot.x_mm + nominal_length / 2 - balance_target_mm(deck, vehicle))
 
-                group = sorted(members, key=lambda u: -u.weight_kg)
-                slots = sorted(same_size, key=off_centre)
+            group = sorted(members, key=lambda u: -u.weight_kg)
+            slots = sorted(same_size, key=off_centre)
             for unit, slot in zip(group, slots, strict=False):
                 deck = vehicle.deck(slot.deck_id)
                 length, width, height = container_dims(types[unit.unit_id])
@@ -529,32 +552,14 @@ def place_containers(units: list[Unit], vehicle: VehicleConfig,
                     unit_id=unit.unit_id, item_id=item.id, label=item.label or item.id, kind="container",
                     type_id=item.type_id, deck_id=deck.id, x_mm=slot.x_mm, y_mm=(deck.width_mm - width) // 2,
                     z_mm=0, length_mm=length, width_mm=width, height_mm=height, stack_id=0, stack_level=0,
-                    weight_kg=item.gross_weight_kg, stop=item.stop, stackable=item.stackable,
+                    weight_kg=item.gross_weight_kg, stackable=item.stackable,
                     temp_controlled=item.temp_controlled or types[unit.unit_id].temp_controlled,
                 ))
         placements.sort(key=lambda p: (deck_order[p.deck_id], p.x_mm))
         placements = [p.model_copy(update={"stack_id": i}) for i, p in enumerate(placements, start=1)]
-        blocked = stop_order_warning(placements) if by_stop else None
-        return placements, [], [blocked] if blocked else []
+        return placements, [], []
 
     return [], [u.unit_id for u in units], [container_combo_warning(units, wanted, vehicle, ref)]
-
-
-def stop_order_warning(placements: list[Placement]) -> PlanWarning | None:
-    """STOP_ORDER_BLOCKED when, front to back, an earlier drop rides ahead of a later one. Container
-    slots fix where each size goes (a B-double's 20' is always on the lead trailer), so the stop
-    order can't always be kept. `placements` must be sorted front to back."""
-    for i, front in enumerate(placements):
-        for rear in placements[i + 1:]:
-            if front.stop is not None and rear.stop is not None and front.stop < rear.stop:
-                return PlanWarning(
-                    code="STOP_ORDER_BLOCKED", severity="warning",
-                    message=(f"{front.label} (stop {front.stop}) rides in front of {rear.label} "
-                             f"(stop {rear.stop}); this vehicle's container slots fix that order."),
-                    suggestion="Check the first site can lift it off past the other, or swap the drops.",
-                    item_ids=[front.item_id, rear.item_id],
-                )
-    return None
 
 
 def container_combo_warning(units: list[Unit], wanted: list[str], vehicle: VehicleConfig,

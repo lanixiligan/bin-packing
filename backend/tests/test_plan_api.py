@@ -97,28 +97,24 @@ async def test_unstackable_items_take_floor_space(client):
     assert "UNSTACKABLE_FLOOR_SPACE" in codes(loose, "warning")
 
 
-HEAVY_PALLETS = {"pallet_defaults": {"max_gross_kg": 2000}}  # steel coil: the carrier allows 2 t
-
-
 async def test_axle_overload(client):
-    # Stop 1 drops first, so it rides at the rear: 12 heavy pallets over the trailer tri-axle.
-    heavy = [pallet(12, 1800, id="H", stop=1), pallet(10, 50, id="L", stop=2)]
-    r = await plan(client, *heavy, overrides=HEAVY_PALLETS)
+    # The planner fills a B-double's lead trailer first: 22 pallets of 1.3 t put its tri-axle over 20 t.
+    r = await plan(client, pallet(22, 1300), vehicle="B_DOUBLE")
     assert not r["fits"] and codes(r, "error") == ["AXLE_OVER_LIMIT"]
-    tri = next(a for a in r["axle_loads"] if a["group_id"] == "trailer_tri")
+    tri = next(a for a in r["axle_loads"] if a["group_id"] == "lead_tri")
     assert tri["status"] == "over" and tri["load_kg"] > tri["limit_kg"]
     # Higher Mass Limits cover it.
-    hml = await plan(client, *heavy, mass_scheme="HML", overrides=HEAVY_PALLETS)
+    hml = await plan(client, pallet(22, 1300), vehicle="B_DOUBLE", mass_scheme="HML")
     assert "AXLE_OVER_LIMIT" not in codes(hml)
 
 
+async def test_a_part_load_on_a_rigid_is_centred_so_the_steer_axle_copes(client):
+    r = await plan(client, pallet(6, 1200), vehicle="RIGID_MEDIUM")
+    assert r["fits"], r["reasons"]
+    assert min(p["x_mm"] for p in r["placements"]) > 0
+
+
 # ---- More rules -------------------------------------------------------------
-
-async def test_multi_drop_loads_the_last_stop_at_the_front(client):
-    r = await plan(client, pallet(4, id="A", stop=1), pallet(4, id="B", stop=2), pallet(4, id="C", stop=3))
-    front = {item: min(p["x_mm"] for p in r["placements"] if p["item_id"] == item) for item in "ABC"}
-    assert front["C"] < front["B"] < front["A"]
-
 
 async def test_pallets_on_a_skeletal_are_rejected(client):
     r = await plan(client, pallet(4), body_type="SKELETAL")
@@ -219,17 +215,6 @@ async def test_a_pallet_wider_than_the_deck_is_oversize_not_over_capacity(client
                    overrides={"pallets": {"WIDE": {"name": "Wide skid", "length_mm": 2600,
                                                    "width_mm": 2600}}})
     assert codes(r, "error") == ["OVERSIZE_FOOTPRINT"] and r["unplaced"] == ["P#1"]
-
-
-async def test_container_drops_follow_stop_order_and_warn_when_the_slots_block_it(client):
-    two_20s = [dict(container("GP20", id="A"), stop=1), dict(container("GP20", id="B"), stop=2)]
-    r = await plan(client, *two_20s, body_type="SKELETAL")
-    x = {p["item_id"]: p["x_mm"] for p in r["placements"]}
-    assert x["B"] < x["A"] and "STOP_ORDER_BLOCKED" not in codes(r)  # last drop at the front
-    # On a B-double the 20' must ride on the lead trailer, ahead of the 40', whatever the stops say.
-    mixed = [dict(container("GP20", id="A"), stop=1), dict(container("GP40", id="B"), stop=2)]
-    r = await plan(client, *mixed, vehicle="B_DOUBLE", body_type="SKELETAL")
-    assert "STOP_ORDER_BLOCKED" in codes(r, "warning")
 
 
 # ---- Dangerous goods ----------------------------------------------------------

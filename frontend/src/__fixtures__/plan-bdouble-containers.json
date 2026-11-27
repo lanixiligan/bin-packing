@@ -64,7 +64,6 @@
     "stack_id": 1,
     "stack_level": 0,
     "weight_kg": 12000.0,
-    "stop": null,
     "stackable": false,
     "temp_controlled": false
    },
@@ -85,7 +84,6 @@
     "stack_id": 2,
     "stack_level": 0,
     "weight_kg": 20000.0,
-    "stop": null,
     "stackable": false,
     "temp_controlled": false
    }

@@ -36,7 +36,6 @@ WarningCode = Literal[
     "CONTAINER_OVER_MAX_GROSS",  # container gross weight over its rated max gross
     "PALLET_OVER_MAX_GROSS",     # a pallet heavier than the pallet's rated gross weight
     "OVERSIZE_FOOTPRINT",        # a pallet wider than every deck, in either orientation
-    "STOP_ORDER_BLOCKED",        # an earlier drop sits in front of (or on top of) a later one
     "OVER_PAYLOAD",              # total weight over the vehicle's max payload
     "AXLE_NEAR_LIMIT",           # an axle group at >= 90 % of its limit
     "AXLE_OVER_LIMIT",           # an axle group over its limit
@@ -66,7 +65,6 @@ class FreightItem(_In):
                                               "ignored (the type's external height is used)")
     stackable: bool = False
     temp_controlled: bool = False
-    stop: int | None = Field(default=None, ge=1, le=50, description="Delivery stop, 1 = first drop")
     dg: DgInfo | None = Field(default=None, description="Dangerous goods data (ADG class, subsidiary "
                                                         "hazards, food / fire-risk); null = general freight")
 
@@ -118,7 +116,6 @@ class Placement(BaseModel):
     stack_id: int = Field(description="Units sharing a floor position share a stack_id")
     stack_level: int = Field(description="0 = on the floor")
     weight_kg: float
-    stop: int | None = None
     stackable: bool = False
     temp_controlled: bool = False
 

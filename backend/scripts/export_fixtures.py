@@ -27,19 +27,17 @@ def container(type_id, weight, *, id, label=""):
 
 
 PLANS = {
-    # Three drops with mixed pallet types and a stackable line: the everyday case.
+    # Mixed pallet types and a stackable line: the everyday case.
     "plan-multidrop": {"vehicle_id": "SEMI_TRAILER", "items": [
-        pallet(6, 820, id="bev", label="Beverages", stop=3),
-        pallet(6, 410, id="dry", label="Dry goods", stop=2, stackable=True, height=900),
-        pallet(4, 600, id="euro", label="Euro imports", type_id="EURO", stop=2),
-        pallet(5, 950, id="hw", label="Hardware", stop=1),
+        pallet(6, 820, id="bev", label="Beverages"),
+        pallet(6, 410, id="dry", label="Dry goods", stackable=True, height=900),
+        pallet(4, 600, id="euro", label="Euro imports", type_id="EURO"),
+        pallet(5, 950, id="hw", label="Hardware"),
     ]},
-    # Heavy freight at the rear: the trailer tri-axle goes over its limit.
-    # Steel coil is over the default 1.5 t per-pallet cap, so the carrier's 2 t limit is an override.
-    "plan-axle-overload": {"vehicle_id": "SEMI_TRAILER",
-                           "overrides": {"pallet_defaults": {"max_gross_kg": 2000}}, "items": [
-        pallet(12, 1800, id="steel", label="Steel coil", stop=1),
-        pallet(10, 50, id="foam", label="Foam", stop=2),
+    # A B-double's lead trailer fills first: its tri-axle goes over its limit.
+    "plan-axle-overload": {"vehicle_id": "B_DOUBLE", "items": [
+        pallet(14, 1300, id="steel", label="Steel"),
+        pallet(8, 1300, id="cement", label="Cement"),
     ]},
     # One pallet too many, plus a reefer line on a tautliner.
     "plan-over-capacity": {"vehicle_id": "SEMI_TRAILER", "items": [
@@ -53,10 +51,10 @@ PLANS = {
     ]},
     # Dangerous goods: paint (Class 3) can't travel with pool chlorine (Class 5.1); acid (Class 8) can.
     "plan-dg-conflict": {"vehicle_id": "SEMI_TRAILER", "items": [
-        pallet(4, 600, id="paint", label="Paint", stop=2, dg={"dg_class": "3", "t92": []}),
-        pallet(3, 450, id="chlorine", label="Pool chlorine", stop=1, dg={"dg_class": "5.1", "t92": []}),
-        pallet(2, 700, id="acid", label="Battery acid", stop=1, dg={"dg_class": "8", "t92": []}),
-        pallet(6, 500, id="gen", label="General freight", stop=2),
+        pallet(4, 600, id="paint", label="Paint", dg={"dg_class": "3", "t92": []}),
+        pallet(3, 450, id="chlorine", label="Pool chlorine", dg={"dg_class": "5.1", "t92": []}),
+        pallet(2, 700, id="acid", label="Battery acid", dg={"dg_class": "8", "t92": []}),
+        pallet(6, 500, id="gen", label="General freight"),
     ]},
     # Suggest the smallest vehicle.
     "plan-suggest": {"vehicle_id": "suggest", "items": [pallet(7, 500, id="p", label="Retail")]},
