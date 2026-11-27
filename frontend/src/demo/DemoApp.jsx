@@ -9,8 +9,6 @@ import { demoDg, randomShipments } from "./shipments.js";
 import { NARROW_SCREEN, REDUCED_MOTION, SMALL_SCREEN, useMediaQuery } from "./useMediaQuery.js";
 import DemoHeader from "./DemoHeader.jsx";
 import { useTheme } from "./useTheme.js";
-import "../planner/styles/tokens.css";
-import "../planner/styles/base.css";
 import "./demo.css";
 
 const DROP_INTERVAL_MS = 150; // time between each shipment dropping in

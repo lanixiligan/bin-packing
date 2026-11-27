@@ -4,6 +4,10 @@
    label on the pastel shipment blocks (6:1 or better on every hue, see colorFor in
    capacity.ts), and --block-sep, the hairline between stacked blocks. */
 
+/* CSS @import, not a JS import: the planner bundle keeps its own copy and its CSS order. */
+@import "../planner/styles/tokens.css";
+@import "../planner/styles/base.css";
+
 :root {
   --block-text: #0f172a;
   --block-sep: rgb(255 255 255 / 0.85);
@@ -24,7 +28,6 @@
   border-radius: var(--radius-sm); }
 .header-controls { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .header-controls fieldset { margin: 0; min-width: 0; }
-.header-link { text-decoration: none; color: var(--color-accent); }
 
 .demo-main { max-width: var(--content-max); margin: 0 auto; padding: var(--space-5) var(--space-6) var(--space-10);
   display: flex; flex-direction: column; gap: var(--space-5); }
