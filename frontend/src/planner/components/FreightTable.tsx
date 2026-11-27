@@ -1,10 +1,15 @@
 // Step 2: editable freight rows (a compact card per row, so it fits the narrow rail), quick-add
-// presets, duplicate / delete with undo, CSV paste or import, inline validation messages.
+// presets, random freight, duplicate / delete with undo, inline validation messages. Rows with
+// dangerous goods show a read-only placard badge, and an early hint above the rows names pairs
+// that can't share a vehicle (the plan result stays the authority).
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ReferenceData } from "../api/types.ts";
-import { parseCsv, toCsv, CSV_COLUMNS } from "../lib/csv.ts";
+import { checkAll, type DgPairResult } from "../../dg/rules.ts";
+import { dgLabel, dgName, placardCode } from "../lib/dg.ts";
 import { newRow, newRowId, type FreightRow, type RowErrors, type RowField } from "../lib/freight.ts";
+import { randomFreight } from "../lib/randomFreight.ts";
 import { useUnits } from "../lib/units.ts";
+import { AlertIcon, InfoIcon } from "./icons.tsx";
 import "./FreightTable.css";
 
 export interface FreightTableProps {
@@ -15,6 +20,8 @@ export interface FreightTableProps {
   errors: RowErrors;
   /** From validateRows: problems with the list as a whole. */
   listErrors: string[];
+  /** Random numbers in [0, 1) for "Random freight"; defaults to Math.random (tests pass a seeded one). */
+  random?: () => number;
 }
 
 const TOAST_MS = 6000;
@@ -49,6 +56,41 @@ function defaultContainer(ref: ReferenceData): string {
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+// ---- Dangerous goods ------------------------------------------------------------
+
+/** Read-only placard-style badge: the code in a diamond, then "Class 3" / "Food". Nothing for general freight. */
+function DgBadge({ dg }: { dg: FreightRow["dg"] }) {
+  const code = placardCode(dg);
+  if (!code) return null;
+  const kind = dg?.dg_class ? "dg" : dg?.food ? "food" : "fire";
+  return (
+    <span className={`ft-dg-badge ft-dg-${kind}`} title={dgName(dg)}>
+      <span className="ft-dg-diamond" aria-hidden="true"><span>{code}</span></span>
+      <span className="visually-hidden">Dangerous goods: </span>
+      <span className="ft-dg-text">{dgLabel(dg)}</span>
+    </span>
+  );
+}
+
+interface Indexed { row: FreightRow; index: number }
+
+const lineName = ({ row, index }: Indexed) => `${row.label.trim() || `Line ${index + 1}`} (${dgLabel(row.dg)})`;
+
+/** A plain-language sentence for a pair of lines that conflict or need a check. */
+function pairMessage(p: DgPairResult<Indexed>): string {
+  const names = `${lineName(p.a)} and ${lineName(p.b)}`;
+  if (p.status === "incompatible") {
+    const table = p.reasons.length > 0 && p.reasons.every((r) => r.includes("Table 9.2")) ? "9.2" : "9.1";
+    return `${names} can't travel on the same vehicle (ADG Table ${table}).`;
+  }
+  if (p.reasons.some((r) => r.includes("Explosives Code"))) {
+    return `${names} may be able to travel together: check the Australian Explosives Code first.`;
+  }
+  return `${names} may need a check against ADG Table 9.2 for their specific goods.`;
+}
+
+const MAX_HINTS = 4;
 
 // ---- Icons -----------------------------------------------------------------------
 
@@ -89,16 +131,6 @@ function Field({ id, label, error, hint, className = "", children }: FieldProps)
   );
 }
 
-function readText(file: File): Promise<string> {
-  if (typeof file.text === "function") return file.text();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ""));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsText(file);
-  });
-}
-
 const toNumber = (v: string): number | null => {
   if (v.trim() === "") return null;
   const n = Number(v);
@@ -118,22 +150,19 @@ interface Toast {
 
 // ---- Component -------------------------------------------------------------------------
 
-export default function FreightTable({ reference, rows, onRowsChange, errors, listErrors }: FreightTableProps) {
+export default function FreightTable({ reference, rows, onRowsChange, errors, listErrors, random }: FreightTableProps) {
   const units = useUnits();
   const uid = useId();
   const rootRef = useRef<HTMLDivElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   /** After a render, focus this row (by id) or row index, else the Add line button. */
   const pendingFocus = useRef<{ id?: string; index?: number; field?: string } | null>(null);
 
   const [toast, setToast] = useState<Toast | null>(null);
   const [toastPaused, setToastPaused] = useState(false);
-  const [csvOpen, setCsvOpen] = useState(false);
-  const [csvText, setCsvText] = useState("");
-  const [csvMode, setCsvMode] = useState<"append" | "replace">("append");
-
   const presets = useMemo(() => availablePresets(reference), [reference]);
-  const parsed = useMemo(() => (csvText.trim() ? parseCsv(csvText, reference) : null), [csvText, reference]);
+  const dgPairs = useMemo(() => checkAll(rows.map((row, index) => ({ row, index })), (x) => x.row.dg), [rows]);
+  const incompatible = dgPairs.filter((p) => p.status === "incompatible");
+  const toCheck = dgPairs.filter((p) => p.status === "check");
 
   // The toast hides after a few seconds, but not while the pointer or focus is on it.
   useEffect(() => {
@@ -212,49 +241,18 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
     showToast({ message: `Added ${preset.label}.`, undo: (current) => current.filter((r) => !ids.has(r.id)) });
   };
 
+  const addRandom = () => {
+    const previous = rows;
+    const added = randomFreight(reference, { random });
+    onRowsChange(added);
+    showToast({ message: `Replaced the list with ${plural(added.length, "random line")}.`, undo: () => previous });
+  };
+
   const undo = () => {
     if (!toast?.undo) return;
     if (toast.focusId) pendingFocus.current = { id: toast.focusId };
     onRowsChange(toast.undo(rows));
     setToast(null);
-  };
-
-  // ---- CSV ----
-  const closeCsv = () => {
-    setCsvOpen(false);
-    setCsvText("");
-  };
-
-  const importCsv = () => {
-    if (!parsed || parsed.rows.length === 0) return;
-    const previous = rows;
-    const added = parsed.rows;
-    const ids = new Set(added.map((r) => r.id));
-    onRowsChange(csvMode === "replace" ? added : [...rows, ...added]);
-    const skipped = new Set(parsed.problems.map((p) => p.line)).size;
-    showToast({
-      message: `${csvMode === "replace" ? "Replaced the list with" : "Added"} ${plural(added.length, "line")} from CSV.`
-        + (skipped ? ` Skipped ${plural(skipped, "line")} with problems.` : ""),
-      undo: csvMode === "replace" ? () => previous : (current) => current.filter((r) => !ids.has(r.id)),
-    });
-    closeCsv();
-  };
-
-  const onFile = async (file: File | undefined) => {
-    if (!file) return;
-    const text = await readText(file);
-    setCsvText(text);
-    setCsvOpen(true);
-    if (fileRef.current) fileRef.current.value = "";
-  };
-
-  const exportCsv = () => {
-    const url = URL.createObjectURL(new Blob([toCsv(rows)], { type: "text/csv" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "freight.csv";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
   // ---- Totals ----
@@ -266,10 +264,7 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
     return t;
   }, { pallets: 0, containers: 0, weight: 0 });
 
-  const csvPanelId = `${uid}-csv`;
-  const csvTextId = `${uid}-csv-text`;
   const presetsLabelId = `${uid}-presets`;
-  const csvRowsUnits = parsed?.rows.reduce((n, r) => n + (r.quantity ?? 0), 0) ?? 0;
 
   return (
     <div className="ft" ref={rootRef}>
@@ -278,6 +273,34 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
           {listErrors.map((e) => <li key={e}>{e}</li>)}
         </ul>
       )}
+
+      <div className="ft-dg-hints" role="status">
+        {incompatible.length > 0 && (
+          <div className="ft-dg-hint ft-dg-hint-error">
+            <AlertIcon size={18} className="ft-dg-hint-icon" />
+            <div className="ft-dg-hint-body">
+              <p className="ft-dg-hint-title">Dangerous goods that can't share a vehicle</p>
+              <ul>
+                {incompatible.slice(0, MAX_HINTS).map((p) => <li key={`${p.a.row.id}|${p.b.row.id}`}>{pairMessage(p)}</li>)}
+                {incompatible.length > MAX_HINTS && <li>And {plural(incompatible.length - MAX_HINTS, "more pair")}.</li>}
+              </ul>
+              <p className="ft-dg-hint-note">The plan will show this as a problem.</p>
+            </div>
+          </div>
+        )}
+        {toCheck.length > 0 && (
+          <div className="ft-dg-hint ft-dg-hint-check">
+            <InfoIcon size={18} className="ft-dg-hint-icon" />
+            <div className="ft-dg-hint-body">
+              <p className="ft-dg-hint-title">Dangerous goods to check</p>
+              <ul>
+                {toCheck.slice(0, MAX_HINTS).map((p) => <li key={`${p.a.row.id}|${p.b.row.id}`}>{pairMessage(p)}</li>)}
+                {toCheck.length > MAX_HINTS && <li>And {plural(toCheck.length - MAX_HINTS, "more pair")}.</li>}
+              </ul>
+            </div>
+          </div>
+        )}
+      </div>
 
       {rows.length === 0 ? (
         <div className="ft-empty">
@@ -299,6 +322,7 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
                   <h3 id={headingId} className="ft-row-title">
                     Line {i + 1}{row.label && <span className="ft-row-label">: {row.label}</span>}
                   </h3>
+                  <DgBadge dg={row.dg} />
                   {lineWeight != null && lineWeight > 0 && (
                     <span className="ft-row-total num" title="Line weight">{units.weight(lineWeight)}</span>
                   )}
@@ -438,65 +462,10 @@ export default function FreightTable({ reference, rows, onRowsChange, errors, li
         <button type="button" className="btn btn-primary" onClick={addLine} data-add-line>
           <PlusIcon />Add line
         </button>
-        <button type="button" className="btn" aria-expanded={csvOpen} aria-controls={csvPanelId}
-                onClick={() => (csvOpen ? closeCsv() : setCsvOpen(true))}>Paste CSV</button>
-        <button type="button" className="btn" onClick={() => fileRef.current?.click()}>Import file</button>
-        <input ref={fileRef} type="file" accept=".csv,text/csv" className="visually-hidden" tabIndex={-1}
-               aria-label="Import a CSV file" onChange={(ev) => void onFile(ev.target.files?.[0])} />
-        {rows.length > 0 && <button type="button" className="btn btn-ghost" onClick={exportCsv}>Export CSV</button>}
+        <button type="button" className="btn" onClick={addRandom}>
+          <span aria-hidden="true">🎲</span>Random freight
+        </button>
       </div>
-
-      {csvOpen && (
-        <div id={csvPanelId} className="ft-csv" role="region" aria-label="Import CSV">
-          <div className="field">
-            <label className="field-label" htmlFor={csvTextId}>Paste CSV</label>
-            <textarea id={csvTextId} className="input ft-csv-text" value={csvText} spellCheck={false}
-                      aria-describedby={`${csvTextId}-hint`}
-                      placeholder={"label,type,quantity,weight_kg,height_mm\nCartons,AU_STD,6,350,900"}
-                      onChange={(ev) => setCsvText(ev.target.value)} />
-            <span id={`${csvTextId}-hint`} className="field-hint">
-              Columns: {CSV_COLUMNS.join(", ")}. The header row is optional; yes/no for stackable and temp-controlled.
-            </span>
-          </div>
-
-          <div className="ft-csv-preview" role="status">
-            {parsed && (
-              parsed.rows.length
-                ? <p><strong>{plural(parsed.rows.length, "line")}</strong> ready to add ({plural(csvRowsUnits, "unit")}).</p>
-                : <p>No lines can be added yet.</p>
-            )}
-          </div>
-          {parsed && parsed.problems.length > 0 && (
-            <div className="ft-csv-problems">
-              <p className="small">
-                {plural(new Set(parsed.problems.map((p) => p.line)).size, "line")} can't be used:
-              </p>
-              <ul>
-                {parsed.problems.map((p, k) => <li key={k}>{p.message}</li>)}
-              </ul>
-            </div>
-          )}
-
-          <div className="ft-csv-footer">
-            <fieldset className="segmented">
-              <legend className="visually-hidden">Add the lines how</legend>
-              {([["append", "Append"], ["replace", "Replace"]] as const).map(([value, label]) => (
-                <label key={value}>
-                  <input type="radio" name={`${uid}-csv-mode`} value={value} checked={csvMode === value}
-                         onChange={() => setCsvMode(value)} />
-                  <span>{label}</span>
-                </label>
-              ))}
-            </fieldset>
-            <div className="ft-csv-buttons">
-              <button type="button" className="btn" onClick={closeCsv}>Cancel</button>
-              <button type="button" className="btn btn-primary" onClick={importCsv} disabled={!parsed?.rows.length}>
-                {csvMode === "replace" ? "Replace with" : "Add"} {plural(parsed?.rows.length ?? 0, "line")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {presets.length > 0 && (
         <div className="ft-presets" role="group" aria-labelledby={presetsLabelId}>
