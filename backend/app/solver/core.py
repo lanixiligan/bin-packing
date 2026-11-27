@@ -1,13 +1,11 @@
 """
-Shared helpers for multi-dimension packing: dimensions, units, usage and
-capacity checks. Every capacity check in the app goes through `exceeded()`,
-so the solver, the ops router and the plan editor agree on what "fits" means.
+Shared helpers for multi-dimension packing: dimensions, usage and capacity
+checks. Every capacity check goes through `exceeded()`.
 """
 
 from collections.abc import Iterable, Sequence
 
 from app import dg as dgrules
-from app.models import OrderLine
 from app.schemas import Capacity, FillPercent, PackUnit, UnitMisfit, Usage
 
 EPS = 1e-9  # float tolerance for capacity comparisons
@@ -24,27 +22,6 @@ def limited_dims(capacity: Capacity) -> list[tuple[str, str, float]]:
         if cap is not None:
             out.append((dim, attr, float(cap)))
     return out
-
-
-def expand_lines(lines: Iterable[OrderLine]) -> list[PackUnit]:
-    """One PackUnit per unit of quantity, ids 0..n-1, in line order.
-    Needs line.order loaded (it is, via selectin) for the order reference."""
-    units: list[PackUnit] = []
-    for line in lines:
-        for _ in range(line.quantity):
-            units.append(PackUnit(
-                id=len(units),
-                order_id=line.order_id,
-                order_reference=line.order.reference,
-                order_line_id=line.id,
-                item_name=line.item_name,
-                item_sku=line.item_sku,
-                weight_kg=line.unit_weight_kg,
-                volume_m3=line.unit_volume_m3,
-                pallets=line.unit_pallet_spaces,
-                dg=dgrules.parse(line.dg),
-            ))
-    return units
 
 
 def usage_of(units: Iterable[PackUnit]) -> Usage:
@@ -93,7 +70,7 @@ def dg_groups(units: Sequence[PackUnit]) -> tuple[list[int], set[tuple[int, int]
 
 
 def find_misfits(units: Sequence[PackUnit], capacity: Capacity) -> list[UnitMisfit]:
-    """Units that can't fit an empty vehicle of `capacity`, reported once per order line."""
+    """Units that can't fit an empty load of `capacity`, reported once per line."""
     seen: set[int] = set()
     out: list[UnitMisfit] = []
     for u in units:

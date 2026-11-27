@@ -1,7 +1,7 @@
 """
-The original stateless 1D bin packing demo: POST /api/solve (public).
-Owner: Agent B. Keep its request and response backward compatible (new fields
-are optional in the request and only added to the response).
+The stateless truck loading demo: POST /api/solve (public). New request
+fields stay optional and new response fields are only added, so older
+clients keep working.
 
 Dangerous goods: a shipment may carry a `dg_class` (or "food" / "fire_risk")
 and, with a class, up to 4 `subsidiary` hazards; incompatible shipments (ADG

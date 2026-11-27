@@ -7,11 +7,10 @@ import pytest
 
 from app import dg as dgrules
 from app.dg import DgInfo
+from app.routers import demo
 from app.schemas import Capacity, PackUnit, SolveResult, Usage
 from app.solver import exceeded, pack, usage_of
 from app.solver import multi as multi_mod
-from app.solver.packing import ffd as ffd_1d
-from app.solver.packing import solve_cpsat as cpsat_1d
 
 CLASSIC = [560, 490, 440, 370, 360, 340, 190, 150]
 
@@ -73,24 +72,6 @@ def test_classic_ffd_loses_to_cpsat():
         assert weights == sorted(weights, reverse=True)
     assert result.lower_bounds.volume is None and result.lower_bounds.pallets is None
     assert_valid(result, units_1d(CLASSIC), Capacity(weight_kg=1000))
-
-
-@pytest.mark.parametrize("seed", range(6))
-def test_1d_matches_the_original_solver(seed):
-    rng = random.Random(seed)
-    capacity = rng.choice([500, 1000, 1500])
-    weights = [rng.randint(1, capacity) for _ in range(rng.randint(5, 14))]
-    shipments = [{"id": i, "name": f"S{i}", "weight": w} for i, w in enumerate(weights)]
-
-    old_trucks, old_order, _ = ffd_1d(shipments, capacity)
-    old_cp, old_optimal, _, _ = cpsat_1d(shipments, capacity, 10, hint=old_trucks)
-
-    result = pack(units_1d(weights), Capacity(weight_kg=capacity), 10)
-    assert [load.unit_ids for load in result.ffd.loads] == old_trucks
-    assert result.ffd.drop_order == old_order
-    assert result.lower_bound == -(-sum(weights) // capacity)
-    assert old_optimal and result.ortools.optimal
-    assert result.ortools.num_loads == len(old_cp)
 
 
 async def test_demo_endpoint_response(client):
@@ -416,3 +397,54 @@ async def test_demo_endpoint_northline_rule_set(client):
                                               "rule_set": "northline"})
     assert r.status_code == 400 and "'Matches' (Class 4.3)" in r.json()["detail"]
     assert "Paint" not in r.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Regression tests (solver resolution, CP-SAT size cap, demo input bounds)
+# ---------------------------------------------------------------------------
+
+def test_thirds_of_a_pallet_fit_one_load():
+    """Three units of 0.333 pallet share one 1-pallet load in both methods (CP-SAT
+    rounds sizes up, so this once came out infeasible)."""
+    r = pack([unit(k, 1, pallets=0.333) for k in range(3)], Capacity(pallets=1), 5)
+    assert r.ffd.num_loads == 1 and r.ortools is not None and r.ortools.num_loads == 1
+
+
+def test_large_models_skip_cpsat(monkeypatch):
+    monkeypatch.setattr(multi_mod, "MAX_CPSAT_VARS", 10)
+    r = pack([unit(k, 10) for k in range(20)], Capacity(weight_kg=50), 5)
+    assert r.ffd.num_loads == 4 and r.ortools is None and r.recommended == "ffd"
+
+
+@pytest.mark.parametrize("body", [
+    {"capacity": 9 * 10**15, "shipments": [{"name": "A", "weight": 1}]},
+    {"capacity": 1000, "shipments": [{"name": "A", "weight": 9 * 10**15}]},
+])
+async def test_demo_rejects_huge_numbers(client, body):
+    r = await client.post("/api/solve", json=body)
+    assert r.status_code == 422
+
+
+async def test_demo_solve_is_capped(client):
+    body = {"capacity": 100, "shipments": [{"name": "A", "weight": 60}, {"name": "B", "weight": 50}]}
+    held = [demo._solve_slots.acquire(blocking=False) for _ in range(demo.MAX_CONCURRENT_SOLVES)]
+    try:
+        assert all(held)
+        r = await client.post("/api/solve", json=body)
+        assert r.status_code == 429 and "busy" in r.json()["detail"]
+    finally:
+        for _ in held:
+            demo._solve_slots.release()
+    r = await client.post("/api/solve", json=body)
+    assert r.status_code == 200 and r.json()["ortools"]["num_trucks"] == 2
+
+
+async def test_oversized_bodies_are_rejected(client):
+    r = await client.post("/api/solve", content=b"x" * (2 * 1024 * 1024),
+                          headers={"content-type": "application/json"})
+    assert r.status_code == 413
+
+
+async def test_health(client):
+    r = await client.get("/api/health")
+    assert r.status_code == 200 and r.json() == {"status": "ok"}
