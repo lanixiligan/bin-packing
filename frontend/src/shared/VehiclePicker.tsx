@@ -1,23 +1,19 @@
-// Step 1: pick a vehicle as visual cards (native radios, so arrow keys and labels just work), or
-// "Suggest one"; then the body type for that vehicle.
+// Pick a vehicle as visual cards (native radios, so arrow keys and labels just work), then the
+// body type for that vehicle.
 import { useId } from "react";
-import type { BodyType, ReferenceData, VehicleConfig } from "../api/types.ts";
-import { SUGGEST } from "../api/types.ts";
-import { useUnits } from "../lib/units.ts";
+import type { BodyType, ReferenceData, VehicleConfig } from "./api/types.ts";
 import "./VehiclePicker.css";
+
+const kg = new Intl.NumberFormat("en-AU", { maximumFractionDigits: 0 });
 
 export interface VehiclePickerProps {
   reference: ReferenceData;
-  /** A VehicleConfig id, or SUGGEST ("suggest"). */
+  /** A VehicleConfig id. */
   vehicleId: string;
   /** null = the vehicle's default body. */
   bodyType: string | null;
   onVehicleChange(vehicleId: string): void;
   onBodyChange(bodyType: string | null): void;
-  /** In suggest mode, the vehicle the last plan picked (to highlight it). */
-  suggestedVehicleId?: string | null;
-  /** Offer the "Suggest one" card (default true; the bin packing demo always needs a vehicle). */
-  allowSuggest?: boolean;
 }
 
 // ---- Helpers -------------------------------------------------------------------
@@ -86,16 +82,6 @@ function VehicleIcon({ category }: { category: VehicleConfig["category"] }) {
   );
 }
 
-function SparkIcon() {
-  return (
-    <svg className="vp-icon vp-icon-suggest" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" fill="none" stroke="currentColor"
-            strokeWidth="1.6" strokeLinejoin="round" />
-      <path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" fill="currentColor" />
-    </svg>
-  );
-}
-
 function CheckIcon() {
   return (
     <svg className="vp-check" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
@@ -109,15 +95,12 @@ function CheckIcon() {
 // ---- Component ---------------------------------------------------------------------
 
 export default function VehiclePicker({
-  reference, vehicleId, bodyType, onVehicleChange, onBodyChange, suggestedVehicleId = null, allowSuggest = true,
+  reference, vehicleId, bodyType, onVehicleChange, onBodyChange,
 }: VehiclePickerProps) {
-  const units = useUnits();
   const uid = useId();
   const name = `vehicle-${uid}`;
   const vehicles = sortVehicles(reference.vehicles);
-  const suggestMode = vehicleId === SUGGEST;
-  const selected = suggestMode ? null : reference.vehicles[vehicleId] ?? null;
-  const suggested = suggestMode && suggestedVehicleId ? reference.vehicles[suggestedVehicleId] ?? null : null;
+  const selected = reference.vehicles[vehicleId] ?? null;
   const bodies = selected ? bodiesFor(selected, reference) : [];
   const bodyId = selected ? (bodyType ?? selected.default_body) : "";
   const body = bodyId ? reference.bodies[bodyId] : undefined;
@@ -129,33 +112,10 @@ export default function VehiclePicker({
       <fieldset className="vp-fieldset">
         <legend className="visually-hidden">Vehicle</legend>
         <div className="vp-grid">
-          {allowSuggest && (
-            <label className="vp-option vp-option-suggest">
-              <input type="radio" className="vp-radio" name={name} value={SUGGEST} checked={suggestMode}
-                     onChange={() => onVehicleChange(SUGGEST)} />
-              <span className="vp-card">
-                <span className="vp-suggest-row">
-                  <SparkIcon />
-                  <span className="vp-suggest-text">
-                    <span className="vp-name">Suggest one:</span>{" "}
-                    <span className="vp-meta">the smallest vehicle that fits</span>
-                  </span>
-                  <CheckIcon />
-                </span>
-                {suggested && (
-                  <span className="vp-badges">
-                    <span className="badge badge-success">Picked: {suggested.name}</span>
-                  </span>
-                )}
-              </span>
-            </label>
-          )}
-
           {vehicles.map((v) => {
             const combos = containerSummary(v);
-            const isSuggested = suggestMode && v.id === suggestedVehicleId;
             return (
-              <label key={v.id} className={`vp-option${isSuggested ? " vp-option-suggested" : ""}`}>
+              <label key={v.id} className="vp-option">
                 <input type="radio" className="vp-radio" name={name} value={v.id} checked={vehicleId === v.id}
                        onChange={() => onVehicleChange(v.id)} />
                 <span className="vp-card">
@@ -168,11 +128,10 @@ export default function VehiclePicker({
                     {v.pallet_spaces} pallet spaces
                     <span className="visually-hidden">,</span>
                     <br />
-                    {units.weight(v.max_payload_kg)} payload
+                    {kg.format(v.max_payload_kg)} kg payload
                   </span>
-                  {(isSuggested || combos || v.route_restricted || v.configurable) && (
+                  {(combos || v.route_restricted || v.configurable) && (
                     <span className="vp-badges">
-                      {isSuggested && <span className="badge badge-success">Suggested</span>}
                       {combos && (
                         <span className="badge vp-badge-container" title="Containers it can carry">
                           <span className="visually-hidden">Containers: </span>{combos}
@@ -191,13 +150,7 @@ export default function VehiclePicker({
         </div>
       </fieldset>
 
-      {suggestMode ? (
-        <p className="vp-details subtle">
-          {suggested
-            ? <>The planner picked the <strong>{suggested.name}</strong>, on its default body. Choose a vehicle to change the body type.</>
-            : "Each vehicle is tried on its default body, smallest first."}
-        </p>
-      ) : selected ? (
+      {selected ? (
         <div className="vp-details">
           {bodies.length > 0 && (
             <div className="field">

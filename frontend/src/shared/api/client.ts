@@ -1,6 +1,6 @@
-// The load planner API: GET /api/reference and POST /api/plan (Vite forwards /api to the backend).
+// The API client: GET /api/reference (Vite forwards /api to the backend).
 
-import type { PlanRequest, PlanResult, ReferenceData } from "./types.ts";
+import type { ReferenceData } from "./types.ts";
 
 /** An API error with a message fit to show the user. */
 export class ApiError extends Error {
@@ -22,8 +22,8 @@ async function errorMessage(res: Response): Promise<string> {
   } catch {
     // not JSON
   }
-  if (res.status >= 500) return "The planner hit a problem on the server. Try again in a moment.";
-  return `The planner couldn't handle that request (${res.status}).`;
+  if (res.status >= 500) return "The demo hit a problem on the server. Try again in a moment.";
+  return `The demo couldn't handle that request (${res.status}).`;
 }
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -32,7 +32,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     res = await fetch(path, init);
   } catch (err) {
     if ((err as Error).name === "AbortError") throw err;
-    throw new ApiError("Can't reach the planner. Check that the API is running.", 0);
+    throw new ApiError("Can't reach the demo. Check that the API is running.", 0);
   }
   if (!res.ok) throw new ApiError(await errorMessage(res), res.status);
   return res.json() as Promise<T>;
@@ -40,13 +40,4 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export function fetchReference(signal?: AbortSignal): Promise<ReferenceData> {
   return call<ReferenceData>("/api/reference", { signal });
-}
-
-export function postPlan(req: PlanRequest, signal?: AbortSignal): Promise<PlanResult> {
-  return call<PlanResult>("/api/plan", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
-    signal,
-  });
 }

@@ -4,7 +4,7 @@
 # depend on the builder and the deck height. Every value can be overridden per request or per
 # deployment (see `load_reference(overrides)`).
 #
-# `in_scope=False` bodies are listed for reference only; the planner refuses them.
+# `in_scope=False` bodies are listed for reference only; the demo refuses them.
 
 from app.reference.schemas import BodyType
 

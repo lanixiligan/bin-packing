@@ -1,6 +1,0 @@
-.export-menu { flex: none; display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
-
-/* Narrow screens: stack the two buttons so the step title keeps its room. */
-@media (max-width: 600px) {
-  .export-menu { flex-direction: column; align-items: stretch; }
-}

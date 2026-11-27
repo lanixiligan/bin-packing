@@ -2,7 +2,7 @@
 // Run: node --test src/demo/components/vehicle.test.mjs
 import assert from "node:assert/strict";
 import test from "node:test";
-import reference from "../../__fixtures__/reference.json" with { type: "json" };
+import reference from "../../shared/test/reference.json" with { type: "json" };
 import { demoReference, describeDecks, vehicleDecks, vehicleFit, vehicleLine } from "./vehicle.ts";
 
 test("the demo offers no configurable or route-restricted vehicles, and only pallet bodies", () => {

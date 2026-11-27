@@ -1,9 +1,12 @@
 """
-The stateless truck loading demo: POST /api/solve (public).
+The stateless truck loading demo: GET /api/reference and POST /api/solve (public).
+
+GET /api/reference returns all reference data (pallets, bodies, vehicles); the frontend
+reads its options from here and keeps no copy of its own.
 
 Shipments have real sizes (pallets of a reference pallet type, or loose items
 with their own length x width) and are packed onto the cargo decks of a vehicle
-from the planner's reference data (app/reference): each footprint is placed on a
+from the reference data (app/reference): each footprint is placed on a
 deck, stackable shipments with the same footprint may form columns, and the
 fewest trucks of that vehicle are used. The request and response models, with
 the coordinate conventions, are in app/demo_models.py.
@@ -32,7 +35,7 @@ from app.demo_models import (
     TruckCapacity,
     TruckOut,
 )
-from app.reference import load_reference
+from app.reference import ReferenceData, load_reference
 from app.solver import DeckSpec, Item, Truck, loose_key, pallet_key
 from app.solver import solve as solve_items
 
@@ -46,6 +49,11 @@ _solve_slots = threading.BoundedSemaphore(MAX_CONCURRENT_SOLVES)
 DEMO_EXPLOSIVE = "1.4S"
 
 router = APIRouter()
+
+
+@router.get("/reference", response_model=ReferenceData, tags=["demo"])
+def reference() -> ReferenceData:
+    return load_reference()
 
 
 def demo_dg(value: str | None, subsidiary: list[str] | tuple[str, ...] = ()) -> dgrules.DgInfo | None:

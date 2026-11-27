@@ -5,8 +5,8 @@
    capacity.ts), and --block-sep, the hairline between stacked blocks. */
 
 /* CSS @import, not a JS import: the planner bundle keeps its own copy and its CSS order. */
-@import "../planner/styles/tokens.css";
-@import "../planner/styles/base.css";
+@import "../shared/styles/tokens.css";
+@import "../shared/styles/base.css";
 
 :root {
   --block-text: #0f172a;

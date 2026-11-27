@@ -3,7 +3,7 @@
 // its cargo decks with the inside height, as the solver sees them.
 //
 // Pure functions only (no React, no DOM), so they can be unit-tested with node.
-import type { ReferenceData, VehicleConfig } from "../../planner/api/types.ts";
+import type { ReferenceData, VehicleConfig } from "../../shared/api/types.ts";
 import { metres } from "./sizes.ts";
 
 export const DEFAULT_VEHICLE = "RIGID_MEDIUM"; // backend/app/demo_models.py DEFAULT_VEHICLE

@@ -1,6 +1,5 @@
-// The page header, in the same pattern as the load planner's (src/planner/PlannerApp.tsx):
-// logo mark, title, subtitle, a link to the planner and the Auto / Light / Dark theme
-// toggle (useTheme.js).
+// The page header: logo mark, title, subtitle and the Auto / Light / Dark theme toggle
+// (useTheme.js).
 
 const THEMES = [["system", "Auto"], ["light", "Light"], ["dark", "Dark"]];
 
@@ -21,7 +20,6 @@ export default function DemoHeader({ theme, onTheme }) {
           </div>
         </div>
         <div className="header-controls">
-          <a className="btn btn-ghost btn-sm" href="/">Load planner <span aria-hidden="true">→</span></a>
           <fieldset className="segmented" aria-label="Colour theme">
             {THEMES.map(([value, label]) => (
               <label key={value}>

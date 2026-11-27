@@ -1,7 +1,7 @@
 """
 Request and response models for the bin packing demo, POST /api/solve.
 
-Shipments have real sizes and the trucks are a vehicle from the planner's
+Shipments have real sizes and the trucks are a vehicle from the reference data's
 reference data (app/reference), so the solver packs footprints on each deck
 instead of counting pallet spaces.
 

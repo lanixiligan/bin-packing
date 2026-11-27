@@ -204,7 +204,7 @@ def test_restricted_vehicles_have_permit_notes():
 
 
 # ---------------------------------------------------------------------------
-# Static beam sanity check (inline, independent of app.planner.axles)
+# Static beam sanity check (inline)
 # ---------------------------------------------------------------------------
 
 def _axle_loads(v: VehicleConfig, kg_per_space: float) -> dict[str, float]:

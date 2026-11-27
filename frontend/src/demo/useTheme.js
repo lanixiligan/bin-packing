@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 
-// Auto / Light / Dark, as in the load planner: data-theme on <html> (none = follow the
-// system), remembered under the planner's key so both pages keep the same choice.
+// Auto / Light / Dark: data-theme on <html> (none = follow the system), remembered per browser.
 const THEME_KEY = "load-planner.theme";
 
 export function useTheme() {

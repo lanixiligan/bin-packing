@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import ShipmentTable from "./components/ShipmentTable.jsx";
 import ResultPanel from "./components/ResultPanel.jsx";
 import Summary from "./components/Summary.jsx";
-import VehiclePicker from "../planner/components/VehiclePicker.tsx";
-import { fetchReference } from "../planner/api/client.ts";
+import VehiclePicker from "../shared/VehiclePicker.tsx";
+import { fetchReference } from "../shared/api/client.ts";
 import { checkAll } from "../dg/rules.ts";
 import { demoDg, MAX_SHIPMENTS, RANDOM_COUNT, randomShipments, toRequest } from "./shipments.js";
 import { fitProblems, inputProblem, KNOWN_PALLETS, volumeOf } from "./components/sizes.ts";
@@ -316,7 +316,6 @@ export default function App() {
                     setBodyType(b);
                     clearResult();
                   }}
-                  allowSuggest={false}
                 />
               ) : (
                 <p className="muted small">

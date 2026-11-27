@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./DemoApp.jsx";
-import { reference } from "../planner/test/fixtures.ts";
+import { reference } from "../shared/test/fixtures.ts";
 import solved from "./__fixtures__/solve-sized.json";
 
 const ok = (data) => ({ ok: true, status: 200, json: async () => data });
