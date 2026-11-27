@@ -1,41 +1,31 @@
-// 3D view of one method's trucks. Each truck is a trailer with a cab. With
-// weight only, each shipment is a crate whose LENGTH is proportional to its
-// weight, so a crate row that reaches the back door means a full truck (only
-// weight counts, the crate shape is just a picture of it).
+// 3D view of the trucks, built from the solve response exactly as returned: each truck is the
+// chosen vehicle, its cargo decks laid end to end behind the cab at their real length and width
+// (a B-double has two), and every shipment is a box at its placement (x along the deck from the
+// cab end, y across from the driver's side, z up) with its real size. Pallet loads stand on a
+// thin wooden base; stacked shipments sit on the one below.
 //
-// Trucks with a pallet limit, or carrying shipments on pallets, are drawn at
-// real proportions instead (deck.ts): the trailer is as long as its pallet deck
-// (1165 mm pallets, two across a 2.4 m deck), each pallet is a wooden base with
-// its load on top, empty slots are outlined on the floor, and pallets over the
-// limit hang past the rear doors.
-//
-// Loaded lazily from ResultPanel so three.js is only downloaded when the user
-// switches to 3D.
+// Loaded lazily from ResultPanel so three.js is only downloaded when the user switches to 3D.
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Vector3 } from "three";
 import { Edges, OrbitControls } from "@react-three/drei";
-import { colorFor, describeSize, describeUsage, dgTextOf, limitedDims, sizeOf, truckFill } from "./capacity.ts";
-import { describeDeck, layoutPallets, LOAD_MM, PALLET_MM, ROW_GAP_MM, truckDeck, usesDeck } from "./deck.ts";
+import { colorFor } from "./capacity.ts";
+import { DECK_GAP_MM, stackColumns } from "./deck.ts";
+import { describeItem, metres } from "./sizes.ts";
 import { REDUCED_MOTION, useDarkTheme, useMediaQuery } from "../useMediaQuery.js";
 
-// Scene units (roughly metres, scaled down).
-const L = 4; // trailer length = 100% of capacity (crate mode)
-const W = 1.5; // trailer width
-const H = 1.3; // trailer height
-const FLOOR = 0.62; // trailer floor height above the ground
+// Scene units per metre (a 2.4 m deck is 1.5 units wide).
+const S = 0.625;
+const mm = (n) => (n / 1000) * S;
+const FLOOR = 0.62; // deck floor height above the ground
 const CAB = 1.1; // cab length
-const GAP = 0.03; // space between crates
+const GAP = 0.012; // drawn gap between neighbouring boxes
+const PALLET_BASE_MM = 144; // height of a pallet's wooden base
 const LABEL_ROOM = 2.2; // empty ground in front of the cab, where the label goes
-const ROW_SPACING = W + 1.3;
+const ROW_SPACING = mm(2500) + 1.3;
 // Shift trucks right so truck + cab + label is centred on its grid slot.
 const X_SHIFT = (CAB + LABEL_ROOM) / 2;
-// Deck mode: scene units per metre, so the 2.4 m deck is the trailer width W.
-const S = W / 2.4;
-const mm = (n) => (n / 1000) * S;
-const PALLET_BASE = mm(144); // height of a pallet's wooden base
-const SLOT_GAP = 0.02;
-/** Grid column spacing for trailers up to `len` long (plus cab and label). */
+/** Grid column spacing for trucks `len` long (plus cab and label). */
 const colSpacing = (len) => len + CAB + LABEL_ROOM + 1;
 /** Label anchor (right edge of the label), just in front of the cab. */
 const labelX = (len) => -len / 2 - CAB - 0.3;
@@ -45,8 +35,8 @@ const DROP_SECONDS = 0.35;
 
 // Slate neutrals and the teal accent of the planner's tokens (src/planner/styles/tokens.css).
 const PALETTE = {
-  light: { ground: "#e2e8f0", frame: "#94a3b8", floor: "#cbd5e1", cab: "#0f766e", wheel: "#1e293b", active: "#0f172a", warn: "#b45309", pallet: "#b08a5a" },
-  dark: { ground: "#1e293b", frame: "#64748b", floor: "#334155", cab: "#0d9488", wheel: "#020617", active: "#ffffff", warn: "#fbbf24", pallet: "#8a6a42" },
+  light: { ground: "#e2e8f0", frame: "#94a3b8", floor: "#cbd5e1", cab: "#0f766e", wheel: "#1e293b", active: "#0f172a", pallet: "#b08a5a" },
+  dark: { ground: "#1e293b", frame: "#64748b", floor: "#334155", cab: "#0d9488", wheel: "#020617", active: "#ffffff", pallet: "#8a6a42" },
 };
 
 /** Columns and rows of the parking grid: lanes front-to-back, up to 3 columns. */
@@ -63,19 +53,24 @@ function slot(i, n, spacing) {
   return [(col - (cols - 1) / 2) * spacing + X_SHIFT, 0, (row - (rows - 1) / 2) * ROW_SPACING];
 }
 
-/** Deck mode for a truck: its deck and pallet layout, or null for the crate view. */
-function deckOf(truck, capacity) {
-  if (!usesDeck(truck.shipments, capacity)) return null;
-  const deck = truckDeck(truck.shipments, capacity);
-  const layout = layoutPallets(truck.shipments, deck);
-  return { deck, layout, len: mm(deck.lengthMm), over: layout.pieces.some((p) => p.over) };
+/**
+ * The vehicle's decks laid out along the truck, in scene units: each deck's centre x (the
+ * truck centred on 0, cab end at -len/2), length, width and inside height.
+ */
+function layoutDecks(decks) {
+  const totalMm = decks.reduce((s, d) => s + d.length_mm, 0) + DECK_GAP_MM * Math.max(0, decks.length - 1);
+  const len = mm(totalMm);
+  let start = -len / 2;
+  const out = decks.map((d) => {
+    const box = { ...d, x0: start, cx: start + mm(d.length_mm) / 2, len: mm(d.length_mm), w: mm(d.width_mm), h: mm(d.height_mm) };
+    start += mm(d.length_mm + DECK_GAP_MM);
+    return box;
+  });
+  return { len, decks: out, byId: new Map(out.map((d) => [d.id, d])) };
 }
 
-/**
- * A crate (crate mode) or a pallet with its load (deck mode, `base` > 0),
- * centred at (x, z) on the trailer floor. `size` is the load box [x, y, z].
- */
-function Crate({ shipment, x, z = 0, size, base = 0, over = false, colors, activeId, onHover, animate }) {
+/** A shipment's box: pallet base (pallets only) and load, dropping in when `animate`. */
+function Crate({ shipment, x, z, bottom, size, base, colors, activeIds, onHover, animate }) {
   const ref = useRef();
   const start = useRef(null);
 
@@ -92,9 +87,10 @@ function Crate({ shipment, x, z = 0, size, base = 0, over = false, colors, activ
     if (t < 1) state.invalidate();
   });
 
-  const active = shipment.id === activeId;
-  const dim = activeId != null && !active;
+  const active = activeIds?.includes(shipment.id) ?? false;
+  const dim = activeIds != null && !active;
   const [lx, ly, lz] = size;
+  const load = ly - base;
 
   return (
     <group
@@ -102,7 +98,7 @@ function Crate({ shipment, x, z = 0, size, base = 0, over = false, colors, activ
       position={[x, animate ? DROP_HEIGHT : 0, z]}
       onPointerOver={(e) => {
         e.stopPropagation();
-        onHover(shipment.id);
+        onHover([shipment.id]);
       }}
       onPointerOut={(e) => {
         e.stopPropagation();
@@ -110,13 +106,13 @@ function Crate({ shipment, x, z = 0, size, base = 0, over = false, colors, activ
       }}
     >
       {base > 0 && (
-        <mesh position={[0, FLOOR + base / 2, 0]} castShadow={!dim}>
+        <mesh position={[0, FLOOR + bottom + base / 2, 0]} castShadow={!dim}>
           <boxGeometry args={[lx, base, lz]} />
           <meshStandardMaterial color={colors.pallet} roughness={0.95} transparent depthWrite={!dim} opacity={dim ? 0.25 : 1} />
         </mesh>
       )}
-      <mesh position={[0, FLOOR + base + ly / 2, 0]} castShadow={!dim}>
-        <boxGeometry args={[lx, ly, lz]} />
+      <mesh position={[0, FLOOR + bottom + base + load / 2, 0]} castShadow={!dim}>
+        <boxGeometry args={[lx, load, lz]} />
         <meshStandardMaterial
           color={colorFor(shipment.id)}
           roughness={0.75}
@@ -127,11 +123,7 @@ function Crate({ shipment, x, z = 0, size, base = 0, over = false, colors, activ
           emissive={active ? colorFor(shipment.id) : "#000000"}
           emissiveIntensity={active ? 0.35 : 0}
         />
-        <Edges
-          color={active ? colors.active : over ? colors.warn : "#000000"}
-          transparent
-          opacity={active || over ? 1 : dim ? 0.08 : 0.25}
-        />
+        <Edges color={active ? colors.active : "#000000"} transparent opacity={active ? 1 : dim ? 0.08 : 0.25} />
       </mesh>
     </group>
   );
@@ -146,150 +138,85 @@ function Wheel({ x, z, colors }) {
   );
 }
 
-const isMulti = (cap) => typeof cap === "object" && cap !== null;
-const truckName = (t) => `Truck ${t.truck}`;
-
-/** Fill and state of a truck at this point of the drop animation. */
-function truckStatus(truck, capacity, step, dropIndex, activeId) {
-  const cap = capacity;
-  const d = deckOf(truck, capacity);
-  const loose = d && d.layout.loose.length ? ` · +${d.layout.loose.length} loose` : "";
-  if (isMulti(cap)) {
-    const f = truckFill(truck, cap, step, dropIndex);
-    const over = f.over || Boolean(d?.over);
-    const dims = limitedDims(cap)
-      .map((x) => `${x.short} ${Math.floor(100 * (f.usage[x.field] / cap[x.field]) + 1e-9)}%`)
-      .join(" · ");
-    return {
-      fill: f.fill,
-      done: f.done,
-      holdsActive: activeId != null && truck.shipments.some((s) => s.id === activeId),
-      sub: !f.done ? "loading…" : `${over ? "⚠ over capacity · " : ""}${dims}${loose}`,
-      over,
-    };
-  }
-  const visible = truck.shipments.filter((s) => dropIndex[s.id] < step);
-  const load = visible.reduce((sum, s) => sum + s.weight, 0);
-  const done = visible.length === truck.shipments.length;
+/** A shipment's box in truck coordinates, from its placement on its deck. */
+function boxOf(s, layout) {
+  const p = s.placement;
+  const d = layout.byId.get(p.deck_id) ?? layout.decks[0];
+  const height = mm(p.height_mm);
   return {
-    fill: Math.floor((100 * load) / capacity), // floor: 100% only when completely full
-    done,
-    holdsActive: activeId != null && truck.shipments.some((s) => s.id === activeId),
-    sub: done ? `${truck.empty} kg free${loose}` : "loading…",
-    over: Boolean(d?.over),
+    x: d.x0 + mm(p.x_mm + p.length_mm / 2),
+    // y runs from the driver's (left) side; facing the cab end (-x), left is +z.
+    z: d.w / 2 - mm(p.y_mm + p.width_mm / 2),
+    bottom: mm(p.z_mm),
+    size: [Math.max(0.02, mm(p.length_mm) - GAP), height, Math.max(0.02, mm(p.width_mm) - GAP)],
+    base: s.kind === "pallet" ? Math.min(mm(PALLET_BASE_MM), height / 2) : 0,
   };
 }
 
-/** Crate mode (`capacity` in kg): crates loaded from the cab end towards the back door, in list order. */
-function crateLayout(truck, capacity) {
-  let offset = -L / 2;
-  return truck.shipments.map((s) => {
-    const length = Math.min(s.weight / capacity, 1) * L;
-    const x = offset + length / 2;
-    offset += length;
-    return { key: s.id, s, x, z: 0, size: [Math.max(0.02, length - GAP), H - 0.1, W - 0.14], base: 0, over: false };
-  });
-}
+function TruckModel({ truck, position, layout, step, dropIndex, colors, activeIds, onHover, animate }) {
+  const holdsActive = activeIds != null && truck.shipments.some((s) => activeIds.includes(s.id));
+  const frameColor = holdsActive ? colors.active : colors.frame;
+  const { len, decks } = layout;
+  const first = decks[0];
 
-/** Deck mode: one pallet (or part of one) per layout piece, at real size. */
-function palletLayout(truck, { deck, layout }, len) {
-  const front = -len / 2;
-  const margin = (deck.widthMm - deck.across * PALLET_MM) / (deck.across + 1);
-  const byId = new Map(truck.shipments.map((s) => [s.id, s]));
-  return layout.pieces.map((p) => {
-    const s = byId.get(p.id);
-    const startMm = ROW_GAP_MM + p.row * (PALLET_MM + ROW_GAP_MM) + p.from * PALLET_MM;
-    const lengthMm = (p.to - p.from) * PALLET_MM;
-    const zMm = margin + p.col * (PALLET_MM + margin) + PALLET_MM / 2;
-    const loadH = Math.min(H - PALLET_BASE - 0.04, mm(LOAD_MM));
-    return {
-      key: `${p.id}-${p.slot}-${p.from}`,
-      s,
-      x: front + mm(startMm + lengthMm / 2),
-      z: -W / 2 + mm(zMm),
-      size: [Math.max(0.02, mm(lengthMm) - SLOT_GAP), loadH, mm(PALLET_MM) - SLOT_GAP],
-      base: PALLET_BASE,
-      over: p.over,
-    };
-  });
-}
-
-/** Faint outlines of the deck's pallet slots on the trailer floor. */
-function SlotOutlines({ deck, len, colors }) {
-  const margin = (deck.widthMm - deck.across * PALLET_MM) / (deck.across + 1);
-  return Array.from({ length: deck.slots }, (_, i) => {
-    const row = Math.floor(i / deck.across);
-    const col = i % deck.across;
-    const x = -len / 2 + mm(ROW_GAP_MM + row * (PALLET_MM + ROW_GAP_MM) + PALLET_MM / 2);
-    const z = -W / 2 + mm(margin + col * (PALLET_MM + margin) + PALLET_MM / 2);
-    return (
-      <mesh key={i} position={[x, FLOOR + 0.003, z]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[mm(PALLET_MM) - SLOT_GAP, mm(PALLET_MM) - SLOT_GAP]} />
-        <meshBasicMaterial color={colors.frame} transparent opacity={0.18} depthWrite={false} />
-        <Edges color={colors.frame} transparent opacity={0.6} />
-      </mesh>
-    );
-  });
-}
-
-function TruckModel({ truck, position, capacity, step, dropIndex, colors, activeId, onHover, animate, maxLen }) {
-  const { holdsActive, over } = truckStatus(truck, capacity, step, dropIndex, activeId);
-  const frameColor = holdsActive ? colors.active : over ? colors.warn : colors.frame;
-  const d = deckOf(truck, capacity);
-  const len = d ? d.len : L;
-  const crates = d ? palletLayout(truck, d, len) : crateLayout(truck, capacity);
-
-  // Every cab sits at the same x (-maxLen / 2), so labels line up; trailers
-  // of different lengths reach back by their own length.
   return (
-    <group position={[position[0] + (len - maxLen) / 2, position[1], position[2]]}>
-      {/* trailer floor and see-through box */}
-      <mesh position={[0, FLOOR - 0.04, 0]} receiveShadow castShadow>
-        <boxGeometry args={[len, 0.08, W]} />
-        <meshStandardMaterial color={colors.floor} roughness={0.9} />
-      </mesh>
-      <mesh position={[0, FLOOR + H / 2, 0]}>
-        <boxGeometry args={[len, H, W]} />
-        <meshStandardMaterial color={colors.frame} transparent opacity={0.07} depthWrite={false} />
-        <Edges color={frameColor} />
-      </mesh>
-
-      {/* cab */}
-      <mesh position={[-len / 2 - CAB / 2 - 0.08, FLOOR + 0.45, 0]} castShadow>
-        <boxGeometry args={[CAB, 0.9, W - 0.1]} />
-        <meshStandardMaterial color={colors.cab} roughness={0.6} />
-      </mesh>
-      <mesh position={[-len / 2 - CAB - 0.085, FLOOR + 0.6, 0]}>
-        <boxGeometry args={[0.02, 0.35, W - 0.3]} />
-        <meshStandardMaterial color="#9fc3e8" roughness={0.2} metalness={0.3} />
-      </mesh>
-
-      {[-len / 2 - CAB / 2, -len / 2 + 0.7, len / 2 - 0.9, len / 2 - 0.3].map((x) => (
-        <group key={x}>
-          <Wheel x={x} z={W / 2 - 0.12} colors={colors} />
-          <Wheel x={x} z={-W / 2 + 0.12} colors={colors} />
+    <group position={position}>
+      {decks.map((d, i) => (
+        <group key={d.id}>
+          {/* deck floor and see-through load space up to the inside height */}
+          <mesh position={[d.cx, FLOOR - 0.04, 0]} receiveShadow castShadow>
+            <boxGeometry args={[d.len, 0.08, d.w]} />
+            <meshStandardMaterial color={colors.floor} roughness={0.9} />
+          </mesh>
+          <mesh position={[d.cx, FLOOR + d.h / 2, 0]}>
+            <boxGeometry args={[d.len, d.h, d.w]} />
+            <meshStandardMaterial color={colors.frame} transparent opacity={0.07} depthWrite={false} />
+            <Edges color={frameColor} />
+          </mesh>
+          {i > 0 && (
+            <mesh position={[d.x0 - mm(DECK_GAP_MM) / 2, FLOOR - 0.1, 0]}>
+              <boxGeometry args={[mm(DECK_GAP_MM), 0.06, 0.2]} />
+              <meshStandardMaterial color={colors.wheel} roughness={0.9} />
+            </mesh>
+          )}
+          {[d.x0 + d.len - 0.9, d.x0 + d.len - 0.3, ...(i === 0 ? [d.x0 + 0.7] : [])].map((x) => (
+            <group key={x}>
+              <Wheel x={x} z={d.w / 2 - 0.12} colors={colors} />
+              <Wheel x={x} z={-d.w / 2 + 0.12} colors={colors} />
+            </group>
+          ))}
         </group>
       ))}
 
-      {d && <SlotOutlines deck={d.deck} len={len} colors={colors} />}
+      {/* cab */}
+      <mesh position={[-len / 2 - CAB / 2 - 0.08, FLOOR + 0.45, 0]} castShadow>
+        <boxGeometry args={[CAB, 0.9, first.w - 0.1]} />
+        <meshStandardMaterial color={colors.cab} roughness={0.6} />
+      </mesh>
+      <mesh position={[-len / 2 - CAB - 0.085, FLOOR + 0.6, 0]}>
+        <boxGeometry args={[0.02, 0.35, first.w - 0.3]} />
+        <meshStandardMaterial color="#9fc3e8" roughness={0.2} metalness={0.3} />
+      </mesh>
+      <group>
+        <Wheel x={-len / 2 - CAB / 2} z={first.w / 2 - 0.12} colors={colors} />
+        <Wheel x={-len / 2 - CAB / 2} z={-first.w / 2 + 0.12} colors={colors} />
+      </group>
 
-      {crates.map(({ key, s, x, z, size, base, over: pieceOver }) =>
-        dropIndex[s.id] < step ? (
+      {truck.shipments.map((s) => {
+        if (!(dropIndex[s.id] < step)) return null;
+        const b = boxOf(s, layout);
+        return (
           <Crate
-            key={key}
+            key={s.id}
             shipment={s}
-            x={x}
-            z={z}
-            size={size}
-            base={base}
-            over={pieceOver}
+            {...b}
             colors={colors}
-            activeId={activeId}
+            activeIds={activeIds}
             onHover={onHover}
             animate={animate}
           />
-        ) : null
-      )}
+        );
+      })}
     </group>
   );
 }
@@ -297,9 +224,9 @@ function TruckModel({ truck, position, capacity, step, dropIndex, colors, active
 const VIEW_DIR = [0.5, 0.95, 1]; // from the front-right, looking down
 
 /** Frames the whole parking grid whenever the canvas size or truck count changes. */
-function CameraRig({ n, spacing }) {
+function CameraRig({ n, spacing, height }) {
   const camera = useThree((s) => s.camera);
-  const { width, height } = useThree((s) => s.size);
+  const { width, height: px } = useThree((s) => s.size);
   const controls = useThree((s) => s.controls);
 
   useLayoutEffect(() => {
@@ -307,8 +234,8 @@ function CameraRig({ n, spacing }) {
     // half-extents of the grid, including cabs and labels
     const hx = (cols * spacing) / 2;
     const hz = (rows * ROW_SPACING) / 2;
-    const radius = Math.hypot(hx, hz, H);
-    const aspect = width / height;
+    const radius = Math.hypot(hx, hz, height);
+    const aspect = width / px;
     const vFov = (camera.fov * Math.PI) / 180;
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
     // The grid is seen at a slant, so it looks smaller than its bounding
@@ -324,7 +251,7 @@ function CameraRig({ n, spacing }) {
       controls.target.set(0, FLOOR, 0);
       controls.update();
     }
-  }, [camera, controls, width, height, n, spacing]);
+  }, [camera, controls, width, px, n, spacing, height]);
 
   return null;
 }
@@ -349,20 +276,37 @@ function LabelTracker({ positions, labels, anchorX }) {
   return null;
 }
 
-export default function TruckScene3D({
-  data, capacity, step, dropIndex, activeId, onHover, onFocusBlock, height,
-}) {
+const kg = (n) => n.toLocaleString("en-AU");
+
+/** The label text of a truck at this point of the drop animation. */
+function truckStatus(truck, capacity, step, dropIndex) {
+  const shown = truck.shipments.filter((s) => dropIndex[s.id] < step);
+  const done = shown.length === truck.shipments.length;
+  const load = shown.reduce((sum, s) => sum + s.weight, 0);
+  const fill = Math.floor((done ? truck.fill_percent : (100 * load) / capacity.weight_kg) + 1e-9);
+  return {
+    fill,
+    sub: done ? `${kg(truck.empty)} kg free · floor ${Math.floor(truck.floor_percent + 1e-9)}%` : "loading…",
+  };
+}
+
+/** Where a shipment stands in its column, for the screen reader list: "", or "level 2 of 2". */
+function levelText(columns, s) {
+  const col = columns.find((c) => c.items.includes(s));
+  return col && col.items.length > 1 ? `, level ${s.placement.level + 1} of ${col.items.length}` : "";
+}
+
+export default function TruckScene3D({ data, step, dropIndex, activeIds, onHover, onFocusBlock, height }) {
   const dark = useDarkTheme();
   const reducedMotion = useMediaQuery(REDUCED_MOTION);
   const colors = dark ? PALETTE.dark : PALETTE.light;
   const labels = useRef([]);
   const n = data.trucks.length;
-  // The longest trailer sets the grid spacing (pallet decks have real lengths).
-  const maxLen = useMemo(
-    () => Math.max(L, ...data.trucks.map((t) => deckOf(t, capacity)?.len ?? L)),
-    [data.trucks, capacity]
-  );
-  const spacing = colSpacing(maxLen);
+  const capacity = data.capacity;
+  const layout = useMemo(() => layoutDecks(capacity.decks), [capacity]);
+  const insideH = Math.max(...layout.decks.map((d) => d.h));
+  const insideMm = Math.max(...capacity.decks.map((d) => d.height_mm));
+  const spacing = colSpacing(layout.len);
   const positions = useMemo(() => data.trucks.map((_, i) => slot(i, n, spacing)), [data.trucks, n, spacing]);
   const extent = useMemo(() => {
     const xs = positions.map((p) => p[0]);
@@ -406,18 +350,17 @@ export default function TruckScene3D({
             key={t.truck}
             truck={t}
             position={positions[i]}
-            capacity={capacity}
+            layout={layout}
             step={step}
             dropIndex={dropIndex}
             colors={colors}
-            activeId={activeId}
+            activeIds={activeIds}
             onHover={onHover}
             animate={!reducedMotion}
-            maxLen={maxLen}
           />
         ))}
-        <CameraRig n={n} spacing={spacing} />
-        <LabelTracker positions={positions} labels={labels} anchorX={labelX(maxLen)} />
+        <CameraRig n={n} spacing={spacing} height={insideH} />
+        <LabelTracker positions={positions} labels={labels} anchorX={labelX(layout.len)} />
 
         <OrbitControls
           makeDefault
@@ -430,14 +373,15 @@ export default function TruckScene3D({
 
       <div className="scene3d-labels" aria-hidden="true">
         {data.trucks.map((t, i) => {
-          const { fill, sub, holdsActive, over } = truckStatus(t, capacity, step, dropIndex, activeId);
+          const { fill, sub } = truckStatus(t, capacity, step, dropIndex);
+          const holdsActive = activeIds != null && t.shipments.some((s) => activeIds.includes(s.id));
           return (
             <div
               key={t.truck}
               ref={(el) => (labels.current[i] = el)}
-              className={`truck3d-label${holdsActive ? " active" : ""}${over ? " extra" : ""}`}
+              className={`truck3d-label${holdsActive ? " active" : ""}`}
             >
-              <span className="truck3d-title"><b>{truckName(t)}</b> · {fill}%</span>
+              <span className="truck3d-title"><b>Truck {t.truck}</b> · {fill}%</span>
               <span className="truck3d-sub">{sub}</span>
             </div>
           );
@@ -447,31 +391,23 @@ export default function TruckScene3D({
       <p className="scene3d-hint muted small" aria-hidden="true">Drag to rotate</p>
 
       {/* The canvas can't be reached by keyboard or screen reader, so the same
-          content is listed here. Tabbing through it highlights each crate. */}
+          content is listed here. Tabbing through it highlights each box. */}
       <ul className="sr-only">
         {data.trucks.map((t) => {
-          const cap = capacity;
-          const multi = isMulti(cap);
-          const full = multi ? truckFill(t, cap, Infinity, {}) : null;
-          const d = deckOf(t, capacity);
+          const columns = stackColumns(t.shipments);
           return (
             <li key={t.truck}>
-              {multi
-                ? `${truckName(t)}: ${describeUsage(full.full, cap)}${full.over || d?.over ? ". Over capacity" : ""}`
-                : `Truck ${t.truck}: ${t.load} of ${capacity} kg loaded`}
-              {d ? `. ${describeDeck(d.deck)}` : ""}
+              {`Truck ${t.truck}: ${kg(t.load)} of ${kg(capacity.weight_kg)} kg, floor ${Math.floor(t.floor_percent + 1e-9)}% used, `}
+              {`${metres(t.max_height_mm)} of ${metres(insideMm)} m high`}
               <ul>
                 {t.shipments.map((s) => (
                   <li
                     key={s.id}
                     tabIndex={0}
-                    onFocus={() => onFocusBlock(s.id)}
+                    onFocus={() => onFocusBlock([s.id])}
                     onBlur={() => onFocusBlock(null)}
                   >
-                    {`${s.name}${dgTextOf(s) ? `, ${dgTextOf(s)}` : ""}, `}
-                    {multi
-                      ? `${describeSize(sizeOf(s))}, ${truckName(t).toLowerCase()} of ${data.num_trucks}`
-                      : `${s.weight} kg, truck ${t.truck} of ${data.num_trucks}`}
+                    {`${describeItem(s)}${levelText(columns, s)}, truck ${t.truck} of ${data.num_trucks}`}
                   </li>
                 ))}
               </ul>
