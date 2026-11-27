@@ -27,7 +27,7 @@ const SCHEME_NAMES = { GML: "General Mass Limits", HML: "Higher Mass Limits" } a
 
 export const PLACEMENT_HEADER = [
   "Unit", "Item", "Type", "Deck", "X (mm)", "Y (mm)", "Z (mm)", "Length (mm)", "Width (mm)", "Height (mm)",
-  "Weight (kg)", "Stop", "Level",
+  "Weight (kg)", "Level",
 ];
 
 export function planToCsv(result: PlanResult, request: PlanRequest, reference: ReferenceData): string {
@@ -68,7 +68,7 @@ export function planToCsv(result: PlanResult, request: PlanRequest, reference: R
     ...result.placements.map((p): Cell[] => [
       p.unit_id, p.label?.trim() || itemLabel(p.item_id) || p.item_id, typeName(p.kind, p.type_id),
       deckName(p.deck_id), p.x_mm, p.y_mm, p.z_mm, p.length_mm, p.width_mm, p.height_mm, p.weight_kg,
-      p.stop, p.stack_level,
+      p.stack_level,
     ]),
   ];
   return rows.map(csvRow).join(EOL) + EOL;
