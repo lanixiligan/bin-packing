@@ -3,6 +3,9 @@
 // (POST /api/plan). Units are mm, kg and m³ everywhere; convert only for display (lib/units.tsx).
 // The UI draws placements exactly as returned and never recalculates them.
 
+import type { DgInfo, RuleSet } from "../../dg/rules.ts";
+
+export type { DgInfo, RuleSet };
 export type SizeClass = "20" | "40" | "45" | "48";
 export type MassScheme = "GML" | "HML";
 
@@ -148,6 +151,8 @@ export interface FreightItem {
   temp_controlled?: boolean;
   /** Delivery stop, 1 = first drop. */
   stop?: number | null;
+  /** Dangerous goods data (ADG class, subsidiary hazards, food / fire-risk); null = general freight. */
+  dg?: DgInfo | null;
 }
 
 export interface PlanRequest {
@@ -155,6 +160,8 @@ export interface PlanRequest {
   vehicle_id: string; // a VehicleConfig id or SUGGEST
   body_type?: string | null;
   mass_scheme?: MassScheme;
+  /** Dangerous goods rules: ADG Code, or ADG plus Northline's acceptance rules. */
+  rule_set?: RuleSet;
 }
 
 // ---- Plan result ------------------------------------------------------------
@@ -164,7 +171,8 @@ export type WarningCode =
   | "REEFER_ON_NON_REEFER" | "STACK_TOO_HIGH" | "OVER_INTERNAL_HEIGHT" | "OVER_HEIGHT_LIMIT"
   | "UNSTACKABLE_FLOOR_SPACE" | "OVER_CAPACITY" | "CONTAINER_COMBO" | "CONTAINER_OVER_MAX_GROSS"
   | "PALLET_OVER_MAX_GROSS" | "OVERSIZE_FOOTPRINT" | "STOP_ORDER_BLOCKED" | "OVER_PAYLOAD"
-  | "AXLE_NEAR_LIMIT" | "AXLE_OVER_LIMIT" | "ROUTE_RESTRICTED";
+  | "AXLE_NEAR_LIMIT" | "AXLE_OVER_LIMIT" | "ROUTE_RESTRICTED"
+  | "DG_INCOMPATIBLE" | "DG_CHECK" | "DG_ON_BOARD" | "DG_CARRIER_REFUSED" | "DG_CARRIER_NOTE";
 
 export type Severity = "info" | "warning" | "error";
 

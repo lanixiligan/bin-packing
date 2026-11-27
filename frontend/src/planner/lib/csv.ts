@@ -227,6 +227,7 @@ export function parseCsv(text: string, ref: ReferenceData, makeId: () => string 
       stackable: kind === "pallet" && stackable,
       temp_controlled: temp,
       stop,
+      dg: null,
     });
   }
   return { rows, problems, header };

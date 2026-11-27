@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, fetchReference, postPlan } from "./api/client.ts";
-import type { MassScheme, PlanRequest, PlanResult, ReferenceData } from "./api/types.ts";
+import type { MassScheme, PlanRequest, PlanResult, ReferenceData, RuleSet } from "./api/types.ts";
 import { SUGGEST } from "./api/types.ts";
 import { sampleRows, validateRows, type FreightRow } from "./lib/freight.ts";
 import { useUnits, type UnitSystem } from "./lib/units.ts";
@@ -125,6 +125,7 @@ export function Planner({ initialReference = null }: { initialReference?: Refere
   const [vehicleId, setVehicleId] = useState<string>(DEFAULT_VEHICLE);
   const [bodyType, setBodyType] = useState<string | null>(null);
   const [massScheme, setMassScheme] = useState<MassScheme>("GML");
+  const [ruleSet, setRuleSet] = useState<RuleSet>("adg");
   const [rows, setRows] = useState<FreightRow[]>(() => sampleRows(initialReference));
   const [result, setResult] = useState<PlanResult | null>(null);
   const [resultRequest, setResultRequest] = useState<PlanRequest | null>(null);
@@ -151,8 +152,8 @@ export function Planner({ initialReference = null }: { initialReference?: Refere
 
   const validation = useMemo(() => validateRows(rows, reference), [rows, reference]);
   const request = useMemo<PlanRequest | null>(() => (validation.items
-    ? { items: validation.items, vehicle_id: vehicleId, body_type: bodyType, mass_scheme: massScheme }
-    : null), [validation.items, vehicleId, bodyType, massScheme]);
+    ? { items: validation.items, vehicle_id: vehicleId, body_type: bodyType, mass_scheme: massScheme, rule_set: ruleSet }
+    : null), [validation.items, vehicleId, bodyType, massScheme, ruleSet]);
   const requestKey = request ? JSON.stringify(request) : "";
 
   // Plan whenever the request changes (debounced); the latest request wins.
@@ -225,6 +226,18 @@ export function Planner({ initialReference = null }: { initialReference?: Refere
             <Step n={2} id="step-freight" title="Add freight" hint="Weights are per unit, including the pallet.">
               <FreightTable reference={reference} rows={rows} onRowsChange={setRows}
                             errors={validation.errors} listErrors={validation.listErrors} />
+              <div className="rule-set">
+                <span className="field-label" id="rule-set-label">Dangerous goods rules</span>
+                <fieldset className="segmented" aria-labelledby="rule-set-label">
+                  {([["adg", "ADG Code"], ["northline", "ADG + Northline"]] as [RuleSet, string][]).map(([value, label]) => (
+                    <label key={value}>
+                      <input type="radio" name="rule-set" value={value} checked={ruleSet === value}
+                             onChange={() => setRuleSet(value)} />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </fieldset>
+              </div>
             </Step>
           </div>
 
