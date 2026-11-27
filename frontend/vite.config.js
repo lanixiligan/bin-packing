@@ -11,12 +11,7 @@ export default defineConfig({
       "/api": process.env.VITE_API_TARGET || "http://localhost:8000",
     },
   },
-  build: {
-    rollupOptions: {
-      input: { main: "index.html", planner: "planner.html" },
-    },
-  },
-  // Component tests for the load planner (src/planner). The older node:test files run with `node --test`.
+  // Component tests for the load planner (src/planner). The DG rules port runs with `node --test`.
   test: {
     environment: "jsdom",
     include: ["src/planner/**/*.test.{ts,tsx}"],

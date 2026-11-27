@@ -17,10 +17,5 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },
   },
-  {
-    // The demo predates the lint setup; keep its rules relaxed.
-    files: ["src/demo/**", "src/components/**", "src/shipments.js", "src/useMediaQuery.js"],
-    rules: { "react-hooks/exhaustive-deps": "off", "react-hooks/set-state-in-effect": "off", "react-hooks/refs": "off", "react-hooks/immutability": "off" },
-  },
   { files: ["*.config.js"], languageOptions: { globals: globals.node } },
 );
